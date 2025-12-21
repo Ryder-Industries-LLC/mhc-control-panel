@@ -281,3 +281,42 @@
   border-radius: 6px;
   margin-bottom: 20px;
 }
+
+.raw-data-section {
+  margin-top: 20px;
+}
+
+.raw-data-toggle {
+  background: #2d3748;
+  color: #cbd5e0;
+  border: 1px solid #4a5568;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.raw-data-toggle:hover {
+  background: #4a5568;
+  border-color: #667eea;
+}
+
+.raw-data-content {
+  margin-top: 12px;
+  background: #000000;
+  border: 1px solid #2d3748;
+  border-radius: 6px;
+  padding: 16px;
+  overflow-x: auto;
+}
+
+.raw-data-content pre {
+  margin: 0;
+  color: #48bb78;
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api, HudsonResponse, Session } from '../api/client';
+import { formatDate, formatNumber } from '../utils/formatting';
 import './Hudson.css';
 
 const Hudson: React.FC = () => {
@@ -7,6 +8,7 @@ const Hudson: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [showRawData, setShowRawData] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -33,10 +35,6 @@ const Hudson: React.FC = () => {
 
     return () => clearInterval(interval);
   }, [autoRefresh]);
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-  };
 
   const formatDuration = (startedAt: string, endedAt: string | null) => {
     const start = new Date(startedAt).getTime();
@@ -111,19 +109,19 @@ const Hudson: React.FC = () => {
               <div className="metrics-grid">
                 <div className="metric-item">
                   <span className="metric-label">Total Tips</span>
-                  <span className="metric-value">{data.currentSessionStats.totalTips}</span>
+                  <span className="metric-value">{formatNumber(data.currentSessionStats.totalTips)}</span>
                 </div>
                 <div className="metric-item">
                   <span className="metric-label">Total Interactions</span>
-                  <span className="metric-value">{data.currentSessionStats.totalInteractions}</span>
+                  <span className="metric-value">{formatNumber(data.currentSessionStats.totalInteractions)}</span>
                 </div>
                 <div className="metric-item">
                   <span className="metric-label">Unique Users</span>
-                  <span className="metric-value">{data.currentSessionStats.uniqueUsers}</span>
+                  <span className="metric-value">{formatNumber(data.currentSessionStats.uniqueUsers)}</span>
                 </div>
                 <div className="metric-item">
                   <span className="metric-label">Duration (min)</span>
-                  <span className="metric-value">{data.currentSessionStats.durationMinutes || 0}</span>
+                  <span className="metric-value">{formatNumber(data.currentSessionStats.durationMinutes || 0)}</span>
                 </div>
               </div>
             </div>
@@ -143,42 +141,42 @@ const Hudson: React.FC = () => {
           <div className="metrics-grid">
             <div className="metric-item">
               <span className="metric-label">Followers</span>
-              <span className="metric-value">{(data.cbStats as any).num_followers || 0}</span>
+              <span className="metric-value">{formatNumber((data.cbStats as any).num_followers)}</span>
               {data.cbDelta && typeof (data.cbDelta as any).num_followers === 'number' && (
                 <span className={`delta ${(data.cbDelta as any).num_followers >= 0 ? 'positive' : 'negative'}`}>
-                  {(data.cbDelta as any).num_followers >= 0 ? '+' : ''}{(data.cbDelta as any).num_followers}
+                  {(data.cbDelta as any).num_followers >= 0 ? '+' : ''}{formatNumber((data.cbDelta as any).num_followers)}
                 </span>
               )}
             </div>
             <div className="metric-item">
               <span className="metric-label">Current Viewers</span>
-              <span className="metric-value">{(data.cbStats as any).num_viewers || 0}</span>
+              <span className="metric-value">{formatNumber((data.cbStats as any).num_viewers)}</span>
               {data.cbDelta && typeof (data.cbDelta as any).num_viewers === 'number' && (
                 <span className={`delta ${(data.cbDelta as any).num_viewers >= 0 ? 'positive' : 'negative'}`}>
-                  {(data.cbDelta as any).num_viewers >= 0 ? '+' : ''}{(data.cbDelta as any).num_viewers}
+                  {(data.cbDelta as any).num_viewers >= 0 ? '+' : ''}{formatNumber((data.cbDelta as any).num_viewers)}
                 </span>
               )}
             </div>
             <div className="metric-item">
               <span className="metric-label">Tokened Viewers</span>
-              <span className="metric-value">{(data.cbStats as any).num_tokened_viewers || 0}</span>
+              <span className="metric-value">{formatNumber((data.cbStats as any).num_tokened_viewers)}</span>
             </div>
             <div className="metric-item">
               <span className="metric-label">Token Balance</span>
-              <span className="metric-value">{(data.cbStats as any).token_balance || 0}</span>
+              <span className="metric-value">{formatNumber((data.cbStats as any).token_balance)}</span>
               {data.cbDelta && typeof (data.cbDelta as any).token_balance === 'number' && (
                 <span className={`delta ${(data.cbDelta as any).token_balance >= 0 ? 'positive' : 'negative'}`}>
-                  {(data.cbDelta as any).token_balance >= 0 ? '+' : ''}{(data.cbDelta as any).token_balance}
+                  {(data.cbDelta as any).token_balance >= 0 ? '+' : ''}{formatNumber((data.cbDelta as any).token_balance)}
                 </span>
               )}
             </div>
             <div className="metric-item">
               <span className="metric-label">Satisfaction Score</span>
-              <span className="metric-value">{(data.cbStats as any).satisfaction_score || 0}%</span>
+              <span className="metric-value">{formatNumber((data.cbStats as any).satisfaction_score)}%</span>
             </div>
             <div className="metric-item">
               <span className="metric-label">Votes (Up/Down)</span>
-              <span className="metric-value">{(data.cbStats as any).votes_up || 0} / {(data.cbStats as any).votes_down || 0}</span>
+              <span className="metric-value">{formatNumber((data.cbStats as any).votes_up)} / {formatNumber((data.cbStats as any).votes_down)}</span>
             </div>
           </div>
         </div>
@@ -232,6 +230,22 @@ const Hudson: React.FC = () => {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {data && (
+        <div className="raw-data-section">
+          <button
+            className="raw-data-toggle"
+            onClick={() => setShowRawData(!showRawData)}
+          >
+            {showRawData ? 'Hide' : 'Show'} Raw Response Data
+          </button>
+          {showRawData && (
+            <div className="raw-data-content">
+              <pre>{JSON.stringify(data, null, 2)}</pre>
+            </div>
+          )}
         </div>
       )}
     </div>

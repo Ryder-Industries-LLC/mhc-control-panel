@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { api, LookupResponse } from '../api/client';
+import { formatDate, formatNumber, formatLabel, formatValue } from '../utils/formatting';
 import './Home.css';
 
 const Home: React.FC = () => {
@@ -9,6 +10,7 @@ const Home: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LookupResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showRawData, setShowRawData] = useState(false);
 
   const handleLookup = async () => {
     if (!username && !pastedText) {
@@ -33,10 +35,6 @@ const Home: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
   };
 
   return (
@@ -135,7 +133,7 @@ const Home: React.FC = () => {
               {result.person.did && (
                 <div className="detail-item">
                   <span className="label">Donor ID:</span>
-                  <span className="value">{result.person.did}</span>
+                  <span className="value">{formatNumber(result.person.did)}</span>
                 </div>
               )}
             </div>
@@ -153,9 +151,9 @@ const Home: React.FC = () => {
                 <div className="metrics-grid">
                   {Object.entries(result.latestSnapshot.normalized_metrics).map(([key, value]) => (
                     <div key={key} className="metric-item">
-                      <span className="metric-label">{key}:</span>
+                      <span className="metric-label">{formatLabel(key)}:</span>
                       <span className="metric-value">
-                        {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                        {formatValue(value, key)}
                       </span>
                     </div>
                   ))}
@@ -166,14 +164,18 @@ const Home: React.FC = () => {
                 <div className="delta-section">
                   <h4>Changes Since Last Snapshot</h4>
                   <div className="delta-grid">
-                    {Object.entries(result.delta).map(([key, value]) => (
-                      <div key={key} className="delta-item">
-                        <span className="delta-label">{key}:</span>
-                        <span className={`delta-value ${Number(value) > 0 ? 'positive' : Number(value) < 0 ? 'negative' : ''}`}>
-                          {value === null ? 'N/A' : typeof value === 'number' ? (value > 0 ? `+${value}` : value) : String(value)}
-                        </span>
-                      </div>
-                    ))}
+                    {Object.entries(result.delta).map(([key, value]) => {
+                      const numValue = Number(value);
+                      const isNumber = typeof value === 'number' && !isNaN(numValue);
+                      return (
+                        <div key={key} className="delta-item">
+                          <span className="delta-label">{formatLabel(key)}:</span>
+                          <span className={`delta-value ${numValue > 0 ? 'positive' : numValue < 0 ? 'negative' : ''}`}>
+                            {value === null ? 'N/A' : isNumber ? (numValue > 0 ? `+${formatNumber(numValue)}` : formatNumber(numValue)) : formatValue(value, key)}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -198,6 +200,20 @@ const Home: React.FC = () => {
               </div>
             </div>
           )}
+
+          <div className="raw-data-section">
+            <button
+              className="raw-data-toggle"
+              onClick={() => setShowRawData(!showRawData)}
+            >
+              {showRawData ? 'Hide' : 'Show'} Raw Response Data
+            </button>
+            {showRawData && (
+              <div className="raw-data-content">
+                <pre>{JSON.stringify(result, null, 2)}</pre>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
