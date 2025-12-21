@@ -50,15 +50,19 @@ export class ChaturbateEventsClient {
   private client: AxiosInstance;
   private isRunning = false;
   private currentSessionId: string | null = null;
+  private nextUrl: string | null = null;
 
-  constructor(private token: string = env.CHATURBATE_EVENTS_TOKEN) {
+  constructor(
+    private token: string = env.CHATURBATE_EVENTS_TOKEN,
+    private username: string = env.CHATURBATE_USERNAME
+  ) {
     this.client = axios.create({
       baseURL: 'https://eventsapi.chaturbate.com',
       timeout: 120000, // 2 minutes for longpoll
-      headers: {
-        'X-CB-Token': token,
-      },
     });
+
+    // Initialize nextUrl with the initial endpoint
+    this.nextUrl = `https://eventsapi.chaturbate.com/events/${this.username}/${this.token}/?timeout=30`;
   }
 
   /**
@@ -94,20 +98,27 @@ export class ChaturbateEventsClient {
 
   /**
    * Single poll cycle
-   * NOTE: The exact endpoint URL needs to be determined from Chaturbate docs
-   * This is a placeholder based on typical longpoll patterns
+   * Follows the longpoll pattern from EVENTS_API_DOCS.md
    */
   private async poll() {
-    try {
-      // TODO: Update this endpoint based on official Chaturbate Events API documentation
-      // The endpoint format is currently inferred and may need adjustment
-      const response = await this.client.get<{ events?: ChaturbateEvent[] }>('/events/poll', {
-        params: {
-          token: this.token,
-        },
-      });
+    if (!this.nextUrl) {
+      logger.error('No nextUrl available for polling');
+      this.stop();
+      return;
+    }
 
+    try {
+      const response = await this.client.get<{
+        events: ChaturbateEvent[];
+        nextUrl: string;
+      }>(this.nextUrl);
+
+      // Update nextUrl for the next poll
+      this.nextUrl = response.data.nextUrl;
+
+      // Process events
       if (response.data.events && response.data.events.length > 0) {
+        logger.info(`Received ${response.data.events.length} events`);
         for (const event of response.data.events) {
           await this.handleEvent(event);
         }
@@ -115,11 +126,17 @@ export class ChaturbateEventsClient {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         if (error.code === 'ECONNABORTED') {
-          // Timeout is expected for longpoll
+          // Timeout is expected for longpoll, continue
+          logger.debug('Longpoll timeout, continuing...');
           return;
         }
         if (error.response?.status === 401) {
           logger.error('Events API authentication failed - check token');
+          this.stop();
+          return;
+        }
+        if (error.response?.status === 404) {
+          logger.error('Events API endpoint not found - check username/token');
           this.stop();
           return;
         }

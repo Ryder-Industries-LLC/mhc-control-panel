@@ -245,18 +245,25 @@ Backend ready for deployment, but needs:
 
 ### 1. Chaturbate Events API Endpoint
 
-**Issue**: The longpoll endpoint URL is a placeholder.
+✅ **RESOLVED**: The correct longpoll endpoint is now implemented.
 
-**Location**: [events-client.ts:110](server/src/api/chaturbate/events-client.ts#L110)
+**Location**: [events-client.ts:103](server/src/api/chaturbate/events-client.ts#L103)
 
-**Current Code**:
+**Implementation**:
 ```typescript
-const response = await this.client.get<{ events?: ChaturbateEvent[] }>('/events/poll', {
-  params: { token: this.token },
-});
+// Initial URL
+this.nextUrl = `https://eventsapi.chaturbate.com/events/${this.username}/${this.token}/?timeout=30`;
+
+// Longpoll with nextUrl continuation
+const response = await this.client.get<{
+  events: ChaturbateEvent[];
+  nextUrl: string;
+}>(this.nextUrl);
+
+this.nextUrl = response.data.nextUrl;
 ```
 
-**Action Needed**: Update with official endpoint from Chaturbate Events API documentation.
+**Source**: [EVENTS_API_DOCS.md](EVENTS_API_DOCS.md) - Official Chaturbate Events API documentation
 
 ### 2. Statbate Plus Chat History
 

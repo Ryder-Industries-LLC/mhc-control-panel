@@ -137,15 +137,17 @@ curl -X POST https://your-url.onrender.com/api/session/start
 
 ### Chaturbate Events API Endpoint
 
-The Events API client uses a placeholder endpoint at [events-client.ts:110](server/src/api/chaturbate/events-client.ts#L110):
+✅ **Implemented**: The Events API client uses the correct longpoll endpoint from [EVENTS_API_DOCS.md](EVENTS_API_DOCS.md):
 
 ```typescript
-const response = await this.client.get<{ events?: ChaturbateEvent[] }>('/events/poll', {
-  params: { token: this.token },
-});
+// Initial URL
+https://eventsapi.chaturbate.com/events/{username}/{token}/?timeout=30
+
+// Subsequent requests use nextUrl from response
+this.nextUrl = response.data.nextUrl;
 ```
 
-**Action Required**: Update this endpoint URL based on official Chaturbate Events API documentation. The exact longpoll endpoint format needs to be confirmed.
+**Pattern**: Longpoll with automatic `nextUrl` continuation as documented in official Chaturbate Events API docs.
 
 ### Statbate Plus Chat History
 

@@ -91,14 +91,19 @@ The MHC Control Panel is a persistent analysis and memory system for Chaturbate 
 
 ### Chaturbate Events API
 
-**Base URL**: Longpoll JSON event feed (see CHATURBATE_EVENTS_API.md)
+**Endpoint**: `https://eventsapi.chaturbate.com/events/{username}/{token}/?timeout=30`
 
 **Authentication**: Token from `https://chaturbate.com/statsapi/authtoken/` with `Events API` scope
+
+**Implementation**: Longpoll pattern with `nextUrl` continuation
 
 **Constraints**:
 - Real-time only, **NO** historical replay
 - Only used for `hudson_cage` room
-- Events: `chatMessage`, `privateMessage`, `tip`, `follow`, `unfollow`, `broadcastStart`, `broadcastStop`, `userEnter`, `userLeave`
+- Rate limit: 2000 requests per minute
+- Events: `chatMessage`, `privateMessage`, `tip`, `follow`, `unfollow`, `broadcastStart`, `broadcastStop`, `userEnter`, `userLeave`, `fanclubJoin`, `mediaPurchase`, `roomSubjectChange`
+
+**Reference**: See [EVENTS_API_DOCS.md](EVENTS_API_DOCS.md) for full documentation
 
 ### Chaturbate Stats API
 
