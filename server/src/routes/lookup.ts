@@ -73,7 +73,13 @@ router.post('/', async (req: Request, res: Response) => {
         // Try as MODEL first, then as VIEWER if MODEL fails
         let statbateDataFetched = false;
 
-        if (role === 'MODEL' || role === 'UNKNOWN') {
+        // Determine which role to try based on:
+        // 1. Explicit role from request (user preference)
+        // 2. Person's existing role from database
+        // 3. Default to trying MODEL first
+        const effectiveRole = role || person.role;
+
+        if (effectiveRole === 'MODEL' || effectiveRole === 'UNKNOWN') {
           try {
             const modelData = await statbateClient.getModelInfo('chaturbate', primaryUsername);
             if (modelData) {
@@ -101,7 +107,7 @@ router.post('/', async (req: Request, res: Response) => {
         }
 
         // Try as VIEWER if not already fetched
-        if (!statbateDataFetched && (role === 'VIEWER' || role === 'UNKNOWN')) {
+        if (!statbateDataFetched && (effectiveRole === 'VIEWER' || effectiveRole === 'UNKNOWN')) {
           try {
             const memberData = await statbateClient.getMemberInfo('chaturbate', primaryUsername);
             if (memberData) {

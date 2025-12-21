@@ -7,6 +7,7 @@ const Home: React.FC = () => {
   const [username, setUsername] = useState('');
   const [pastedText, setPastedText] = useState('');
   const [includeStatbate, setIncludeStatbate] = useState(false);
+  const [rolePreference, setRolePreference] = useState<'AUTO' | 'MODEL' | 'VIEWER'>('AUTO');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LookupResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +28,7 @@ const Home: React.FC = () => {
         username: username || undefined,
         pastedText: pastedText || undefined,
         includeStatbate,
+        role: rolePreference === 'AUTO' ? undefined : rolePreference,
       });
       setResult(data);
     } catch (err) {
@@ -80,6 +82,47 @@ const Home: React.FC = () => {
             Include Statbate Data
           </label>
         </div>
+
+        {includeStatbate && (
+          <div className="form-group role-selector">
+            <label>Role</label>
+            <div className="radio-group">
+              <label className="radio-label">
+                <input
+                  type="radio"
+                  name="role"
+                  value="AUTO"
+                  checked={rolePreference === 'AUTO'}
+                  onChange={(e) => setRolePreference(e.target.value as 'AUTO')}
+                  disabled={loading}
+                />
+                Auto (Model → Viewer)
+              </label>
+              <label className="radio-label">
+                <input
+                  type="radio"
+                  name="role"
+                  value="MODEL"
+                  checked={rolePreference === 'MODEL'}
+                  onChange={(e) => setRolePreference(e.target.value as 'MODEL')}
+                  disabled={loading}
+                />
+                Model Only
+              </label>
+              <label className="radio-label">
+                <input
+                  type="radio"
+                  name="role"
+                  value="VIEWER"
+                  checked={rolePreference === 'VIEWER'}
+                  onChange={(e) => setRolePreference(e.target.value as 'VIEWER')}
+                  disabled={loading}
+                />
+                Viewer Only
+              </label>
+            </div>
+          </div>
+        )}
 
         <button onClick={handleLookup} disabled={loading} className="btn-primary">
           {loading ? 'Looking up...' : 'Lookup'}
