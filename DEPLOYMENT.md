@@ -63,7 +63,8 @@ This guide covers deploying the MHC Control Panel to Render.com.
      CHATURBATE_EVENTS_TOKEN=your_chaturbate_events_api_token
      CHATURBATE_STATS_TOKEN=your_chaturbate_stats_api_token
      ```
-   - This file will be available at `/etc/secrets/.env` and in your app's root
+   - This file will be placed at `/etc/secrets/.env` by Render
+   - The application automatically detects and loads this file on startup
 
 7. Click "Create Web Service"
 
@@ -112,7 +113,8 @@ After the web service deploys successfully:
      RUN_MODE=worker
      CHATURBATE_EVENTS_TOKEN=your_chaturbate_events_api_token
      ```
-   - This file will be available at `/etc/secrets/.env` and in your app's root
+   - This file will be placed at `/etc/secrets/.env` by Render
+   - The application automatically detects and loads this file on startup
 
 7. Click "Create Background Worker"
 
@@ -306,7 +308,15 @@ To implement cleanup, use `SnapshotService.deleteOlderThan(date)`.
 | `DATABASE_URL` | Yes | Both | PostgreSQL connection string (linked via Render UI) |
 
 ### Secret File (`.env`) - Stored in Render Secret Files
-**Location**: `/etc/secrets/.env` or app root
+
+**Location**: `/etc/secrets/.env` (automatically detected by the application)
+
+**How it works**:
+
+- The application checks for `.env` at `/etc/secrets/.env` (Render Secret Files location)
+- If not found, falls back to local `.env` file (for development)
+- See [config/env.ts:10-21](server/src/config/env.ts#L10-L21) for implementation
+
 **Format**:
 ```bash
 # Required for both services

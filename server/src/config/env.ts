@@ -1,7 +1,24 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
+import { existsSync } from 'fs';
+import { resolve } from 'path';
 
-dotenv.config();
+// Load .env file from Render Secret Files location or local directory
+const renderSecretPath = '/etc/secrets/.env';
+const localEnvPath = resolve(process.cwd(), '.env');
+
+if (existsSync(renderSecretPath)) {
+  // Running on Render - load from Secret Files
+  dotenv.config({ path: renderSecretPath });
+  console.log('Loaded environment from Render Secret Files');
+} else if (existsSync(localEnvPath)) {
+  // Running locally - load from project root
+  dotenv.config({ path: localEnvPath });
+  console.log('Loaded environment from local .env file');
+} else {
+  // No .env file found - environment variables should be set directly
+  console.log('No .env file found - using process environment variables');
+}
 
 const envSchema = z.object({
   // Database
