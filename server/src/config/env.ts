@@ -3,21 +3,34 @@ import dotenv from 'dotenv';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 
-// Load .env file from Render Secret Files location or local directory
-const renderSecretPath = '/etc/secrets/.env';
-const localEnvPath = resolve(process.cwd(), '.env');
+// Load .env file from Render Secret Files or local directory
+// Render mounts Secret Files at both /etc/secrets/ and the app root
+const possiblePaths = [
+  '/etc/secrets/.env',           // Render Secret Files (documented location)
+  resolve(process.cwd(), '.env'), // App root (where Render also places it)
+  resolve(__dirname, '../../.env'), // Project root (for local dev)
+];
 
-if (existsSync(renderSecretPath)) {
-  // Running on Render - load from Secret Files
-  dotenv.config({ path: renderSecretPath });
-  console.log('Loaded environment from Render Secret Files');
-} else if (existsSync(localEnvPath)) {
-  // Running locally - load from project root
-  dotenv.config({ path: localEnvPath });
-  console.log('Loaded environment from local .env file');
-} else {
-  // No .env file found - environment variables should be set directly
-  console.log('No .env file found - using process environment variables');
+console.log('Checking for .env file in the following locations:');
+possiblePaths.forEach(p => console.log(`  - ${p} (exists: ${existsSync(p)})`));
+
+let envLoaded = false;
+for (const envPath of possiblePaths) {
+  if (existsSync(envPath)) {
+    const result = dotenv.config({ path: envPath });
+    if (result.error) {
+      console.log(`Failed to load ${envPath}:`, result.error.message);
+    } else {
+      console.log(`✓ Loaded environment from: ${envPath}`);
+      envLoaded = true;
+      break;
+    }
+  }
+}
+
+if (!envLoaded) {
+  console.log('No .env file found - using process environment variables only');
+  dotenv.config(); // Still try to load from default location
 }
 
 const envSchema = z.object({
@@ -56,13 +69,26 @@ export function validateEnv(): Env {
 
   try {
     cachedEnv = envSchema.parse(process.env);
+    console.log('✓ Environment validation successful');
     return cachedEnv;
   } catch (error) {
     if (error instanceof z.ZodError) {
-      console.error('Environment validation failed:');
+      console.error('\n❌ Environment validation failed:');
       error.errors.forEach((err) => {
-        console.error(`  - ${err.path.join('.')}: ${err.message}`);
+        const varName = err.path.join('.');
+        console.error(`  - ${varName}: ${err.message}`);
       });
+      console.error('\nExpected configuration:');
+      console.error('  Environment Variables (set in Render UI):');
+      console.error('    - DATABASE_URL (linked from database)');
+      console.error('    - CHATURBATE_USERNAME');
+      console.error('    - NODE_ENV=production');
+      console.error('  Secret File (.env in Render Secret Files):');
+      console.error('    - RUN_MODE=web|worker');
+      console.error('    - STATBATE_API_TOKEN');
+      console.error('    - CHATURBATE_EVENTS_TOKEN');
+      console.error('    - CHATURBATE_STATS_TOKEN');
+      console.error('\nSee DEPLOYMENT.md for configuration instructions.\n');
       process.exit(1);
     }
     throw error;
