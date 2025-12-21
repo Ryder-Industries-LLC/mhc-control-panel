@@ -1,7 +1,12 @@
 import { z } from 'zod';
 import dotenv from 'dotenv';
 import { existsSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+// ES module equivalent of __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Load .env file from Render Secret Files or local directory
 // Render mounts Secret Files at both /etc/secrets/ and the app root
