@@ -143,42 +143,42 @@ const Hudson: React.FC = () => {
           <div className="metrics-grid">
             <div className="metric-item">
               <span className="metric-label">Followers</span>
-              <span className="metric-value">{(data.cbStats as any).followers_count || 0}</span>
-              {data.cbDelta && typeof (data.cbDelta as any).followers_count === 'number' && (
-                <span className={`delta ${(data.cbDelta as any).followers_count >= 0 ? 'positive' : 'negative'}`}>
-                  {(data.cbDelta as any).followers_count >= 0 ? '+' : ''}{(data.cbDelta as any).followers_count}
+              <span className="metric-value">{(data.cbStats as any).num_followers || 0}</span>
+              {data.cbDelta && typeof (data.cbDelta as any).num_followers === 'number' && (
+                <span className={`delta ${(data.cbDelta as any).num_followers >= 0 ? 'positive' : 'negative'}`}>
+                  {(data.cbDelta as any).num_followers >= 0 ? '+' : ''}{(data.cbDelta as any).num_followers}
                 </span>
               )}
             </div>
             <div className="metric-item">
-              <span className="metric-label">Total Viewers</span>
-              <span className="metric-value">{(data.cbStats as any).total_viewers || 0}</span>
-              {data.cbDelta && typeof (data.cbDelta as any).total_viewers === 'number' && (
-                <span className={`delta ${(data.cbDelta as any).total_viewers >= 0 ? 'positive' : 'negative'}`}>
-                  {(data.cbDelta as any).total_viewers >= 0 ? '+' : ''}{(data.cbDelta as any).total_viewers}
+              <span className="metric-label">Current Viewers</span>
+              <span className="metric-value">{(data.cbStats as any).num_viewers || 0}</span>
+              {data.cbDelta && typeof (data.cbDelta as any).num_viewers === 'number' && (
+                <span className={`delta ${(data.cbDelta as any).num_viewers >= 0 ? 'positive' : 'negative'}`}>
+                  {(data.cbDelta as any).num_viewers >= 0 ? '+' : ''}{(data.cbDelta as any).num_viewers}
                 </span>
               )}
             </div>
             <div className="metric-item">
-              <span className="metric-label">Paid Viewers</span>
-              <span className="metric-value">{(data.cbStats as any).paid_viewers || 0}</span>
+              <span className="metric-label">Tokened Viewers</span>
+              <span className="metric-value">{(data.cbStats as any).num_tokened_viewers || 0}</span>
             </div>
             <div className="metric-item">
-              <span className="metric-label">Total Tokens</span>
-              <span className="metric-value">{(data.cbStats as any).total_tokens_earned || 0}</span>
-              {data.cbDelta && typeof (data.cbDelta as any).total_tokens_earned === 'number' && (
-                <span className={`delta ${(data.cbDelta as any).total_tokens_earned >= 0 ? 'positive' : 'negative'}`}>
-                  {(data.cbDelta as any).total_tokens_earned >= 0 ? '+' : ''}{(data.cbDelta as any).total_tokens_earned}
+              <span className="metric-label">Token Balance</span>
+              <span className="metric-value">{(data.cbStats as any).token_balance || 0}</span>
+              {data.cbDelta && typeof (data.cbDelta as any).token_balance === 'number' && (
+                <span className={`delta ${(data.cbDelta as any).token_balance >= 0 ? 'positive' : 'negative'}`}>
+                  {(data.cbDelta as any).token_balance >= 0 ? '+' : ''}{(data.cbDelta as any).token_balance}
                 </span>
               )}
             </div>
             <div className="metric-item">
-              <span className="metric-label">Avg Tokens/Show</span>
-              <span className="metric-value">{(data.cbStats as any).average_tokens_per_show || 0}</span>
+              <span className="metric-label">Satisfaction Score</span>
+              <span className="metric-value">{(data.cbStats as any).satisfaction_score || 0}%</span>
             </div>
             <div className="metric-item">
-              <span className="metric-label">Total Shows</span>
-              <span className="metric-value">{(data.cbStats as any).total_shows || 0}</span>
+              <span className="metric-label">Votes (Up/Down)</span>
+              <span className="metric-value">{(data.cbStats as any).votes_up || 0} / {(data.cbStats as any).votes_down || 0}</span>
             </div>
           </div>
         </div>
