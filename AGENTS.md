@@ -415,11 +415,31 @@ Disallowed:
 
 ## 9. Infrastructure & Deployment
 
-- Node.js backend
-- PostgreSQL (Render)
-- Environment variables validated on startup
-- Migrations required
-- Render deployment instructions included
+### 9.1 Deployment Options
+
+**Production (Render.com)**:
+- Web Service (RUN_MODE=web) - Backend API server
+- Worker Service (RUN_MODE=worker) - Events API listener
+- PostgreSQL database (managed)
+- Static Site - React frontend
+- See [DEPLOYMENT.md](DEPLOYMENT.md) for instructions
+
+**Local Development (Docker)**:
+- docker-compose orchestrates 4 services:
+  - PostgreSQL (port 5432)
+  - Backend web (port 3000)
+  - Background worker
+  - React frontend (nginx, port 8080)
+- See [DOCKER.md](DOCKER.md) for instructions
+
+### 9.2 Requirements
+
+- Node.js 18+ backend with TypeScript
+- PostgreSQL database
+- Environment variables validated on startup (Zod schemas)
+- Database migrations required and automated
+- Multi-stage Docker builds for optimization
+- Health checks for service dependencies
 
 ---
 
