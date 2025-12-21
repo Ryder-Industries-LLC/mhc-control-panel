@@ -94,7 +94,23 @@ const Home: React.FC = () => {
 
       {result && (
         <div className="results-section">
-          <h2>Results</h2>
+          <h2>
+            <span>Results</span>
+            <label className="results-header-toggle">
+              <input
+                type="checkbox"
+                checked={showRawData}
+                onChange={(e) => setShowRawData(e.target.checked)}
+              />
+              Show Raw Data
+            </label>
+          </h2>
+
+          {showRawData && (
+            <div className="raw-data-content">
+              <pre>{JSON.stringify(result, null, 2)}</pre>
+            </div>
+          )}
 
           {result.extractedUsernames.length > 1 && (
             <div className="extracted-usernames">
@@ -111,28 +127,24 @@ const Home: React.FC = () => {
             <h3>Person Details</h3>
             <div className="details-grid">
               <div className="detail-item">
-                <span className="label">Username:</span>
+                <span className="label">Username</span>
                 <span className="value">{result.person.username}</span>
               </div>
               <div className="detail-item">
-                <span className="label">Role:</span>
+                <span className="label">Role</span>
                 <span className="value">{result.person.role}</span>
               </div>
               <div className="detail-item">
-                <span className="label">Platform:</span>
-                <span className="value">{result.person.platform}</span>
-              </div>
-              <div className="detail-item">
-                <span className="label">First Seen:</span>
+                <span className="label">First Seen</span>
                 <span className="value">{formatDate(result.person.first_seen_at)}</span>
               </div>
               <div className="detail-item">
-                <span className="label">Last Seen:</span>
+                <span className="label">Last Seen</span>
                 <span className="value">{formatDate(result.person.last_seen_at)}</span>
               </div>
               {result.person.did && (
                 <div className="detail-item">
-                  <span className="label">Donor ID:</span>
+                  <span className="label">Donor ID</span>
                   <span className="value">{formatNumber(result.person.did)}</span>
                 </div>
               )}
@@ -200,20 +212,6 @@ const Home: React.FC = () => {
               </div>
             </div>
           )}
-
-          <div className="raw-data-section">
-            <button
-              className="raw-data-toggle"
-              onClick={() => setShowRawData(!showRawData)}
-            >
-              {showRawData ? 'Hide' : 'Show'} Raw Response Data
-            </button>
-            {showRawData && (
-              <div className="raw-data-content">
-                <pre>{JSON.stringify(result, null, 2)}</pre>
-              </div>
-            )}
-          </div>
         </div>
       )}
     </div>

@@ -70,46 +70,66 @@ router.post('/', async (req: Request, res: Response) => {
     // Fetch Statbate data if requested
     if (includeStatbate) {
       try {
-        if (role === 'MODEL') {
-          const modelData = await statbateClient.getModelInfo('chaturbate', primaryUsername);
-          if (modelData) {
-            const normalized = normalizeModelInfo(modelData.data);
-            const snapshot = await SnapshotService.create({
-              personId: person.id,
-              source: 'statbate_model',
-              rawPayload: modelData.data as unknown as Record<string, unknown>,
-              normalizedMetrics: normalized,
-            });
+        // Try as MODEL first, then as VIEWER if MODEL fails
+        let statbateDataFetched = false;
 
-            // Update person with rid
-            if (modelData.data.rid) {
-              await PersonService.update(person.id, { rid: modelData.data.rid, role: 'MODEL' });
+        if (role === 'MODEL' || role === 'UNKNOWN') {
+          try {
+            const modelData = await statbateClient.getModelInfo('chaturbate', primaryUsername);
+            if (modelData) {
+              const normalized = normalizeModelInfo(modelData.data);
+              const snapshot = await SnapshotService.create({
+                personId: person.id,
+                source: 'statbate_model',
+                rawPayload: modelData.data as unknown as Record<string, unknown>,
+                normalizedMetrics: normalized,
+              });
+
+              // Update person with rid
+              if (modelData.data.rid) {
+                await PersonService.update(person.id, { rid: modelData.data.rid, role: 'MODEL' });
+              }
+
+              const deltaResult = await SnapshotService.getDelta(person.id, 'statbate_model');
+              latestSnapshot = snapshot;
+              delta = deltaResult.delta;
+              statbateDataFetched = true;
             }
-
-            const deltaResult = await SnapshotService.getDelta(person.id, 'statbate_model');
-            latestSnapshot = snapshot;
-            delta = deltaResult.delta;
+          } catch (modelError) {
+            logger.debug('Not a model or model data unavailable', { username: primaryUsername });
           }
-        } else {
-          const memberData = await statbateClient.getMemberInfo('chaturbate', primaryUsername);
-          if (memberData) {
-            const normalized = normalizeMemberInfo(memberData.data);
-            const snapshot = await SnapshotService.create({
-              personId: person.id,
-              source: 'statbate_member',
-              rawPayload: memberData.data as unknown as Record<string, unknown>,
-              normalizedMetrics: normalized,
-            });
+        }
 
-            // Update person with did
-            if (memberData.data.did) {
-              await PersonService.update(person.id, { did: memberData.data.did, role: 'VIEWER' });
+        // Try as VIEWER if not already fetched
+        if (!statbateDataFetched && (role === 'VIEWER' || role === 'UNKNOWN')) {
+          try {
+            const memberData = await statbateClient.getMemberInfo('chaturbate', primaryUsername);
+            if (memberData) {
+              const normalized = normalizeMemberInfo(memberData.data);
+              const snapshot = await SnapshotService.create({
+                personId: person.id,
+                source: 'statbate_member',
+                rawPayload: memberData.data as unknown as Record<string, unknown>,
+                normalizedMetrics: normalized,
+              });
+
+              // Update person with did
+              if (memberData.data.did) {
+                await PersonService.update(person.id, { did: memberData.data.did, role: 'VIEWER' });
+              }
+
+              const deltaResult = await SnapshotService.getDelta(person.id, 'statbate_member');
+              latestSnapshot = snapshot;
+              delta = deltaResult.delta;
+              statbateDataFetched = true;
             }
-
-            const deltaResult = await SnapshotService.getDelta(person.id, 'statbate_member');
-            latestSnapshot = snapshot;
-            delta = deltaResult.delta;
+          } catch (memberError) {
+            logger.debug('Not a member or member data unavailable', { username: primaryUsername });
           }
+        }
+
+        if (!statbateDataFetched) {
+          logger.warn('No Statbate data found for user', { username: primaryUsername });
         }
       } catch (error) {
         logger.error('Error fetching Statbate data', { error, username: primaryUsername });
