@@ -1,0 +1,199 @@
+import { query } from '../db/client.js';
+import { logger } from '../config/logger.js';
+import type { Person, PersonRole, Platform, PersonAlias } from '../types/models.js';
+
+export interface CreatePersonParams {
+  username: string;
+  platform?: Platform;
+  role?: PersonRole;
+  rid?: number | null;
+  did?: number | null;
+}
+
+export class PersonService {
+  /**
+   * Find person by ID
+   */
+  static async findById(id: string): Promise<Person | null> {
+    const result = await query<Person>(
+      'SELECT * FROM persons WHERE id = $1',
+      [id]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Find person by username (checks both persons.username and person_aliases.alias)
+   */
+  static async findByUsername(
+    username: string,
+    platform: Platform = 'chaturbate'
+  ): Promise<Person | null> {
+    const normalizedUsername = username.toLowerCase();
+
+    // First check direct username match
+    let result = await query<Person>(
+      'SELECT * FROM persons WHERE LOWER(username) = $1 AND platform = $2',
+      [normalizedUsername, platform]
+    );
+
+    if (result.rows.length > 0) {
+      return result.rows[0];
+    }
+
+    // Check aliases
+    result = await query<Person>(
+      `SELECT p.* FROM persons p
+       INNER JOIN person_aliases pa ON p.id = pa.person_id
+       WHERE LOWER(pa.alias) = $1 AND pa.platform = $2`,
+      [normalizedUsername, platform]
+    );
+
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Find or create a person
+   * Auto-excludes if username is 'smk_lover'
+   */
+  static async findOrCreate(params: CreatePersonParams): Promise<Person> {
+    const {
+      username,
+      platform = 'chaturbate',
+      role = 'UNKNOWN',
+      rid = null,
+      did = null,
+    } = params;
+
+    const normalizedUsername = username.toLowerCase();
+
+    // Check if person exists
+    let person = await this.findByUsername(normalizedUsername, platform);
+
+    if (person) {
+      // Update last_seen_at
+      await query(
+        'UPDATE persons SET last_seen_at = NOW(), rid = COALESCE($1, rid), did = COALESCE($2, did) WHERE id = $3',
+        [rid, did, person.id]
+      );
+      return person;
+    }
+
+    // Create new person
+    const now = new Date();
+    const isExcluded = normalizedUsername === 'smk_lover';
+
+    const result = await query<Person>(
+      `INSERT INTO persons (username, platform, role, rid, did, first_seen_at, last_seen_at, is_excluded)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
+      [normalizedUsername, platform, role, rid, did, now, now, isExcluded]
+    );
+
+    person = result.rows[0];
+
+    if (isExcluded) {
+      logger.info(`Auto-excluded user: ${normalizedUsername}`);
+    }
+
+    logger.info(`Created person: ${person.id} (${person.username})`);
+    return person;
+  }
+
+  /**
+   * Update person role and IDs
+   */
+  static async update(
+    id: string,
+    updates: Partial<Pick<Person, 'role' | 'rid' | 'did' | 'is_excluded'>>
+  ): Promise<Person | null> {
+    const setClauses: string[] = [];
+    const values: unknown[] = [];
+    let paramIndex = 1;
+
+    if (updates.role !== undefined) {
+      setClauses.push(`role = $${paramIndex++}`);
+      values.push(updates.role);
+    }
+    if (updates.rid !== undefined) {
+      setClauses.push(`rid = $${paramIndex++}`);
+      values.push(updates.rid);
+    }
+    if (updates.did !== undefined) {
+      setClauses.push(`did = $${paramIndex++}`);
+      values.push(updates.did);
+    }
+    if (updates.is_excluded !== undefined) {
+      setClauses.push(`is_excluded = $${paramIndex++}`);
+      values.push(updates.is_excluded);
+    }
+
+    if (setClauses.length === 0) {
+      return this.findById(id);
+    }
+
+    values.push(id);
+
+    const result = await query<Person>(
+      `UPDATE persons SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values
+    );
+
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Add an alias for a person (username change tracking)
+   */
+  static async addAlias(
+    personId: string,
+    alias: string,
+    platform: Platform = 'chaturbate'
+  ): Promise<PersonAlias> {
+    const normalizedAlias = alias.toLowerCase();
+
+    // Invalidate any current aliases
+    await query(
+      `UPDATE person_aliases
+       SET valid_to = NOW()
+       WHERE person_id = $1 AND platform = $2 AND valid_to IS NULL`,
+      [personId, platform]
+    );
+
+    // Create new alias
+    const result = await query<PersonAlias>(
+      `INSERT INTO person_aliases (person_id, alias, platform, valid_from)
+       VALUES ($1, $2, $3, NOW())
+       RETURNING *`,
+      [personId, normalizedAlias, platform]
+    );
+
+    logger.info(`Added alias for person ${personId}: ${normalizedAlias}`);
+    return result.rows[0];
+  }
+
+  /**
+   * Get all aliases for a person
+   */
+  static async getAliases(personId: string): Promise<PersonAlias[]> {
+    const result = await query<PersonAlias>(
+      'SELECT * FROM person_aliases WHERE person_id = $1 ORDER BY valid_from DESC',
+      [personId]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Find all non-excluded persons (for aggregates)
+   */
+  static async findAllNonExcluded(limit = 100, offset = 0): Promise<Person[]> {
+    const result = await query<Person>(
+      `SELECT * FROM persons
+       WHERE is_excluded = false
+       ORDER BY last_seen_at DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    return result.rows;
+  }
+}
