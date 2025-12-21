@@ -71,12 +71,14 @@ export class PersonService {
     let person = await this.findByUsername(normalizedUsername, platform);
 
     if (person) {
-      // Update last_seen_at
+      // Update last_seen_at and refresh person data
       await query(
         'UPDATE persons SET last_seen_at = NOW(), rid = COALESCE($1, rid), did = COALESCE($2, did) WHERE id = $3',
         [rid, did, person.id]
       );
-      return person;
+      // Refetch to get updated data
+      const updated = await this.findById(person.id);
+      return updated!;
     }
 
     // Create new person
