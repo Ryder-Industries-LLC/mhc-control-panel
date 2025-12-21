@@ -31,14 +31,27 @@ The MHC Control Panel is a persistent analysis and memory system for Chaturbate 
 ### Tech Stack
 
 - **Backend**: Node.js + TypeScript + Express
-- **Database**: PostgreSQL (Render.com)
-- **Frontend**: React + TypeScript
-- **Hosting**: Render.com (web + worker processes)
+- **Database**: PostgreSQL (Render.com or Docker)
+- **Frontend**: React + TypeScript + Nginx
+- **Hosting**: Render.com (web + worker processes) or Docker (local)
 
 ### Process Model
 
 - **RUN_MODE=web**: HTTP server for UI and API endpoints
 - **RUN_MODE=worker**: Background process for Chaturbate Events API longpoll listener
+
+### Deployment Options
+
+1. **Production (Render.com)**: See [DEPLOYMENT.md](DEPLOYMENT.md)
+2. **Local Development (Docker)**: See [DOCKER.md](DOCKER.md)
+
+**Quick Start with Docker**:
+```bash
+cp .env.example .env
+# Edit .env with your tokens
+docker-compose up -d
+# Open http://localhost:8080
+```
 
 ---
 
