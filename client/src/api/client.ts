@@ -64,6 +64,7 @@ export interface LookupResponse {
   interactions: Interaction[];
   latestInteraction: Interaction | null;
   extractedUsernames: string[];
+  statbateApiUrl: string | null;
 }
 
 export interface HudsonResponse {

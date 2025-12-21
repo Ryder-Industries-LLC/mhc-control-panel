@@ -66,6 +66,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     let latestSnapshot = null;
     let delta = null;
+    let statbateApiUrl = null; // Track which API was called
 
     // Fetch Statbate data if requested
     if (includeStatbate) {
@@ -78,9 +79,11 @@ router.post('/', async (req: Request, res: Response) => {
         // 2. Person's existing role from database
         // 3. Default to trying MODEL first
         const effectiveRole = role || person.role;
+        const isExplicitOverride = !!role; // Track if user explicitly requested a specific role
 
         if (effectiveRole === 'MODEL' || effectiveRole === 'UNKNOWN') {
           try {
+            statbateApiUrl = `https://plus.statbate.com/api/model/chaturbate/${primaryUsername}/info?timezone=UTC`;
             const modelData = await statbateClient.getModelInfo('chaturbate', primaryUsername);
             if (modelData) {
               const normalized = normalizeModelInfo(modelData.data);
@@ -91,9 +94,12 @@ router.post('/', async (req: Request, res: Response) => {
                 normalizedMetrics: normalized,
               });
 
-              // Update person with rid
-              if (modelData.data.rid) {
+              // Only update role if not an explicit override (auto-detection mode)
+              if (!isExplicitOverride && modelData.data.rid) {
                 await PersonService.update(person.id, { rid: modelData.data.rid, role: 'MODEL' });
+              } else if (modelData.data.rid) {
+                // Just update rid without changing role
+                await PersonService.update(person.id, { rid: modelData.data.rid });
               }
 
               const deltaResult = await SnapshotService.getDelta(person.id, 'statbate_model');
@@ -109,6 +115,7 @@ router.post('/', async (req: Request, res: Response) => {
         // Try as VIEWER if not already fetched
         if (!statbateDataFetched && (effectiveRole === 'VIEWER' || effectiveRole === 'UNKNOWN')) {
           try {
+            statbateApiUrl = `https://plus.statbate.com/api/members/chaturbate/${primaryUsername}/info?timezone=UTC`;
             const memberData = await statbateClient.getMemberInfo('chaturbate', primaryUsername);
             if (memberData) {
               const normalized = normalizeMemberInfo(memberData.data);
@@ -119,9 +126,12 @@ router.post('/', async (req: Request, res: Response) => {
                 normalizedMetrics: normalized,
               });
 
-              // Update person with did
-              if (memberData.data.did) {
+              // Only update role if not an explicit override (auto-detection mode)
+              if (!isExplicitOverride && memberData.data.did) {
                 await PersonService.update(person.id, { did: memberData.data.did, role: 'VIEWER' });
+              } else if (memberData.data.did) {
+                // Just update did without changing role
+                await PersonService.update(person.id, { did: memberData.data.did });
               }
 
               const deltaResult = await SnapshotService.getDelta(person.id, 'statbate_member');
@@ -155,6 +165,7 @@ router.post('/', async (req: Request, res: Response) => {
       interactions,
       latestInteraction,
       extractedUsernames: usernames,
+      statbateApiUrl, // Include the actual API URL for debugging
     });
   } catch (error) {
     logger.error('Lookup error', { error });

@@ -158,6 +158,12 @@ const Home: React.FC = () => {
                 <h4 style={{ color: '#667eea', margin: '0 0 10px 0' }}>API Request</h4>
                 <pre>{JSON.stringify(apiRequest, null, 2)}</pre>
               </div>
+              {result.statbateApiUrl && (
+                <div style={{ marginBottom: '20px', borderBottom: '1px solid #2d3748', paddingBottom: '10px' }}>
+                  <h4 style={{ color: '#667eea', margin: '0 0 10px 0' }}>Statbate API URL</h4>
+                  <pre>{result.statbateApiUrl}</pre>
+                </div>
+              )}
               <div>
                 <h4 style={{ color: '#667eea', margin: '0 0 10px 0' }}>API Response</h4>
                 <pre>{JSON.stringify(result, null, 2)}</pre>
