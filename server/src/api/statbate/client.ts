@@ -14,7 +14,7 @@ import type {
 export class StatbateClient {
   private client: AxiosInstance;
 
-  constructor(apiToken: string = env.STATBATE_API_TOKEN) {
+  constructor(apiToken: string = env.STATBATE_API_TOKEN!) {
     this.client = axios.create({
       baseURL: 'https://plus.statbate.com/api',
       headers: {

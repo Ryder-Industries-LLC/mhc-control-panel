@@ -63,7 +63,7 @@ export class ChaturbateStatsClient {
    * Get stats for hudson_cage using env token
    */
   async getHudsonStats(): Promise<ChaturbateStats | null> {
-    return this.getStats(env.CHATURBATE_USERNAME, env.CHATURBATE_STATS_TOKEN);
+    return this.getStats(env.CHATURBATE_USERNAME, env.CHATURBATE_STATS_TOKEN!);
   }
 }
 

@@ -42,8 +42,8 @@ const envSchema = z.object({
   // Database
   DATABASE_URL: z.string().url(),
 
-  // Statbate Premium API
-  STATBATE_API_TOKEN: z.string().min(1),
+  // Statbate Premium API (required for web, optional for worker)
+  STATBATE_API_TOKEN: z.string().min(1).optional(),
 
   // Statbate Plus (optional, for chat import)
   STATBATE_PLUS_SESSION_COOKIE: z.string().optional(),
@@ -52,8 +52,8 @@ const envSchema = z.object({
   // Chaturbate Events API
   CHATURBATE_EVENTS_TOKEN: z.string().min(1),
 
-  // Chaturbate Stats API
-  CHATURBATE_STATS_TOKEN: z.string().min(1),
+  // Chaturbate Stats API (required for web, optional for worker)
+  CHATURBATE_STATS_TOKEN: z.string().min(1).optional(),
   CHATURBATE_USERNAME: z.string().min(1),
 
   // Runtime
@@ -61,7 +61,19 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().regex(/^\d+$/).transform(Number).default('3000'),
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
-});
+}).refine(
+  (data) => {
+    // If running in web mode, require all API tokens
+    if (data.RUN_MODE === 'web') {
+      return !!(data.STATBATE_API_TOKEN && data.CHATURBATE_STATS_TOKEN);
+    }
+    return true;
+  },
+  {
+    message: 'STATBATE_API_TOKEN and CHATURBATE_STATS_TOKEN are required when RUN_MODE=web',
+    path: ['RUN_MODE'],
+  }
+);
 
 export type Env = z.infer<typeof envSchema>;
 
