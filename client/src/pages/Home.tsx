@@ -12,6 +12,7 @@ const Home: React.FC = () => {
   const [result, setResult] = useState<LookupResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showRawData, setShowRawData] = useState(false);
+  const [apiRequest, setApiRequest] = useState<any>(null);
 
   const handleLookup = async () => {
     if (!username && !pastedText) {
@@ -24,12 +25,14 @@ const Home: React.FC = () => {
     setResult(null);
 
     try {
-      const data = await api.lookup({
+      const requestParams = {
         username: username || undefined,
         pastedText: pastedText || undefined,
         includeStatbate,
         role: rolePreference === 'AUTO' ? undefined : rolePreference,
-      });
+      };
+      setApiRequest(requestParams);
+      const data = await api.lookup(requestParams);
       setResult(data);
     } catch (err) {
       setError('Failed to lookup user. Please try again.');
@@ -151,7 +154,14 @@ const Home: React.FC = () => {
 
           {showRawData && (
             <div className="raw-data-content">
-              <pre>{JSON.stringify(result, null, 2)}</pre>
+              <div style={{ marginBottom: '20px', borderBottom: '1px solid #2d3748', paddingBottom: '10px' }}>
+                <h4 style={{ color: '#667eea', margin: '0 0 10px 0' }}>API Request</h4>
+                <pre>{JSON.stringify(apiRequest, null, 2)}</pre>
+              </div>
+              <div>
+                <h4 style={{ color: '#667eea', margin: '0 0 10px 0' }}>API Response</h4>
+                <pre>{JSON.stringify(result, null, 2)}</pre>
+              </div>
             </div>
           )}
 
