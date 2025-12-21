@@ -44,20 +44,28 @@ This guide covers deploying the MHC Control Panel to Render.com.
 
 4. Add Environment Variables:
    ```
-   RUN_MODE=web
    NODE_ENV=production
    PORT=3000
    LOG_LEVEL=info
    CHATURBATE_USERNAME=hudson_cage
    ```
 
-5. Add Secret Environment Variables:
-   - `DATABASE_URL` → Link to mhc-db (automatic)
-   - `STATBATE_API_TOKEN` → Your Statbate Premium API token
-   - `CHATURBATE_EVENTS_TOKEN` → Your Chaturbate Events API token
-   - `CHATURBATE_STATS_TOKEN` → Your Chaturbate Stats API token
+5. Link Database:
+   - `DATABASE_URL` → Link to mhc-db (automatic via Render UI)
 
-6. Click "Create Web Service"
+6. Add Secret File (`.env`):
+   - Go to "Secret Files" section
+   - Add file with filename: `.env`
+   - Contents:
+     ```bash
+     RUN_MODE=web
+     STATBATE_API_TOKEN=your_statbate_premium_api_token
+     CHATURBATE_EVENTS_TOKEN=your_chaturbate_events_api_token
+     CHATURBATE_STATS_TOKEN=your_chaturbate_stats_api_token
+     ```
+   - This file will be available at `/etc/secrets/.env` and in your app's root
+
+7. Click "Create Web Service"
 
 ---
 
@@ -88,17 +96,25 @@ After the web service deploys successfully:
 
 4. Add Environment Variables:
    ```
-   RUN_MODE=worker
    NODE_ENV=production
    LOG_LEVEL=info
    CHATURBATE_USERNAME=hudson_cage
    ```
 
-5. Add Secret Environment Variables:
-   - `DATABASE_URL` → Link to mhc-db (automatic)
-   - `CHATURBATE_EVENTS_TOKEN` → Your Chaturbate Events API token
+5. Link Database:
+   - `DATABASE_URL` → Link to mhc-db (automatic via Render UI)
 
-6. Click "Create Background Worker"
+6. Add Secret File (`.env`):
+   - Go to "Secret Files" section
+   - Add file with filename: `.env`
+   - Contents:
+     ```bash
+     RUN_MODE=worker
+     CHATURBATE_EVENTS_TOKEN=your_chaturbate_events_api_token
+     ```
+   - This file will be available at `/etc/secrets/.env` and in your app's root
+
+7. Click "Create Background Worker"
 
 ---
 
@@ -280,19 +296,36 @@ To implement cleanup, use `SnapshotService.deleteOlderThan(date)`.
 
 ## Environment Variables Reference
 
+### Render Environment Variables (non-secret)
 | Variable | Required | Service | Description |
 |----------|----------|---------|-------------|
-| `DATABASE_URL` | Yes | Both | PostgreSQL connection string |
-| `STATBATE_API_TOKEN` | Yes | Web | Statbate Premium API bearer token |
-| `CHATURBATE_EVENTS_TOKEN` | Yes | Both | Chaturbate Events API token |
-| `CHATURBATE_STATS_TOKEN` | Yes | Web | Chaturbate Stats API token |
-| `CHATURBATE_USERNAME` | Yes | Both | Broadcaster username (hudson_cage) |
-| `RUN_MODE` | Yes | Both | `web` or `worker` |
 | `NODE_ENV` | Yes | Both | `production` |
 | `PORT` | No | Web | HTTP port (default: 3000) |
 | `LOG_LEVEL` | No | Both | `error` \| `warn` \| `info` \| `debug` |
-| `STATBATE_PLUS_SESSION_COOKIE` | No | Web | For chat history import |
-| `STATBATE_PLUS_XSRF_TOKEN` | No | Web | For chat history import |
+| `CHATURBATE_USERNAME` | Yes | Both | Broadcaster username (hudson_cage) |
+| `DATABASE_URL` | Yes | Both | PostgreSQL connection string (linked via Render UI) |
+
+### Secret File (`.env`) - Stored in Render Secret Files
+**Location**: `/etc/secrets/.env` or app root
+**Format**:
+```bash
+# Required for both services
+RUN_MODE=web                              # or 'worker' for worker service
+
+# Required for web service
+STATBATE_API_TOKEN=xxx                    # Statbate Premium API bearer token
+CHATURBATE_EVENTS_TOKEN=xxx               # Chaturbate Events API token
+CHATURBATE_STATS_TOKEN=xxx                # Chaturbate Stats API token
+
+# Required for worker service
+CHATURBATE_EVENTS_TOKEN=xxx               # Chaturbate Events API token
+
+# Optional (for future chat history import)
+STATBATE_PLUS_SESSION_COOKIE=xxx
+STATBATE_PLUS_XSRF_TOKEN=xxx
+```
+
+**Note**: The `.env` file is loaded automatically by `dotenv` at runtime.
 
 ---
 
