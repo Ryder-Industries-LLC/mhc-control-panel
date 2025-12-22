@@ -69,6 +69,32 @@ export interface ComparisonResult {
   comparisonDelta: Record<string, unknown> | null;
 }
 
+export interface Tip {
+  time: string;
+  name?: string;
+  did?: number;
+  model?: string;
+  rid?: number;
+  tokens: number;
+  usd: number;
+}
+
+export interface TipsResponse {
+  data: Tip[];
+  meta: {
+    site: string;
+    range: [string, string];
+    pagination: {
+      total: number;
+      per_page: number;
+      current_page: number;
+      last_page: number;
+      from: number;
+      to: number;
+    };
+  };
+}
+
 export interface LookupResponse {
   person: Person;
   latestSnapshot: Snapshot | null;
@@ -78,6 +104,7 @@ export interface LookupResponse {
   extractedUsernames: string[];
   statbateApiUrl: string | null;
   comparison?: ComparisonResult | null;
+  memberTips?: TipsResponse | null;
 }
 
 export interface HudsonResponse {

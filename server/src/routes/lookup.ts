@@ -69,6 +69,7 @@ router.post('/', async (req: Request, res: Response) => {
     let latestSnapshot = null;
     let delta = null;
     let statbateApiUrl = null; // Track which API was called
+    let memberTips = null; // Store member tips data
 
     // Fetch Statbate data if requested
     if (includeStatbate) {
@@ -142,6 +143,21 @@ router.post('/', async (req: Request, res: Response) => {
               latestSnapshot = snapshot;
               delta = deltaResult.delta;
               statbateDataFetched = true;
+
+              // Fetch member tips if we have viewer data
+              try {
+                const range = dateRange ? [dateRange.start, dateRange.end] as [string, string] : undefined;
+                memberTips = await statbateClient.getMemberTips('chaturbate', primaryUsername, {
+                  range,
+                  perPage: 100, // Get up to 100 recent tips
+                });
+
+                if (memberTips && memberTips.data.length > 0) {
+                  logger.info(`Fetched ${memberTips.data.length} tips for member ${primaryUsername}`);
+                }
+              } catch (tipsError) {
+                logger.debug('Error fetching member tips', { error: tipsError, username: primaryUsername });
+              }
             }
           } catch (memberError) {
             logger.debug('Not a member or member data unavailable', { username: primaryUsername });
@@ -196,6 +212,7 @@ router.post('/', async (req: Request, res: Response) => {
       extractedUsernames: usernames,
       statbateApiUrl, // Include the actual API URL for debugging
       comparison, // Include comparison data if requested
+      memberTips, // Include member tips data if fetched
     });
   } catch (error) {
     logger.error('Lookup error', { error });

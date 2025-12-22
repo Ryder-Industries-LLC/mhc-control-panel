@@ -501,6 +501,31 @@ const Home: React.FC = () => {
                 </>
               )}
 
+              {/* Member Tips History */}
+              {result.memberTips && result.memberTips.data && result.memberTips.data.length > 0 && (
+                <details className="member-tips-section" open>
+                  <summary>
+                    <h4>Tip History ({result.memberTips.data.length} tips, ${result.memberTips.data.reduce((sum, tip) => sum + tip.usd, 0).toFixed(2)} total)</h4>
+                  </summary>
+                  <div className="member-tips-grid">
+                    {result.memberTips.data.map((tip, idx) => (
+                      <div key={idx} className="member-tip-item">
+                        <div className="tip-item-header">
+                          {tip.model && (
+                            <a href={`/?username=${tip.model}`} className="tip-model-link">{tip.model}</a>
+                          )}
+                          <span className="tip-time">{formatDate(tip.time)}</span>
+                        </div>
+                        <div className="tip-item-amounts">
+                          <span className="tip-tokens">{formatNumber(tip.tokens)} tokens</span>
+                          <span className="tip-usd">${tip.usd.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+
               {result.delta && Object.keys(result.delta).length > 0 && !comparisonMode && (
                 <div className="delta-section">
                   <h4>Changes Since Last Snapshot</h4>

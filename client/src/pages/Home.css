@@ -787,6 +787,110 @@
   font-size: 0.9em;
 }
 
+/* Member Tips Section */
+.member-tips-section {
+  margin-top: 16px;
+  padding: 12px;
+  background: #2d3748;
+  border-radius: 6px;
+}
+
+.member-tips-section summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.member-tips-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.member-tips-section summary h4 {
+  color: #f7fafc;
+  margin: 0;
+  font-size: 0.95em;
+  display: inline-flex;
+  align-items: center;
+}
+
+.member-tips-section summary h4::before {
+  content: '▶';
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 0.2s;
+  font-size: 0.8em;
+}
+
+.member-tips-section[open] summary h4::before {
+  transform: rotate(90deg);
+}
+
+.member-tips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.member-tip-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: #1a202c;
+  border-radius: 4px;
+  border-left: 3px solid #48bb78;
+}
+
+.tip-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.tip-model-link {
+  color: #667eea;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.95em;
+  transition: opacity 0.2s;
+}
+
+.tip-model-link:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.tip-time {
+  color: #a0aec0;
+  font-size: 0.8em;
+  white-space: nowrap;
+}
+
+.tip-item-amounts {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.tip-tokens {
+  color: #68d391;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.tip-usd {
+  color: #48bb78;
+  font-weight: 700;
+  font-size: 1em;
+  padding: 2px 6px;
+  background: rgba(72, 187, 120, 0.1);
+  border-radius: 3px;
+}
+
 .interactions-list {
   display: flex;
   flex-direction: column;
