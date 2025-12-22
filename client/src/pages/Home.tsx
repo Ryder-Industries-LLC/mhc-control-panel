@@ -378,13 +378,25 @@ const Home: React.FC = () => {
                   <div className="metrics-grid">
                     {(() => {
                       const metrics = result.latestSnapshot.normalized_metrics;
-                      const metricOrder = [
+                      const isViewer = result.latestSnapshot.source === 'statbate_member';
+
+                      // Different metric orders for models vs viewers
+                      const modelMetricOrder = [
                         'income_usd',
                         'income_tokens',
                         'session_count',
                         'total_duration_minutes',
                         'average_duration_minutes'
                       ];
+
+                      const viewerMetricOrder = [
+                        'all_time_tokens',
+                        'last_tip_amount',
+                        'models_tipped_2weeks',
+                        'models_messaged_2weeks'
+                      ];
+
+                      const metricOrder = isViewer ? viewerMetricOrder : modelMetricOrder;
 
                       // Create ordered list
                       const orderedMetrics: [string, any][] = [];
@@ -395,6 +407,19 @@ const Home: React.FC = () => {
                           orderedMetrics.push([key, metrics[key]]);
                         }
                       });
+
+                      // Add date fields for viewers
+                      if (isViewer) {
+                        if (metrics.first_tip_date) {
+                          orderedMetrics.push(['first_tip_date', metrics.first_tip_date]);
+                        }
+                        if (metrics.last_tip_date) {
+                          orderedMetrics.push(['last_tip_date', metrics.last_tip_date]);
+                        }
+                        if (metrics.first_message_date) {
+                          orderedMetrics.push(['first_message_date', metrics.first_message_date]);
+                        }
+                      }
 
                       // Add First Seen, RID, and DID as metric cards
                       orderedMetrics.splice(4, 0, ['first_seen', result.person.first_seen_at]);
@@ -410,6 +435,7 @@ const Home: React.FC = () => {
                           <span className="metric-label">{formatLabel(key)}:</span>
                           <span className="metric-value">
                             {key === 'first_seen' ? formatDate(value, { includeTime: false }) :
+                             key === 'first_tip_date' || key === 'last_tip_date' || key === 'first_message_date' ? formatDate(value, { includeTime: false }) :
                              key === 'rid' || key === 'did' ? formatNumberWithoutCommas(value as number) :
                              formatValue(value, key)}
                           </span>
@@ -417,11 +443,60 @@ const Home: React.FC = () => {
                       ));
                     })()}
                   </div>
+
+                  {/* Model Tags */}
                   {result.latestSnapshot.normalized_metrics.tags && (
                     <div className="tags-row">
                       <span className="metric-label">Tags:</span>
                       <span className="metric-value">{formatValue(result.latestSnapshot.normalized_metrics.tags, 'tags')}</span>
                     </div>
+                  )}
+
+                  {/* Viewer: Models Tipped List */}
+                  {result.latestSnapshot.source === 'statbate_member' && result.latestSnapshot.normalized_metrics.models_tipped_2weeks_list &&
+                   Array.isArray(result.latestSnapshot.normalized_metrics.models_tipped_2weeks_list) &&
+                   (result.latestSnapshot.normalized_metrics.models_tipped_2weeks_list as string[]).length > 0 && (
+                    <div className="models-list-section">
+                      <h4>Models Tipped (Last 2 Weeks)</h4>
+                      <div className="models-list">
+                        {(result.latestSnapshot.normalized_metrics.models_tipped_2weeks_list as string[]).map((model, idx) => (
+                          <a key={idx} href={`/?username=${model}`} className="model-tag">{model}</a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Viewer: Models Messaged List */}
+                  {result.latestSnapshot.source === 'statbate_member' && result.latestSnapshot.normalized_metrics.models_messaged_2weeks_list &&
+                   Array.isArray(result.latestSnapshot.normalized_metrics.models_messaged_2weeks_list) &&
+                   (result.latestSnapshot.normalized_metrics.models_messaged_2weeks_list as string[]).length > 0 && (
+                    <div className="models-list-section">
+                      <h4>Models Messaged (Last 2 Weeks)</h4>
+                      <div className="models-list">
+                        {(result.latestSnapshot.normalized_metrics.models_messaged_2weeks_list as string[]).map((model, idx) => (
+                          <a key={idx} href={`/?username=${model}`} className="model-tag">{model}</a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Viewer: Per Day Tokens - Collapsible */}
+                  {result.latestSnapshot.source === 'statbate_member' && result.latestSnapshot.normalized_metrics.per_day_tokens &&
+                   Array.isArray(result.latestSnapshot.normalized_metrics.per_day_tokens) &&
+                   (result.latestSnapshot.normalized_metrics.per_day_tokens as any[]).length > 0 && (
+                    <details className="per-day-tokens-section">
+                      <summary>
+                        <h4>Daily Token Activity ({(result.latestSnapshot.normalized_metrics.per_day_tokens as any[]).length} days)</h4>
+                      </summary>
+                      <div className="per-day-tokens-grid">
+                        {(result.latestSnapshot.normalized_metrics.per_day_tokens as any[]).map((day: any, idx: number) => (
+                          <div key={idx} className="per-day-token-item">
+                            <span className="token-date">{formatDate(day.date, { includeTime: false })}</span>
+                            <span className="token-amount">{formatNumber(day.tokens)} tokens</span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
                   )}
                 </>
               )}

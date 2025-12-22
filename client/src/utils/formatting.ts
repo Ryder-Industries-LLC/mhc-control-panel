@@ -89,6 +89,22 @@ export const formatNumberWithoutCommas = (num: number | null | undefined): strin
  * @returns Human-readable label in Camel Case
  */
 export const formatLabel = (fieldName: string): string => {
+  // Special case labels
+  const specialLabels: Record<string, string> = {
+    all_time_tokens: 'All Time Tokens',
+    last_tip_amount: 'Last Tip Amount',
+    last_tip_date: 'Last Tip Date',
+    first_tip_date: 'First Tip Date',
+    first_message_date: 'First Message Date',
+    models_tipped_2weeks: 'Models Tipped (2 Weeks)',
+    models_messaged_2weeks: 'Models Messaged (2 Weeks)',
+    per_day_tokens: 'Daily Tokens',
+  };
+
+  if (specialLabels[fieldName]) {
+    return specialLabels[fieldName];
+  }
+
   return fieldName
     .replace(/_/g, ' ')
     .replace(/([A-Z])/g, ' $1')
@@ -148,6 +164,10 @@ export const formatValue = (
     // Income USD: format as currency
     if (fieldName === 'income_usd') {
       return `$${formatNumber(value)}`;
+    }
+    // Token fields: add "tokens" suffix
+    if (fieldName === 'all_time_tokens' || fieldName === 'income_tokens' || fieldName === 'last_tip_amount') {
+      return `${formatNumber(value)} tokens`;
     }
     // Duration minutes: convert to hours and minutes
     if (fieldName?.includes('duration_minutes') || fieldName?.includes('total_duration')) {

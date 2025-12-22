@@ -685,6 +685,108 @@
   background: rgba(252, 129, 129, 0.1);
 }
 
+/* Models List Section (for viewers) */
+.models-list-section {
+  margin-top: 16px;
+  padding: 12px;
+  background: #2d3748;
+  border-radius: 6px;
+}
+
+.models-list-section h4 {
+  color: #f7fafc;
+  margin: 0 0 10px 0;
+  font-size: 0.95em;
+}
+
+.models-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-tag {
+  background: #667eea;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+
+.model-tag:hover {
+  background: #5568d3;
+  text-decoration: underline;
+}
+
+/* Per Day Tokens Section */
+.per-day-tokens-section {
+  margin-top: 16px;
+  padding: 12px;
+  background: #2d3748;
+  border-radius: 6px;
+}
+
+.per-day-tokens-section summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.per-day-tokens-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.per-day-tokens-section summary h4 {
+  color: #f7fafc;
+  margin: 0;
+  font-size: 0.95em;
+  display: inline-flex;
+  align-items: center;
+}
+
+.per-day-tokens-section summary h4::before {
+  content: '▶';
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 0.2s;
+  font-size: 0.8em;
+}
+
+.per-day-tokens-section[open] summary h4::before {
+  transform: rotate(90deg);
+}
+
+.per-day-tokens-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.per-day-token-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: #1a202c;
+  border-radius: 4px;
+}
+
+.token-date {
+  color: #cbd5e0;
+  font-size: 0.85em;
+}
+
+.token-amount {
+  color: #48bb78;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
 .interactions-list {
   display: flex;
   flex-direction: column;
