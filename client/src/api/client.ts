@@ -63,6 +63,12 @@ export interface Session {
   updated_at: string;
 }
 
+export interface ComparisonResult {
+  period1Snapshot: Snapshot | null;
+  period2Snapshot: Snapshot | null;
+  comparisonDelta: Record<string, unknown> | null;
+}
+
 export interface LookupResponse {
   person: Person;
   latestSnapshot: Snapshot | null;
@@ -71,6 +77,7 @@ export interface LookupResponse {
   latestInteraction: Interaction | null;
   extractedUsernames: string[];
   statbateApiUrl: string | null;
+  comparison?: ComparisonResult | null;
 }
 
 export interface HudsonResponse {
@@ -97,6 +104,10 @@ export const api = {
     role?: string;
     includeStatbate?: boolean;
     dateRange?: {
+      start: string;
+      end: string;
+    };
+    comparisonDateRange?: {
       start: string;
       end: string;
     };

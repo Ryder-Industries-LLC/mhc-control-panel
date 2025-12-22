@@ -601,6 +601,90 @@
   color: #fc8181;
 }
 
+/* Comparison Section */
+.comparison-section {
+  margin-top: 20px;
+  padding: 16px;
+  background: #2d3748;
+  border-radius: 6px;
+}
+
+.comparison-section h4 {
+  color: #f7fafc;
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 1em;
+}
+
+.comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.comparison-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: #1a202c;
+  border-radius: 4px;
+}
+
+.comparison-label {
+  color: #cbd5e0;
+  font-weight: 500;
+  font-size: 0.9em;
+}
+
+.comparison-values {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.comparison-old {
+  color: #e2e8f0;
+  font-size: 0.95em;
+  padding: 2px 6px;
+  background: #4a5568;
+  border-radius: 3px;
+}
+
+.comparison-arrow {
+  color: #a0aec0;
+  font-weight: bold;
+}
+
+.comparison-new {
+  color: #f7fafc;
+  font-weight: 600;
+  font-size: 1em;
+  padding: 2px 6px;
+  background: #667eea;
+  border-radius: 3px;
+}
+
+.comparison-delta {
+  color: #e2e8f0;
+  font-size: 0.9em;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: #4a5568;
+}
+
+.comparison-delta.positive {
+  color: #68d391;
+  background: rgba(104, 211, 145, 0.1);
+}
+
+.comparison-delta.negative {
+  color: #fc8181;
+  background: rgba(252, 129, 129, 0.1);
+}
+
 .interactions-list {
   display: flex;
   flex-direction: column;

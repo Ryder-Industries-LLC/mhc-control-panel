@@ -87,8 +87,8 @@ export class SnapshotService {
       return null;
     }
 
-    const oldMetrics = newSnapshot.normalized_metrics as Record<string, unknown>;
-    const newMetrics = oldSnapshot.normalized_metrics as Record<string, unknown>;
+    const oldMetrics = oldSnapshot.normalized_metrics as Record<string, unknown>;
+    const newMetrics = newSnapshot.normalized_metrics as Record<string, unknown>;
 
     const delta: SnapshotDelta = {};
 
@@ -210,6 +210,47 @@ export class SnapshotService {
       [personId, source, startDate, endDate]
     );
     return result.rows[0] || null;
+  }
+
+  /**
+   * Compare two date ranges for a person
+   * Returns the latest snapshot from each period and a comparison delta
+   */
+  static async compareDateRanges(
+    personId: string,
+    source: SnapshotSource,
+    period1: { start: Date; end: Date },
+    period2: { start: Date; end: Date }
+  ): Promise<{
+    period1Snapshot: Snapshot | null;
+    period2Snapshot: Snapshot | null;
+    comparisonDelta: SnapshotDelta | null;
+  }> {
+    const period1Snapshot = await this.getLatestInRange(
+      personId,
+      source,
+      period1.start,
+      period1.end
+    );
+
+    const period2Snapshot = await this.getLatestInRange(
+      personId,
+      source,
+      period2.start,
+      period2.end
+    );
+
+    let comparisonDelta = null;
+    if (period1Snapshot && period2Snapshot) {
+      // period1 is the "old" period, period2 is the "new" period for comparison
+      comparisonDelta = this.computeDelta(period1Snapshot, period2Snapshot);
+    }
+
+    return {
+      period1Snapshot,
+      period2Snapshot,
+      comparisonDelta,
+    };
   }
 
   /**

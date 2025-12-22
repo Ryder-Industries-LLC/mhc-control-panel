@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { api, LookupResponse } from '../api/client';
 import { formatDate, formatNumber, formatNumberWithoutCommas, formatLabel, formatValue } from '../utils/formatting';
-import { DateRangePreset, getDateRange, getPresetLabel } from '../utils/dateRanges';
+import { DateRangePreset, getDateRange, getPresetLabel, supportsComparison, getComparisonPreset } from '../utils/dateRanges';
 import './Home.css';
 
 const Home: React.FC = () => {
@@ -13,6 +13,7 @@ const Home: React.FC = () => {
   const [showPasteField, setShowPasteField] = useState(false);
   const [rolePreference, setRolePreference] = useState<'MODEL' | 'VIEWER'>('MODEL');
   const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>('all_time');
+  const [comparisonMode, setComparisonMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LookupResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,12 +33,23 @@ const Home: React.FC = () => {
 
     try {
       const dateRange = getDateRange(dateRangePreset);
+
+      // Get comparison date range if in comparison mode
+      let comparisonDateRange = undefined;
+      if (comparisonMode && supportsComparison(dateRangePreset)) {
+        const comparisonPreset = getComparisonPreset(dateRangePreset);
+        if (comparisonPreset) {
+          comparisonDateRange = getDateRange(comparisonPreset);
+        }
+      }
+
       const requestParams = {
         username: username || undefined,
         pastedText: pastedText || undefined,
         includeStatbate: true,
         role: rolePreference,
         dateRange: dateRange || undefined,
+        comparisonDateRange: comparisonDateRange || undefined,
       };
       setApiRequest(requestParams);
       const data = await api.lookup(requestParams);
@@ -252,7 +264,24 @@ const Home: React.FC = () => {
           {/* Date Range Selector - Only show for MODEL role with Statbate data */}
           {rolePreference === 'MODEL' && result.latestSnapshot?.source?.includes('statbate_model') && (
             <div className="date-range-selector">
-              <label className="date-range-label">Date Range:</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <label className="date-range-label">Date Range:</label>
+                {supportsComparison(dateRangePreset) && (
+                  <label className="results-header-toggle">
+                    <input
+                      type="checkbox"
+                      checked={comparisonMode}
+                      onChange={(e) => {
+                        setComparisonMode(e.target.checked);
+                        // Auto-refresh when toggling comparison
+                        setTimeout(() => handleLookup(), 100);
+                      }}
+                      disabled={loading}
+                    />
+                    Compare with Previous Period
+                  </label>
+                )}
+              </div>
               <div className="date-range-tabs">
                 {(['all_time', 'this_week', 'last_week', 'this_month', 'last_month', 'this_year', 'last_year'] as DateRangePreset[]).map((preset) => (
                   <button
@@ -397,7 +426,7 @@ const Home: React.FC = () => {
                 </>
               )}
 
-              {result.delta && Object.keys(result.delta).length > 0 && (
+              {result.delta && Object.keys(result.delta).length > 0 && !comparisonMode && (
                 <div className="delta-section">
                   <h4>Changes Since Last Snapshot</h4>
                   <div className="delta-grid">
@@ -414,6 +443,45 @@ const Home: React.FC = () => {
                             <span className={`delta-value ${isNumber && numValue > 0 ? 'positive' : isNumber && numValue < 0 ? 'negative' : ''}`}>
                               {value === null ? 'N/A' : isNumber ? (numValue > 0 ? `+${formatNumber(numValue)}` : formatNumber(numValue)) : formatValue(value, key)}
                             </span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              {/* Comparison View */}
+              {comparisonMode && result.comparison && result.comparison.comparisonDelta && (
+                <div className="comparison-section">
+                  <h4>
+                    {getPresetLabel(getComparisonPreset(dateRangePreset) || 'last_week')} vs {getPresetLabel(dateRangePreset)}
+                  </h4>
+                  <div className="comparison-grid">
+                    {Object.entries(result.comparison.comparisonDelta)
+                      .filter(([key]) => key !== 'tags' && key !== 'gender')
+                      .map(([key, value]) => {
+                        const isNumber = typeof value === 'number' && !isNaN(value);
+                        const numValue = isNumber ? value : 0;
+
+                        // Get values from both periods for display
+                        const period1Value = result.comparison?.period1Snapshot?.normalized_metrics?.[key];
+                        const period2Value = result.comparison?.period2Snapshot?.normalized_metrics?.[key];
+
+                        return (
+                          <div key={key} className="comparison-item">
+                            <span className="comparison-label">{formatLabel(key)}:</span>
+                            <div className="comparison-values">
+                              <span className="comparison-old">
+                                {period1Value !== undefined ? formatValue(period1Value, key) : 'N/A'}
+                              </span>
+                              <span className="comparison-arrow">→</span>
+                              <span className="comparison-new">
+                                {period2Value !== undefined ? formatValue(period2Value, key) : 'N/A'}
+                              </span>
+                              <span className={`comparison-delta ${isNumber && numValue > 0 ? 'positive' : isNumber && numValue < 0 ? 'negative' : ''}`}>
+                                {value === null ? 'N/A' : isNumber ? (numValue > 0 ? `+${formatNumber(numValue)}` : formatNumber(numValue)) : ''}
+                              </span>
+                            </div>
                           </div>
                         );
                       })}

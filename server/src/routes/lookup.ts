@@ -20,6 +20,7 @@ router.post('/', async (req: Request, res: Response) => {
       pastedText,
       includeStatbate = false,
       dateRange, // { start: string, end: string } in "YYYY-MM-DD HH:mm:ss" format
+      comparisonDateRange, // Optional second date range for comparison
       // includeMyRoomData = false,
     } = req.body;
 
@@ -161,6 +162,31 @@ router.post('/', async (req: Request, res: Response) => {
     // Get latest interaction
     const latestInteraction = await InteractionService.getLatest(person.id);
 
+    // Handle comparison if requested
+    let comparison = null;
+    if (comparisonDateRange && latestSnapshot) {
+      try {
+        const source = latestSnapshot.source as 'statbate_model' | 'statbate_member';
+
+        // Convert string dates to Date objects
+        const period1Start = new Date(comparisonDateRange.start);
+        const period1End = new Date(comparisonDateRange.end);
+        const period2Start = dateRange ? new Date(dateRange.start) : new Date(0);
+        const period2End = dateRange ? new Date(dateRange.end) : new Date();
+
+        const comparisonResult = await SnapshotService.compareDateRanges(
+          person.id,
+          source,
+          { start: period1Start, end: period1End },
+          { start: period2Start, end: period2End }
+        );
+
+        comparison = comparisonResult;
+      } catch (error) {
+        logger.error('Error computing comparison', { error });
+      }
+    }
+
     res.json({
       person,
       latestSnapshot,
@@ -169,6 +195,7 @@ router.post('/', async (req: Request, res: Response) => {
       latestInteraction,
       extractedUsernames: usernames,
       statbateApiUrl, // Include the actual API URL for debugging
+      comparison, // Include comparison data if requested
     });
   } catch (error) {
     logger.error('Lookup error', { error });

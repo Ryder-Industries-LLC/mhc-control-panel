@@ -224,3 +224,45 @@ export function createCustomRange(startDate: string, endDate: string): DateRange
     end: formatDateForAPI(end),
   };
 }
+
+/**
+ * Comparison preset pairs (current vs previous period)
+ */
+export type ComparisonPreset = 'week' | 'month' | 'year';
+
+export interface ComparisonPair {
+  current: DateRangePreset;
+  previous: DateRangePreset;
+  label: string;
+}
+
+/**
+ * Get comparison preset pairs
+ */
+export function getComparisonPairs(): ComparisonPair[] {
+  return [
+    { current: 'this_week', previous: 'last_week', label: 'This Week vs Last Week' },
+    { current: 'this_month', previous: 'last_month', label: 'This Month vs Last Month' },
+    { current: 'this_year', previous: 'last_year', label: 'This Year vs Last Year' },
+  ];
+}
+
+/**
+ * Get the comparison preset for a given date range preset
+ * Returns the "previous period" preset if one exists
+ */
+export function getComparisonPreset(preset: DateRangePreset): DateRangePreset | null {
+  const map: Partial<Record<DateRangePreset, DateRangePreset>> = {
+    this_week: 'last_week',
+    this_month: 'last_month',
+    this_year: 'last_year',
+  };
+  return map[preset] || null;
+}
+
+/**
+ * Check if a preset supports comparison
+ */
+export function supportsComparison(preset: DateRangePreset): boolean {
+  return ['this_week', 'this_month', 'this_year'].includes(preset);
+}
