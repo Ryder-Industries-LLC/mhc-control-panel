@@ -198,4 +198,56 @@ export class PersonService {
     );
     return result.rows;
   }
+
+  /**
+   * Search usernames for autocomplete
+   */
+  static async searchUsernames(searchQuery: string, limit = 10): Promise<string[]> {
+    const normalizedQuery = searchQuery.toLowerCase();
+
+    const result = await query<{ username: string }>(
+      `SELECT DISTINCT username FROM persons
+       WHERE LOWER(username) LIKE $1
+       AND is_excluded = false
+       ORDER BY username ASC
+       LIMIT $2`,
+      [`${normalizedQuery}%`, limit]
+    );
+
+    return result.rows.map(row => row.username);
+  }
+
+  /**
+   * Get all persons with source information
+   */
+  static async findAllWithSource(limit = 100, offset = 0): Promise<any[]> {
+    const result = await query(
+      `SELECT
+        p.*,
+        COALESCE(
+          (SELECT source FROM snapshots WHERE person_id = p.id ORDER BY created_at ASC LIMIT 1),
+          (SELECT source FROM interactions WHERE person_id = p.id ORDER BY created_at ASC LIMIT 1),
+          'manual'
+        ) as source,
+        (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
+        (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count
+       FROM persons p
+       WHERE is_excluded = false
+       ORDER BY last_seen_at DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Delete a person and all related data
+   */
+  static async delete(id: string): Promise<boolean> {
+    const result = await query(
+      'DELETE FROM persons WHERE id = $1 RETURNING id',
+      [id]
+    );
+    return result.rows.length > 0;
+  }
 }

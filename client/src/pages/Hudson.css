@@ -118,6 +118,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 16px;
+  align-items: start;
 }
 
 .metric-item {
@@ -219,11 +220,29 @@
   margin-bottom: 8px;
 }
 
-.interaction-type {
+.interaction-username-primary {
   color: #667eea;
   font-weight: 600;
+  text-transform: none;
+  font-size: 14px;
+}
+
+.interaction-username-primary a {
+  color: inherit;
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.interaction-username-primary a:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.interaction-type-secondary {
+  color: #cbd5e0;
+  font-weight: 500;
   text-transform: uppercase;
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .interaction-date {
@@ -234,9 +253,78 @@
 .interaction-content {
   color: #e2e8f0;
   line-height: 1.5;
-  display: flex;
-  gap: 12px;
-  align-items: center;
+}
+
+/* Color coding for different interaction types */
+.interaction-type-tip {
+  border-left-color: #48bb78;
+}
+
+.interaction-type-tip .interaction-username-primary {
+  color: #48bb78;
+  font-weight: 600;
+}
+
+.interaction-type-chat {
+  border-left-color: #667eea;
+}
+
+.interaction-type-pm {
+  border-left-color: #9f7aea;
+}
+
+.interaction-type-pm .interaction-username-primary {
+  color: #9f7aea;
+  font-weight: 600;
+}
+
+.interaction-type-enter {
+  border-left-color: #38b2ac;
+}
+
+.interaction-type-enter .interaction-username-primary {
+  color: #a0aec0;
+}
+
+.interaction-type-leave {
+  border-left-color: #4a5568;
+  opacity: 0.4;
+}
+
+.interaction-type-leave .interaction-username-primary {
+  color: #718096;
+}
+
+.interaction-type-leave .interaction-type-secondary {
+  color: #718096;
+}
+
+.interaction-type-leave .interaction-date {
+  color: #718096;
+}
+
+.interaction-type-follow {
+  border-left-color: #ed8936;
+}
+
+.interaction-type-follow .interaction-username-primary {
+  color: #ed8936;
+  font-weight: 600;
+}
+
+.interaction-type-default {
+  border-left-color: #667eea;
+}
+
+/* Special styling for Hudson's own messages - subtle, less prominent */
+.interaction-item.hudson-own-message {
+  opacity: 0.7;
+  border-left-color: #4a5568;
+}
+
+.interaction-item.hudson-own-message .interaction-username-primary {
+  color: #a0aec0;
+  font-weight: 400;
 }
 
 .tip-amount {

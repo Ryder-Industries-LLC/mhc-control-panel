@@ -1,9 +1,10 @@
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { chaturbateEventsClient } from './api/chaturbate/events-client.js';
+import { statbateRefreshJob } from './jobs/statbate-refresh.job.js';
 
 /**
- * Worker process for Chaturbate Events API listener
+ * Worker process for Chaturbate Events API listener and background jobs
  * Run with RUN_MODE=worker
  */
 
@@ -16,12 +17,14 @@ async function startWorker() {
   process.on('SIGTERM', async () => {
     logger.info('SIGTERM received, shutting down gracefully');
     chaturbateEventsClient.stop();
+    statbateRefreshJob.stop();
     process.exit(0);
   });
 
   process.on('SIGINT', async () => {
     logger.info('SIGINT received, shutting down gracefully');
     chaturbateEventsClient.stop();
+    statbateRefreshJob.stop();
     process.exit(0);
   });
 
@@ -32,6 +35,10 @@ async function startWorker() {
     logger.error('Worker failed to start', { error });
     process.exit(1);
   }
+
+  // Start background jobs
+  // Refresh Statbate data every 6 hours with rate limiting (5 persons per batch, 30s between batches)
+  statbateRefreshJob.start(360);
 }
 
 startWorker();

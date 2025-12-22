@@ -7,6 +7,8 @@ import lookupRoutes from './routes/lookup.js';
 import personRoutes from './routes/person.js';
 import sessionRoutes from './routes/session.js';
 import hudsonRoutes from './routes/hudson.js';
+import jobRoutes from './routes/job.js';
+import eventsRoutes from './routes/events.js';
 
 export function createApp() {
   const app = express();
@@ -36,6 +38,8 @@ export function createApp() {
   app.use('/api/session', sessionRoutes);
   app.use('/api/sessions', sessionRoutes);
   app.use('/api/hudson', hudsonRoutes);
+  app.use('/api/job', jobRoutes);
+  app.use('/api/events', eventsRoutes);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

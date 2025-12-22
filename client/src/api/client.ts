@@ -24,6 +24,12 @@ export interface Person {
   updated_at: string;
 }
 
+export interface PersonWithSource extends Person {
+  source: string;
+  interaction_count: number;
+  snapshot_count: number;
+}
+
 export interface Snapshot {
   id: string;
   person_id: string;
@@ -37,12 +43,12 @@ export interface Snapshot {
 export interface Interaction {
   id: string;
   person_id: string;
-  session_id: string | null;
+  stream_session_id: string | null;
   type: string;
   content: string | null;
   metadata: Record<string, unknown> | null;
   source: string;
-  occurred_at: string;
+  timestamp: string;
   created_at: string;
 }
 
@@ -102,6 +108,13 @@ export const api = {
   },
 
   // Person API
+  getAllPersons: async (limit = 100, offset = 0): Promise<{ persons: PersonWithSource[]; total: number }> => {
+    const response = await apiClient.get('/api/person/all', {
+      params: { limit, offset },
+    });
+    return response.data;
+  },
+
   getPerson: async (id: string): Promise<Person> => {
     const response = await apiClient.get(`/api/person/${id}`);
     return response.data;
@@ -119,6 +132,32 @@ export const api = {
 
   addNote: async (id: string, note: string): Promise<void> => {
     await apiClient.post(`/api/person/${id}/note`, { note });
+  },
+
+  deletePerson: async (id: string): Promise<void> => {
+    await apiClient.delete(`/api/person/${id}`);
+  },
+
+  // Job API
+  getJobStatus: async (): Promise<{ isRunning: boolean; isPaused: boolean; intervalMinutes: number }> => {
+    const response = await apiClient.get('/api/job/status');
+    return response.data;
+  },
+
+  pauseJob: async (): Promise<void> => {
+    await apiClient.post('/api/job/pause');
+  },
+
+  resumeJob: async (): Promise<void> => {
+    await apiClient.post('/api/job/resume');
+  },
+
+  startJob: async (intervalMinutes = 360): Promise<void> => {
+    await apiClient.post('/api/job/start', { intervalMinutes });
+  },
+
+  stopJob: async (): Promise<void> => {
+    await apiClient.post('/api/job/stop');
   },
 
   // Session API
@@ -148,6 +187,17 @@ export const api = {
   getSessions: async (): Promise<Session[]> => {
     const response = await apiClient.get('/api/sessions');
     return response.data;
+  },
+
+  // Username search
+  searchUsernames: async (query: string): Promise<string[]> => {
+    if (!query || query.length < 1) {
+      return [];
+    }
+    const response = await apiClient.get('/api/person/search', {
+      params: { q: query },
+    });
+    return response.data.usernames;
   },
 };
 

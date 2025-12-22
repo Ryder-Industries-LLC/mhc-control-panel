@@ -1,0 +1,274 @@
+.directory {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.directory-header {
+  text-align: center;
+  margin-bottom: 40px;
+  padding: 30px 0;
+  border-bottom: 2px solid #667eea;
+}
+
+.directory-header h1 {
+  color: #667eea;
+  font-size: 2.5em;
+  margin: 0 0 10px 0;
+}
+
+.directory-header p {
+  color: #a0aec0;
+  font-size: 1.1em;
+}
+
+.job-controls {
+  margin: 20px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.btn-job {
+  background: #2d3748;
+  color: #cbd5e0;
+  border: 2px solid #4a5568;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-job.running {
+  background: #48bb78;
+  color: white;
+  border-color: #48bb78;
+}
+
+.btn-job.paused {
+  background: #ed8936;
+  color: white;
+  border-color: #ed8936;
+}
+
+.btn-job:hover {
+  opacity: 0.8;
+}
+
+.job-info {
+  color: #a0aec0;
+  font-size: 14px;
+}
+
+.filter-controls {
+  margin-top: 20px;
+}
+
+.filter-controls label {
+  display: block;
+  color: #cbd5e0;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.role-filters {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.filter-btn {
+  background: #2d3748;
+  color: #cbd5e0;
+  border: 2px solid #4a5568;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.filter-btn:hover {
+  background: #4a5568;
+  border-color: #667eea;
+}
+
+.filter-btn.active {
+  background: #667eea;
+  color: white;
+  border-color: #667eea;
+}
+
+.directory-content {
+  background: #1a202c;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.directory-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.directory-table thead {
+  background: #2d3748;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.directory-table th {
+  padding: 16px 12px;
+  text-align: left;
+  color: #cbd5e0;
+  font-weight: 600;
+  font-size: 14px;
+  border-bottom: 2px solid #4a5568;
+}
+
+.directory-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.directory-table th.sortable:hover {
+  background: #4a5568;
+}
+
+.directory-table tbody tr {
+  border-bottom: 1px solid #2d3748;
+  transition: background 0.2s;
+}
+
+.directory-table tbody tr:hover {
+  background: #2d3748;
+}
+
+.directory-table td {
+  padding: 12px;
+  color: #e2e8f0;
+  font-size: 14px;
+}
+
+.username-cell {
+  font-weight: 600;
+}
+
+.username-cell a {
+  color: #667eea;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.username-cell a:hover {
+  color: #5a67d8;
+  text-decoration: underline;
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.role-model {
+  background: #667eea;
+  color: white;
+}
+
+.role-viewer {
+  background: #48bb78;
+  color: white;
+}
+
+.role-unknown {
+  background: #4a5568;
+  color: #cbd5e0;
+}
+
+.source-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.source-statbate {
+  background: #9f7aea;
+  color: white;
+}
+
+.source-cb-events {
+  background: #38b2ac;
+  color: white;
+}
+
+.source-cb-stats {
+  background: #805ad5;
+  color: white;
+}
+
+.source-manual {
+  background: #718096;
+  color: white;
+}
+
+.count-cell {
+  text-align: center;
+}
+
+.btn-delete {
+  background: #fc8181;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.btn-delete:hover:not(:disabled) {
+  background: #f56565;
+}
+
+.btn-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-retry {
+  background: #667eea;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 12px;
+}
+
+.btn-retry:hover {
+  background: #5a67d8;
+}
+
+.error-message {
+  background: #fc8181;
+  color: white;
+  padding: 16px;
+  border-radius: 6px;
+  margin-bottom: 20px;
+}

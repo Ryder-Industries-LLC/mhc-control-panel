@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { api, HudsonResponse, Session } from '../api/client';
 import { formatDate, formatNumber } from '../utils/formatting';
 import './Hudson.css';
@@ -89,7 +90,7 @@ const Hudson: React.FC = () => {
       </div>
 
       {/* Current Session */}
-      {data.currentSession && (
+      {data.currentSession && !data.currentSession.ended_at && (
         <div className="current-session-card">
           <h2>🔴 Live Now</h2>
           <div className="session-info">
@@ -211,24 +212,63 @@ const Hudson: React.FC = () => {
         <div className="interactions-card">
           <h3>Recent Activity ({data.recentInteractions.length})</h3>
           <div className="interactions-list">
-            {data.recentInteractions.slice(0, 10).map((interaction) => (
-              <div key={interaction.id} className="interaction-item">
-                <div className="interaction-header">
-                  <span className="interaction-type">{interaction.type}</span>
-                  <span className="interaction-date">{formatDate(interaction.occurred_at)}</span>
-                </div>
-                {interaction.metadata && (
-                  <div className="interaction-content">
-                    {interaction.type === 'tip' && (interaction.metadata as any).tokens && (
-                      <span className="tip-amount">{(interaction.metadata as any).tokens} tokens</span>
-                    )}
-                    {(interaction.metadata as any).message && (
-                      <span className="message-text">&quot;{(interaction.metadata as any).message}&quot;</span>
-                    )}
+            {data.recentInteractions.slice(0, 10).map((interaction) => {
+              const username = interaction.metadata?.username as string | undefined;
+              const fromUser = interaction.metadata?.fromUser as string | undefined;
+              const toUser = interaction.metadata?.toUser as string | undefined;
+
+              // Determine interaction type class for color coding
+              const getInteractionTypeClass = (type: string) => {
+                if (type === 'TIP_EVENT') return 'interaction-type-tip';
+                if (type === 'CHAT_MESSAGE') return 'interaction-type-chat';
+                if (type === 'PRIVATE_MESSAGE') return 'interaction-type-pm';
+                if (type === 'USER_ENTER') return 'interaction-type-enter';
+                if (type === 'USER_LEAVE') return 'interaction-type-leave';
+                if (type === 'FOLLOW') return 'interaction-type-follow';
+                return 'interaction-type-default';
+              };
+
+              // Check if this is Hudson's own message
+              const isHudsonMessage = username === 'hudson_cage' &&
+                (interaction.type === 'CHAT_MESSAGE' || interaction.type === 'PRIVATE_MESSAGE');
+
+              // Render username with link (except for hudson_cage)
+              const renderUsername = (user: string | undefined) => {
+                if (!user || user === 'hudson_cage') {
+                  return <span>{user || 'Unknown'}</span>;
+                }
+                return <Link to={`/?username=${user}`}>{user}</Link>;
+              };
+
+              // For PRIVATE_MESSAGE, render direction with links
+              let displayContent;
+              if (interaction.type === 'PRIVATE_MESSAGE' && fromUser && toUser) {
+                displayContent = (
+                  <>
+                    {renderUsername(fromUser)} to {renderUsername(toUser)}
+                  </>
+                );
+              } else if (interaction.type === 'PRIVATE_MESSAGE') {
+                displayContent = <span>Private Message</span>;
+              } else {
+                displayContent = renderUsername(username);
+              }
+
+              return (
+                <div key={interaction.id} className={`interaction-item ${getInteractionTypeClass(interaction.type)} ${isHudsonMessage ? 'hudson-own-message' : ''}`}>
+                  <div className="interaction-header">
+                    <span className="interaction-username-primary">
+                      {displayContent}
+                      {interaction.type !== 'PRIVATE_MESSAGE' && <span className="interaction-type-secondary"> - {interaction.type}</span>}
+                    </span>
+                    <span className="interaction-date">{formatDate(interaction.timestamp)}</span>
                   </div>
-                )}
-              </div>
-            ))}
+                  {interaction.content && (
+                    <div className="interaction-content">{interaction.content}</div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

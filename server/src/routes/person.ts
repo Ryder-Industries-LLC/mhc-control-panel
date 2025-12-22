@@ -7,6 +7,50 @@ import { logger } from '../config/logger.js';
 const router = Router();
 
 /**
+ * GET /api/person/search
+ * Search usernames for autocomplete
+ */
+router.get('/search', async (req: Request, res: Response) => {
+  try {
+    const { q } = req.query;
+
+    if (!q || typeof q !== 'string') {
+      return res.status(400).json({ error: 'Query parameter "q" required' });
+    }
+
+    if (q.length < 1) {
+      return res.json({ usernames: [] });
+    }
+
+    const usernames = await PersonService.searchUsernames(q);
+    res.json({ usernames });
+  } catch (error) {
+    logger.error('Username search error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/person/all
+ * Get all non-excluded persons with basic stats and source information
+ */
+router.get('/all', async (req: Request, res: Response) => {
+  try {
+    const { limit = '500', offset = '0' } = req.query;
+
+    const persons = await PersonService.findAllWithSource(
+      parseInt(limit as string, 10),
+      parseInt(offset as string, 10)
+    );
+
+    res.json({ persons, total: persons.length });
+  } catch (error) {
+    logger.error('Get all persons error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /api/person/:id
  * Get person details by ID
  */
@@ -96,6 +140,27 @@ router.post('/:id/note', async (req: Request, res: Response) => {
     res.json({ interaction });
   } catch (error) {
     logger.error('Add note error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/person/:id
+ * Delete a person and all related data
+ */
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const deleted = await PersonService.delete(id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    logger.info(`Deleted person: ${id}`);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Delete person error', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

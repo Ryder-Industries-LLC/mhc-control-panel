@@ -3,7 +3,7 @@
  */
 
 /**
- * Format a date string into a more readable format
+ * Format a date string into YYYY-MM-DD HH:MM format
  * @param dateString ISO date string
  * @param options Formatting options
  * @returns Formatted date string
@@ -39,24 +39,24 @@ export const formatDate = (
     if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
   }
 
-  // Format date and time
-  const dateOptions: Intl.DateTimeFormatOptions = {
-    month: 'numeric',
-    day: 'numeric',
-    year: 'numeric',
-  };
+  // Format as YYYY-MM-DD HH:MM (24-hour)
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+
+  let formatted = `${year}-${month}-${day}`;
 
   if (includeTime) {
-    dateOptions.hour = 'numeric';
-    dateOptions.minute = '2-digit';
-    dateOptions.hour12 = true;
+    formatted += ` ${hours}:${minutes}`;
+    if (includeSeconds) {
+      formatted += `:${seconds}`;
+    }
   }
 
-  if (includeSeconds) {
-    dateOptions.second = '2-digit';
-  }
-
-  return date.toLocaleString('en-US', dateOptions);
+  return formatted;
 };
 
 /**
@@ -72,16 +72,30 @@ export const formatNumber = (num: number | null | undefined): string => {
 };
 
 /**
- * Format a field name into a human-readable label
+ * Format a number without commas
+ * @param num Number to format
+ * @returns Formatted number string
+ */
+export const formatNumberWithoutCommas = (num: number | null | undefined): string => {
+  if (num === null || num === undefined) {
+    return '0';
+  }
+  return num.toString();
+};
+
+/**
+ * Format a field name into a human-readable label in Camel Case
  * @param fieldName Snake_case or camelCase field name
- * @returns Human-readable label
+ * @returns Human-readable label in Camel Case
  */
 export const formatLabel = (fieldName: string): string => {
   return fieldName
     .replace(/_/g, ' ')
     .replace(/([A-Z])/g, ' $1')
-    .replace(/^./, (str) => str.toUpperCase())
-    .trim();
+    .trim()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
 };
 
 /**
@@ -110,6 +124,33 @@ export const formatValue = (
     if (fieldName?.includes('date') || fieldName?.includes('time')) {
       return formatDate(new Date(value).toISOString());
     }
+    // Gender: convert number to text
+    if (fieldName === 'gender') {
+      const genderMap: { [key: number]: string } = {
+        0: 'Male',
+        1: 'Female',
+        2: 'Trans',
+        3: 'Couple',
+      };
+      return genderMap[value] || 'Unknown';
+    }
+    // RID: treat as text without commas
+    if (fieldName === 'rid') {
+      return formatNumberWithoutCommas(value);
+    }
+    // Income USD: format as currency
+    if (fieldName === 'income_usd') {
+      return `$${formatNumber(value)}`;
+    }
+    // Duration minutes: convert to hours and minutes
+    if (fieldName?.includes('duration_minutes') || fieldName?.includes('total_duration')) {
+      const hours = Math.floor(value / 60);
+      const minutes = value % 60;
+      if (hours > 0) {
+        return `${hours}h ${minutes}m`;
+      }
+      return `${minutes}m`;
+    }
     return formatNumber(value);
   }
 
@@ -123,6 +164,17 @@ export const formatValue = (
 
   // Array
   if (Array.isArray(value)) {
+    // Special handling for tags array with objects
+    if (fieldName === 'tags' && value.length > 0 && typeof value[0] === 'object' && value[0]?.name) {
+      return value.map((tag: any) => tag.name).join(', ');
+    }
+    // Special handling for other arrays of objects
+    if (value.length > 0 && typeof value[0] === 'object') {
+      return value.map((item: any) => {
+        if (item.name) return item.name;
+        return JSON.stringify(item);
+      }).join(', ');
+    }
     return value.join(', ');
   }
 

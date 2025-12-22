@@ -4,6 +4,7 @@ import { logger } from '../../config/logger.js';
 import { PersonService } from '../../services/person.service.js';
 import { InteractionService } from '../../services/interaction.service.js';
 import { SessionService } from '../../services/session.service.js';
+import { query } from '../../db/client.js';
 
 // Event type definitions based on CHATURBATE_EVENTS_API.md
 export interface ChaturbateEvent {
@@ -146,11 +147,45 @@ export class ChaturbateEventsClient {
   }
 
   /**
+   * Log event to database
+   */
+  private async logEvent(event: ChaturbateEvent) {
+    try {
+      // broadcaster is a string field, not an object
+      const broadcaster = (event.object.broadcaster as unknown as string) || this.username;
+      const username = event.object.user?.username || broadcaster;
+
+      logger.info('Logging event to database', {
+        method: event.method,
+        broadcaster,
+        username,
+      });
+
+      await query(
+        `INSERT INTO event_logs (method, broadcaster, username, raw_event)
+         VALUES ($1, $2, $3, $4)`,
+        [event.method, broadcaster, username, JSON.stringify(event.object)]
+      );
+
+      logger.info('Event logged successfully', { method: event.method });
+    } catch (error) {
+      logger.error('Failed to log event', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        event: event.method
+      });
+    }
+  }
+
+  /**
    * Handle a single event
    */
   private async handleEvent(event: ChaturbateEvent) {
     try {
       logger.debug(`Received event: ${event.method}`, { event });
+
+      // Log all events to database
+      await this.logEvent(event);
 
       switch (event.method) {
         case 'broadcastStart':
@@ -231,6 +266,8 @@ export class ChaturbateEventsClient {
   private async handlePrivateMessage(event: ChaturbateEvent) {
     const username = event.object.user?.username;
     const message = event.object.message?.message;
+    const fromUser = (event.object.message as any)?.fromUser;
+    const toUser = (event.object.message as any)?.toUser;
 
     if (!username || !message) return;
 
@@ -242,7 +279,11 @@ export class ChaturbateEventsClient {
       content: message,
       source: 'cb_events',
       streamSessionId: this.currentSessionId,
-      metadata: event.object.user,
+      metadata: {
+        ...event.object.user,
+        fromUser,
+        toUser,
+      },
     });
   }
 
