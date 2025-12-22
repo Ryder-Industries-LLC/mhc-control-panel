@@ -96,6 +96,10 @@ export const api = {
     pastedText?: string;
     role?: string;
     includeStatbate?: boolean;
+    dateRange?: {
+      start: string;
+      end: string;
+    };
   }): Promise<LookupResponse> => {
     const response = await apiClient.post('/api/lookup', params);
     return response.data;

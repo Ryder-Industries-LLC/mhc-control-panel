@@ -94,7 +94,14 @@ export const formatLabel = (fieldName: string): string => {
     .replace(/([A-Z])/g, ' $1')
     .trim()
     .split(' ')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .map(word => {
+      // Keep common acronyms uppercase
+      const upperWord = word.toUpperCase();
+      if (['USD', 'RID', 'DID', 'ID', 'PM', 'DM'].includes(upperWord)) {
+        return upperWord;
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
     .join(' ');
 };
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { api, LookupResponse } from '../api/client';
 import { formatDate, formatNumber, formatNumberWithoutCommas, formatLabel, formatValue } from '../utils/formatting';
+import { DateRangePreset, getDateRange, getPresetLabel } from '../utils/dateRanges';
 import './Home.css';
 
 const Home: React.FC = () => {
@@ -11,6 +12,7 @@ const Home: React.FC = () => {
   const [pasteType, setPasteType] = useState<'PM' | 'DM' | 'PROFILE' | 'NOTES'>('PM');
   const [showPasteField, setShowPasteField] = useState(false);
   const [rolePreference, setRolePreference] = useState<'MODEL' | 'VIEWER'>('MODEL');
+  const [dateRangePreset, setDateRangePreset] = useState<DateRangePreset>('all_time');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LookupResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,11 +31,13 @@ const Home: React.FC = () => {
     setResult(null);
 
     try {
+      const dateRange = getDateRange(dateRangePreset);
       const requestParams = {
         username: username || undefined,
         pastedText: pastedText || undefined,
         includeStatbate: true,
         role: rolePreference,
+        dateRange: dateRange || undefined,
       };
       setApiRequest(requestParams);
       const data = await api.lookup(requestParams);
@@ -121,7 +125,7 @@ const Home: React.FC = () => {
           <input
             type="text"
             value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            onChange={(e) => setUsername(e.target.value.replace(/\//g, ''))}
             placeholder="Enter username..."
             disabled={loading}
             list="username-suggestions"
@@ -244,6 +248,29 @@ const Home: React.FC = () => {
               Show Raw Data
             </label>
           </h2>
+
+          {/* Date Range Selector - Only show for MODEL role with Statbate data */}
+          {rolePreference === 'MODEL' && result.latestSnapshot?.source?.includes('statbate_model') && (
+            <div className="date-range-selector">
+              <label className="date-range-label">Date Range:</label>
+              <div className="date-range-tabs">
+                {(['all_time', 'this_week', 'last_week', 'this_month', 'last_month', 'this_year', 'last_year'] as DateRangePreset[]).map((preset) => (
+                  <button
+                    key={preset}
+                    className={`date-range-tab ${dateRangePreset === preset ? 'active' : ''}`}
+                    onClick={() => {
+                      setDateRangePreset(preset);
+                      // Auto-refresh data with new date range
+                      setTimeout(() => handleLookup(), 100);
+                    }}
+                    disabled={loading}
+                  >
+                    {getPresetLabel(preset)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {showRawData && (
             <div className="raw-data-content">

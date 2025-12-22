@@ -169,6 +169,50 @@ export class SnapshotService {
   }
 
   /**
+   * Get snapshots within a date range
+   */
+  static async getByDateRange(
+    personId: string,
+    source: SnapshotSource,
+    startDate: Date,
+    endDate: Date
+  ): Promise<Snapshot[]> {
+    const result = await query<Snapshot>(
+      `SELECT * FROM snapshots
+       WHERE person_id = $1
+         AND source = $2
+         AND captured_at >= $3
+         AND captured_at <= $4
+       ORDER BY captured_at DESC`,
+      [personId, source, startDate, endDate]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get the most recent snapshot within a date range
+   * Useful for getting the "latest state" as of a specific period
+   */
+  static async getLatestInRange(
+    personId: string,
+    source: SnapshotSource,
+    startDate: Date,
+    endDate: Date
+  ): Promise<Snapshot | null> {
+    const result = await query<Snapshot>(
+      `SELECT * FROM snapshots
+       WHERE person_id = $1
+         AND source = $2
+         AND captured_at >= $3
+         AND captured_at <= $4
+       ORDER BY captured_at DESC
+       LIMIT 1`,
+      [personId, source, startDate, endDate]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
    * Delete snapshots older than a certain date (for cleanup, optional)
    */
   static async deleteOlderThan(date: Date): Promise<number> {

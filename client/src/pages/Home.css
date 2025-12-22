@@ -298,6 +298,58 @@
   cursor: pointer;
 }
 
+/* Date Range Selector */
+.date-range-selector {
+  margin: 20px 0;
+  padding: 20px;
+  background: #2d3748;
+  border-radius: 8px;
+}
+
+.date-range-label {
+  color: #cbd5e0;
+  font-weight: 600;
+  font-size: 14px;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.date-range-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.date-range-tab {
+  padding: 8px 16px;
+  background: #1a202c;
+  border: 2px solid #4a5568;
+  border-radius: 6px;
+  color: #cbd5e0;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.date-range-tab:hover:not(:disabled) {
+  background: #4a5568;
+  border-color: #667eea;
+  color: #f7fafc;
+}
+
+.date-range-tab.active {
+  background: #667eea;
+  border-color: #667eea;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.date-range-tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .extracted-usernames {
   background: #2d3748;
   padding: 20px;

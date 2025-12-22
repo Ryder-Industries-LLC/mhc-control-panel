@@ -19,6 +19,7 @@ router.post('/', async (req: Request, res: Response) => {
       role,
       pastedText,
       includeStatbate = false,
+      dateRange, // { start: string, end: string } in "YYYY-MM-DD HH:mm:ss" format
       // includeMyRoomData = false,
     } = req.body;
 
@@ -83,8 +84,10 @@ router.post('/', async (req: Request, res: Response) => {
 
         if (effectiveRole === 'MODEL' || effectiveRole === 'UNKNOWN') {
           try {
-            statbateApiUrl = `https://plus.statbate.com/api/model/chaturbate/${primaryUsername}/info?timezone=UTC`;
-            const modelData = await statbateClient.getModelInfo('chaturbate', primaryUsername);
+            const range = dateRange ? [dateRange.start, dateRange.end] as [string, string] : undefined;
+            const rangeQuery = range ? `&range[0]=${encodeURIComponent(range[0])}&range[1]=${encodeURIComponent(range[1])}` : '';
+            statbateApiUrl = `https://plus.statbate.com/api/model/chaturbate/${primaryUsername}/info?timezone=UTC${rangeQuery}`;
+            const modelData = await statbateClient.getModelInfo('chaturbate', primaryUsername, { range });
             if (modelData) {
               const normalized = normalizeModelInfo(modelData.data);
               const snapshot = await SnapshotService.create({
