@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import './App.css';
 import Home from './pages/Home';
 import Hudson from './pages/Hudson';
-import Directory from './pages/Directory';
+import Users from './pages/Users';
 import EventsFeed from './pages/EventsFeed';
 import Jobs from './pages/Jobs';
 import Profile from './pages/Profile';
@@ -22,7 +22,7 @@ function App() {
               <Link to="/profile" className="nav-link">Profile</Link>
               <Link to="/hudson" className="nav-link">Hudson</Link>
               <Link to="/events" className="nav-link">Events</Link>
-              <Link to="/directory" className="nav-link">Directory</Link>
+              <Link to="/users" className="nav-link">Users</Link>
               <Link to="/jobs" className="nav-link">Jobs</Link>
             </div>
           </div>
@@ -35,7 +35,7 @@ function App() {
             <Route path="/profile/:username" element={<Profile />} />
             <Route path="/hudson" element={<Hudson />} />
             <Route path="/events" element={<EventsFeed />} />
-            <Route path="/directory" element={<Directory />} />
+            <Route path="/users" element={<Users />} />
             <Route path="/jobs" element={<Jobs />} />
           </Routes>
         </main>

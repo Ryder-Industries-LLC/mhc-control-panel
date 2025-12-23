@@ -241,6 +241,56 @@ export const api = {
     });
     return response.data.usernames;
   },
+
+  // Affiliate API - Priority Lookups
+  addPriorityLookup: async (username: string, priorityLevel: 1 | 2, notes?: string): Promise<any> => {
+    const response = await apiClient.post('/api/affiliate/priority/add', {
+      username,
+      priorityLevel,
+      notes,
+    });
+    return response.data;
+  },
+
+  removePriorityLookup: async (username: string): Promise<void> => {
+    await apiClient.delete(`/api/affiliate/priority/${username}`);
+  },
+
+  getPriorityLookups: async (): Promise<any[]> => {
+    const response = await apiClient.get('/api/affiliate/priority');
+    return response.data.lookups;
+  },
+
+  getPriorityLookupStats: async (): Promise<any> => {
+    const response = await apiClient.get('/api/affiliate/priority/stats');
+    return response.data;
+  },
+
+  getPriorityLookupsByLevel: async (level: 1 | 2): Promise<any[]> => {
+    const response = await apiClient.get(`/api/affiliate/priority/level/${level}`);
+    return response.data.lookups;
+  },
+
+  getPriorityLookupsByStatus: async (status: 'pending' | 'completed' | 'active'): Promise<any[]> => {
+    const response = await apiClient.get(`/api/affiliate/priority/status/${status}`);
+    return response.data.lookups;
+  },
+
+  // Affiliate API - On-Demand Lookup
+  affiliateLookup: async (username: string): Promise<any> => {
+    const response = await apiClient.post(`/api/affiliate/lookup/${username}`);
+    return response.data;
+  },
+
+  // Affiliate API - Feed Cache
+  getFeedCacheStatus: async (): Promise<any> => {
+    const response = await apiClient.get('/api/affiliate/cache/status');
+    return response.data;
+  },
+
+  clearFeedCache: async (): Promise<void> => {
+    await apiClient.post('/api/affiliate/cache/clear');
+  },
 };
 
 export default apiClient;
