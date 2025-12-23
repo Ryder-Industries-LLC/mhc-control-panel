@@ -22,8 +22,9 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only
-RUN npm install --production
+# Install ALL dependencies (needed for tsx in dev mode)
+# In production deployments, use --production flag or multi-stage build
+RUN npm install
 
 # Copy built application
 COPY --from=builder /app/dist ./dist

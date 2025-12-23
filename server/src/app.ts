@@ -10,6 +10,8 @@ import hudsonRoutes from './routes/hudson.js';
 import jobRoutes from './routes/job.js';
 import eventsRoutes from './routes/events.js';
 import insightsRoutes from './routes/insights.js';
+import profileRoutes from './routes/profile.js';
+import affiliateRoutes from './routes/affiliate.js';
 
 export function createApp() {
   const app = express();
@@ -42,6 +44,8 @@ export function createApp() {
   app.use('/api/job', jobRoutes);
   app.use('/api/events', eventsRoutes);
   app.use('/api/insights', insightsRoutes);
+  app.use('/api/profile', profileRoutes);
+  app.use('/api/affiliate', affiliateRoutes);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

@@ -20,6 +20,7 @@ services:
 
   # Backend Web Server
   web:
+    image: refineo/mhc-web:latest
     build:
       context: .
       dockerfile: Dockerfile.web
@@ -43,14 +44,11 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - ./server:/app/server:ro
-      - /app/node_modules
-      - /app/dist
     command: sh -c "npm run migrate && npm start"
 
   # Background Worker for Events API
   worker:
+    image: refineo/mhc-worker:latest
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -69,13 +67,10 @@ services:
         condition: service_healthy
       web:
         condition: service_started
-    volumes:
-      - ./server:/app/server:ro
-      - /app/node_modules
-      - /app/dist
 
   # React Frontend
   frontend:
+    image: refineo/mhc-frontend:latest
     build:
       context: ./client
       dockerfile: Dockerfile

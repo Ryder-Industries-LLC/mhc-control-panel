@@ -23,6 +23,10 @@ The MHC Control Panel is a persistent analysis and memory system for Chaturbate 
 - **Behavioral Analysis**: Spending patterns, timing insights, tag preferences
 - **Session Management**: Manual and auto-detected streaming session tracking
 - **Watchlists**: Organize contacts into system-defined lists
+- **Affiliate API Integration**: Real-time broadcaster session data (viewers, followers, tags, room subjects)
+- **Profile Scraping**: Automated profile data collection for broadcasters
+- **Configurable Jobs**: Background polling jobs with smart filters and scheduling
+- **Profile Viewer**: Comprehensive profile pages merging all data sources
 
 ---
 
@@ -42,15 +46,39 @@ The MHC Control Panel is a persistent analysis and memory system for Chaturbate 
 
 ### Deployment Options
 
-1. **Production (Render.com)**: See [DEPLOYMENT.md](DEPLOYMENT.md)
-2. **Local Development (Docker)**: See [DOCKER.md](DOCKER.md)
+1. **Local Development (Docker)**: See [DEVELOPMENT.md](DEVELOPMENT.md) - **Start here for daily development**
+2. **Production (Render.com)**: See [DEPLOYMENT.md](DEPLOYMENT.md)
+3. **Docker Registry (Refineo)**: See [DOCKER_MIGRATION_REFINEO.md](DOCKER_MIGRATION_REFINEO.md)
 
-**Quick Start with Docker**:
+**Quick Start - Development Mode**:
 ```bash
+# First time setup
 cp .env.example .env
 # Edit .env with your tokens
-docker-compose up -d
+
+# Start development environment (with hot reload)
+./scripts/dev.sh
+
 # Open http://localhost:8080
+# Backend changes auto-reload via tsx watch
+# See DEVELOPMENT.md for full workflow
+```
+
+**Production-Like Build**:
+```bash
+# Build locally with no cache (ensures clean compile)
+./scripts/deploy.sh --build
+
+# Or pull from Refineo registry
+./scripts/deploy.sh
+```
+
+**Building and Publishing to Refineo Registry**:
+```bash
+# Build and push all images
+./scripts/build-and-push.sh v1.0.0
+
+# See scripts/README.md for more details
 ```
 
 ---
@@ -126,6 +154,18 @@ docker-compose up -d
 
 **Fields**: `token_balance`, `tips_in_last_hour`, `num_followers`, `num_viewers`, `num_registered_viewers`, `last_broadcast`, `time_online`, `votes_up`, `votes_down`, `satisfaction_score`
 
+### Chaturbate Affiliate API
+
+**Base URL**: `https://chaturbate.com/api/public/affiliates/onlinerooms/`
+
+**Authentication**: None required (public API)
+
+**Rate Limit**: 1 request per 2 seconds per broadcaster
+
+**Fields**: `username`, `display_name`, `age`, `gender`, `location`, `num_users` (viewers), `num_followers`, `room_subject`, `tags`, `image_url`, `is_hd`, `is_new`, `current_show`, `seconds_online`
+
+**Implementation**: Configurable polling job with smart filters (follows, tags, viewer thresholds)
+
 ---
 
 ## Resolved Design Decisions
@@ -191,26 +231,57 @@ See [SCHEMA.md](SCHEMA.md) for detailed schema documentation.
 - **attributes**: Structured tags/memory (location, notes, preferences)
 - **watchlists**: System-defined lists (Friends, Known Streamers, etc.)
 - **watchlist_members**: Many-to-many join table
+- **broadcast_sessions**: Per-session data from Affiliate API (viewers, followers, room subjects)
+- **profiles**: Scraped profile data for broadcasters (bio, photos, languages, etc.)
+- **jobs**: Configurable background jobs with scheduling and filtering
 
 ---
 
 ## Development
 
+**Documentation:**
+- [DEVELOPMENT.md](DEVELOPMENT.md) - Complete workflow and explanations
+- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Common commands and troubleshooting
+
+### Quick Start
+
 ```bash
-# Install dependencies
-npm install
+# First time setup
+cp .env.example .env
+# Edit .env with your API tokens
 
-# Run migrations
-npm run migrate
+# Start development environment (hot reload enabled)
+./scripts/dev.sh
 
-# Start dev server
-npm run dev
+# Services available at:
+# - Frontend: http://localhost:8080
+# - API: http://localhost:3000
+# - Database: localhost:5432
+```
 
-# Run tests
-npm test
+### Making Changes
 
-# Build for production
-npm run build
+**Backend (server/src/):**
+- Edit any TypeScript file
+- Save and it auto-reloads via `tsx watch`
+- No rebuild needed!
+
+**Frontend (client/src/):**
+- Run `cd client && npm start` in separate terminal
+- React dev server runs on http://localhost:3001
+- Hot reload for instant feedback
+
+### Useful Commands
+
+```bash
+# View logs
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml logs -f web
+
+# Stop services
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml down
+
+# Production-like build
+./scripts/deploy.sh --build
 ```
 
 ---
