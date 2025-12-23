@@ -247,7 +247,7 @@ const Directory: React.FC = () => {
             {sortedPersons.map((person) => (
               <tr key={person.id}>
                 <td className="username-cell">
-                  <Link to={`/?username=${person.username}`}>
+                  <Link to={`/profile/${person.username}`}>
                     {person.username}
                   </Link>
                 </td>

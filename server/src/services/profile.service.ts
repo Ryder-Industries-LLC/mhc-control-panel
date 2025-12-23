@@ -10,15 +10,11 @@ export interface Profile {
   location: string | null;
   age: number | null;
   gender: string | null;
-  sexual_orientation: string | null;
   interested_in: string | null;
   body_type: string | null;
   ethnicity: string | null;
-  hair_color: string | null;
-  eye_color: string | null;
   height: string | null;
-  weight: string | null;
-  languages: string[];
+  spoken_languages: string | null;
   tags: string[];
   photos: Array<{ url: string; isPrimary: boolean }>;
   tip_menu: Array<{ item: string; tokens: number }>;
@@ -32,6 +28,14 @@ export interface Profile {
   scraped_at: Date;
   created_at: Date;
   updated_at: Date;
+  country: string | null;
+  is_new: boolean;
+  location_detail: string | null;
+  birthday_public: string | null;
+  smoke_drink: string | null;
+  body_decorations: string | null;
+  data_source: string;
+  last_seen_online: Date | null;
 }
 
 export class ProfileService {
@@ -42,20 +46,22 @@ export class ProfileService {
     const sql = `
       INSERT INTO profiles (
         person_id, display_name, bio, location, age,
-        gender, sexual_orientation, interested_in, body_type, ethnicity,
-        hair_color, eye_color, height, weight,
-        languages, tags, photos, tip_menu,
+        gender, interested_in, body_type, ethnicity, height,
+        spoken_languages, tags, photos, tip_menu,
         goal_description, goal_tokens, goal_progress,
         social_links, fanclub_price, fanclub_count,
-        last_broadcast, scraped_at
+        last_broadcast, scraped_at,
+        country, is_new, location_detail, birthday_public,
+        smoke_drink, body_decorations, data_source, last_seen_online
       ) VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8, $9, $10,
         $11, $12, $13, $14,
-        $15, $16, $17, $18,
-        $19, $20, $21,
-        $22, $23, $24,
-        $25, $26
+        $15, $16, $17,
+        $18, $19, $20,
+        $21, $22,
+        $23, $24, $25, $26,
+        $27, $28, $29, $30
       )
       ON CONFLICT (person_id) DO UPDATE SET
         display_name = EXCLUDED.display_name,
@@ -63,15 +69,11 @@ export class ProfileService {
         location = EXCLUDED.location,
         age = EXCLUDED.age,
         gender = EXCLUDED.gender,
-        sexual_orientation = EXCLUDED.sexual_orientation,
         interested_in = EXCLUDED.interested_in,
         body_type = EXCLUDED.body_type,
         ethnicity = EXCLUDED.ethnicity,
-        hair_color = EXCLUDED.hair_color,
-        eye_color = EXCLUDED.eye_color,
         height = EXCLUDED.height,
-        weight = EXCLUDED.weight,
-        languages = EXCLUDED.languages,
+        spoken_languages = EXCLUDED.spoken_languages,
         tags = EXCLUDED.tags,
         photos = EXCLUDED.photos,
         tip_menu = EXCLUDED.tip_menu,
@@ -83,6 +85,14 @@ export class ProfileService {
         fanclub_count = EXCLUDED.fanclub_count,
         last_broadcast = EXCLUDED.last_broadcast,
         scraped_at = EXCLUDED.scraped_at,
+        country = EXCLUDED.country,
+        is_new = EXCLUDED.is_new,
+        location_detail = EXCLUDED.location_detail,
+        birthday_public = EXCLUDED.birthday_public,
+        smoke_drink = EXCLUDED.smoke_drink,
+        body_decorations = EXCLUDED.body_decorations,
+        data_source = EXCLUDED.data_source,
+        last_seen_online = EXCLUDED.last_seen_online,
         updated_at = NOW()
       RETURNING *
     `;
@@ -94,15 +104,11 @@ export class ProfileService {
       profileData.location,
       profileData.age,
       profileData.gender,
-      profileData.sexualOrientation,
       profileData.interestedIn,
       profileData.bodyType,
       profileData.ethnicity,
-      profileData.hairColor,
-      profileData.eyeColor,
       profileData.height,
-      profileData.weight,
-      profileData.languages,
+      profileData.spokenLanguages,
       profileData.tags,
       JSON.stringify(profileData.photos || []),
       JSON.stringify(profileData.tipMenu || []),
@@ -114,6 +120,14 @@ export class ProfileService {
       profileData.fanclubCount,
       profileData.lastBroadcast,
       profileData.scrapedAt,
+      profileData.country,
+      profileData.isNew,
+      profileData.locationDetail,
+      profileData.birthdayPublic,
+      profileData.smokeDrink,
+      profileData.bodyDecorations,
+      profileData.dataSource,
+      profileData.lastSeenOnline,
     ];
 
     try {
@@ -210,15 +224,11 @@ export class ProfileService {
       location: row.location,
       age: row.age,
       gender: row.gender,
-      sexual_orientation: row.sexual_orientation,
       interested_in: row.interested_in,
       body_type: row.body_type,
       ethnicity: row.ethnicity,
-      hair_color: row.hair_color,
-      eye_color: row.eye_color,
       height: row.height,
-      weight: row.weight,
-      languages: row.languages || [],
+      spoken_languages: row.spoken_languages,
       tags: row.tags || [],
       photos: row.photos || [],
       tip_menu: row.tip_menu || [],
@@ -232,6 +242,14 @@ export class ProfileService {
       scraped_at: row.scraped_at,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      country: row.country,
+      is_new: row.is_new || false,
+      location_detail: row.location_detail,
+      birthday_public: row.birthday_public,
+      smoke_drink: row.smoke_drink,
+      body_decorations: row.body_decorations,
+      data_source: row.data_source,
+      last_seen_online: row.last_seen_online,
     };
   }
 }

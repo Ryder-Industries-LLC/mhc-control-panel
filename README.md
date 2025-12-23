@@ -13,6 +13,14 @@ The MHC Control Panel is a persistent analysis and memory system for Chaturbate 
 
 **This is a production system, not a demo.**
 
+### For New Claude Code Sessions
+
+If you're continuing work on this project with a new Claude Code account, start here:
+
+1. **[AGENTS.md](AGENTS.md)** - Read first: AI agent instructions and architectural rules
+2. **[CLAUDE_CODE_SETUP.md](CLAUDE_CODE_SETUP.md)** - Current project state and setup guide
+3. **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development workflow and Docker usage
+
 ---
 
 ## Features
@@ -26,7 +34,15 @@ The MHC Control Panel is a persistent analysis and memory system for Chaturbate 
 - **Affiliate API Integration**: Real-time broadcaster session data (viewers, followers, tags, room subjects)
 - **Profile Scraping**: Automated profile data collection for broadcasters
 - **Configurable Jobs**: Background polling jobs with smart filters and scheduling
-- **Profile Viewer**: Comprehensive profile pages merging all data sources
+- **Profile Viewer**: Comprehensive profile pages merging all data sources with intelligent priority handling
+
+### Recent Enhancements (December 2024)
+
+- **Profile Schema Optimization**: Updated to match Chaturbate Affiliate API structure
+- **Profile Header Redesign**: Image on right, prominent LIVE indicator, HD icon, show start time in ET
+- **Multi-Source Data Integration**: Intelligent prioritization of Affiliate API, scraped profiles, and Statbate data
+
+See [PROFILE_SCHEMA_UPDATE.md](PROFILE_SCHEMA_UPDATE.md) and [CLAUDE_CODE_SETUP.md](CLAUDE_CODE_SETUP.md) for details.
 
 ---
 

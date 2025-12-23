@@ -9,15 +9,11 @@ export interface ChaturbateProfile {
   location: string | null;
   age: number | null;
   gender: string | null;
-  sexualOrientation: string | null;
   interestedIn: string | null;
   bodyType: string | null;
   ethnicity: string | null;
-  hairColor: string | null;
-  eyeColor: string | null;
   height: string | null;
-  weight: string | null;
-  languages: string[];
+  spokenLanguages: string | null;
   tags: string[];
   photos: {
     url: string;
@@ -38,6 +34,14 @@ export interface ChaturbateProfile {
   fanclubCount: number | null;
   lastBroadcast: Date | null;
   scrapedAt: Date;
+  country: string | null;
+  isNew: boolean;
+  locationDetail: string | null;
+  birthdayPublic: string | null;
+  smokeDrink: string | null;
+  bodyDecorations: string | null;
+  dataSource: string;
+  lastSeenOnline: Date | null;
 }
 
 export class ProfileScraperService {
@@ -142,21 +146,18 @@ export class ProfileScraperService {
           if (label.includes('location')) data.location = value;
           if (label.includes('age')) data.age = parseInt(value, 10) || null;
           if (label.includes('gender')) data.gender = value;
-          if (label.includes('sexual orientation')) data.sexualOrientation = value;
           if (label.includes('interested in')) data.interestedIn = value;
           if (label.includes('body type')) data.bodyType = value;
           if (label.includes('ethnicity')) data.ethnicity = value;
-          if (label.includes('hair')) data.hairColor = value;
-          if (label.includes('eye')) data.eyeColor = value;
           if (label.includes('height')) data.height = value;
-          if (label.includes('weight')) data.weight = value;
         });
 
-        // Languages
+        // Languages (spoken_languages)
         const langElements = document.querySelectorAll('.language, [data-language]');
-        data.languages = Array.from(langElements)
+        const langArray = Array.from(langElements)
           .map((el: any) => el.textContent?.trim() || '')
           .filter(Boolean);
+        data.spokenLanguages = langArray.join(', ') || null;
 
         // Tags
         const tagElements = document.querySelectorAll('.tag, .room-tag, [data-tag]');

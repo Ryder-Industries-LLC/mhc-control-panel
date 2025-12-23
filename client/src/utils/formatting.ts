@@ -84,6 +84,58 @@ export const formatNumberWithoutCommas = (num: number | null | undefined): strin
 };
 
 /**
+ * Format duration in minutes to hours and minutes (e.g., "7h 44m")
+ * @param minutes Duration in minutes
+ * @returns Formatted duration string
+ */
+export const formatDuration = (minutes: number | null | undefined): string => {
+  if (minutes === null || minutes === undefined || minutes === 0) {
+    return '0m';
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+
+  if (hours > 0) {
+    return `${hours}h ${mins}m`;
+  }
+  return `${mins}m`;
+};
+
+/**
+ * Format gender to full capitalized name
+ * @param gender Gender value (can be string or number)
+ * @returns Formatted gender string
+ */
+export const formatGender = (gender: string | number | null | undefined): string => {
+  if (gender === null || gender === undefined) {
+    return 'Unknown';
+  }
+
+  // Handle numeric gender codes
+  if (typeof gender === 'number') {
+    const genderMap: { [key: number]: string } = {
+      0: 'Male',
+      1: 'Female',
+      2: 'Trans',
+      3: 'Couple',
+    };
+    return genderMap[gender] || 'Unknown';
+  }
+
+  // Handle string gender values
+  const genderStr = String(gender).toLowerCase();
+
+  if (genderStr === 'male' || genderStr === 'm') return 'Male';
+  if (genderStr === 'female' || genderStr === 'f') return 'Female';
+  if (genderStr === 'trans' || genderStr === 't') return 'Trans';
+  if (genderStr === 'couple' || genderStr === 'c') return 'Couple';
+
+  // If already capitalized properly, return as-is
+  return gender.toString();
+};
+
+/**
  * Format a field name into a human-readable label in Camel Case
  * @param fieldName Snake_case or camelCase field name
  * @returns Human-readable label in Camel Case
@@ -149,13 +201,7 @@ export const formatValue = (
     }
     // Gender: convert number to text
     if (fieldName === 'gender') {
-      const genderMap: { [key: number]: string } = {
-        0: 'Male',
-        1: 'Female',
-        2: 'Trans',
-        3: 'Couple',
-      };
-      return genderMap[value] || 'Unknown';
+      return formatGender(value);
     }
     // RID: treat as text without commas
     if (fieldName === 'rid') {

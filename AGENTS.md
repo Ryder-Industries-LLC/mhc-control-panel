@@ -6,6 +6,25 @@
 
 **Owner:** Hudson Cage
 
+**Current Status:** Production-ready v1.0 with profile enhancements (December 2024)
+
+---
+
+## 0. For New Claude Code Sessions (START HERE)
+
+If you're a new Claude Code instance working on this project:
+
+1. **Read this file first** - Understand the architectural rules and constraints
+2. **Read [CLAUDE_CODE_SETUP.md](CLAUDE_CODE_SETUP.md)** - Current project state and recent changes
+3. **Read [README.md](README.md)** - Project overview and quick start
+4. **Read [DEVELOPMENT.md](DEVELOPMENT.md)** - Development workflow
+
+**Recent Major Changes (December 2024)**:
+- Profile schema updated to match Chaturbate Affiliate API structure
+- Profile header UI redesigned (image right, LIVE indicator, show times in ET)
+- Multi-source data integration with priority handling
+- See `PROFILE_SCHEMA_UPDATE.md` for migration details
+
 ---
 
 ## 1. Purpose (Read This First)
@@ -277,7 +296,64 @@ Rules:
 
 - No historical replay
 - Events must be persisted immediately
-- Must never be used for other models’ rooms
+- Must never be used for other models' rooms
+
+---
+
+### 5.4 Chaturbate Affiliate API (Public API)
+
+**Base URL**: `https://chaturbate.com/api/public/affiliates/onlinerooms/`
+
+**Authentication**: None required (public API)
+
+**Rate Limit**: 1 request per 2 seconds per broadcaster
+
+Used for:
+
+- Real-time broadcaster session data
+- Current viewer counts
+- Follower counts
+- Room subjects
+- Stream tags
+- HD status
+- Online status and duration
+
+Rules:
+
+- Use for live/recent session data
+- Prioritize over scraped profile data when available
+- Rate limit strictly enforced
+- Store in `broadcast_sessions` table
+
+**Data Priority for Profile Display**:
+1. Affiliate API (`latestSession`) - Most current, real-time
+2. Scraped Profile (`profile`) - Detailed profile info
+3. Statbate API (`latestSnapshot`) - Historical metrics
+
+---
+
+### 5.5 Profile Scraping (Supplementary)
+
+**Purpose**: Collect detailed profile information not available via APIs
+
+**Implementation**: Puppeteer-based browser automation
+
+**Rate Limit**: 2 second delay between requests
+
+Used for:
+
+- Profile bios
+- Profile photos
+- Tip menus
+- Social links
+- Physical attributes (when available)
+
+Rules:
+
+- Mark data source as `scraper` in `data_source` field
+- Only scrape when Affiliate API data is insufficient
+- Handle failures gracefully (profiles may be private/unavailable)
+- Store in `profiles` table
 
 ---
 
