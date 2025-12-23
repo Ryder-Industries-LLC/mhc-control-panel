@@ -36,7 +36,7 @@ If you're continuing work on this project with a new Claude Code account, start 
 - **Configurable Jobs**: Background polling jobs with smart filters and scheduling
 - **Profile Viewer**: Comprehensive profile pages merging all data sources with intelligent priority handling
 
-### Recent Enhancements (December 2024)
+### Recent Enhancements (December 2025)
 
 - **Profile Schema Optimization**: Updated to match Chaturbate Affiliate API structure
 - **Profile Header Redesign**: Image on right, prominent LIVE indicator, HD icon, show start time in ET

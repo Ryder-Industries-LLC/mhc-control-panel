@@ -6,7 +6,7 @@
 
 **Owner:** Hudson Cage
 
-**Current Status:** Production-ready v1.0 with profile enhancements (December 2024)
+**Current Status:** Production-ready v1.0 with profile enhancements (December 2025)
 
 ---
 
@@ -19,7 +19,7 @@ If you're a new Claude Code instance working on this project:
 3. **Read [README.md](README.md)** - Project overview and quick start
 4. **Read [DEVELOPMENT.md](DEVELOPMENT.md)** - Development workflow
 
-**Recent Major Changes (December 2024)**:
+**Recent Major Changes (December 2025)**:
 - Profile schema updated to match Chaturbate Affiliate API structure
 - Profile header UI redesigned (image right, LIVE indicator, show times in ET)
 - Multi-source data integration with priority handling
