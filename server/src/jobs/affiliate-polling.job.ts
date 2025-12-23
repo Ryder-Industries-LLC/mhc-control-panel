@@ -1,5 +1,7 @@
 import { ProfileEnrichmentService } from '../services/profile-enrichment.service.js';
 import { chaturbateAffiliateClient } from '../api/chaturbate/affiliate-client.js';
+import { feedCacheService } from '../services/feed-cache.service.js';
+import { PriorityLookupService } from '../services/priority-lookup.service.js';
 import { logger } from '../config/logger.js';
 
 /**
@@ -162,59 +164,36 @@ export class AffiliatePollingJob {
       // Parse gender filter (can be comma-separated)
       const genders = this.config.gender.split(',').map(g => g.trim()) as Array<'m' | 'f' | 't' | 'c'>;
 
-      // Fetch online rooms with pagination
-      let offset = 0;
-      let totalProcessed = 0;
-      const batchSize = 500; // Affiliate API max per request
+      // STEP 1: Fetch ENTIRE feed and cache it
+      logger.info('Fetching entire feed for caching...');
+      const allRooms = await this.fetchEntireFeed(genders, fetchAll ? 0 : this.config.limit);
 
-      // Continue until we've processed the limit OR fetched all (if limit = 0)
-      while (fetchAll || totalProcessed < this.config.limit) {
-        const batchLimit = fetchAll ? batchSize : Math.min(batchSize, this.config.limit - totalProcessed);
-
-        logger.info(`Fetching online rooms (offset: ${offset}, limit: ${batchLimit})`);
-
-        // Fetch batch
-        const response = await chaturbateAffiliateClient.getOnlineRooms({
-          gender: genders,
-          limit: batchLimit,
-          offset,
-        });
-
-        if (response.results.length === 0) {
-          logger.info('No more online rooms found');
-          break;
-        }
-
-        logger.info(`Processing batch of ${response.results.length} rooms`);
-
-        // Process each room
-        for (const room of response.results) {
-          try {
-            await ProfileEnrichmentService.enrichFromAffiliateAPI(room.username);
-            this.stats.lastRunEnriched++;
-            this.stats.totalEnriched++;
-
-            // Rate limiting
-            await this.sleep(DELAY_BETWEEN_REQUESTS);
-          } catch (error) {
-            logger.error('Error enriching from Affiliate API', {
-              username: room.username,
-              error,
-            });
-            this.stats.lastRunFailed++;
-            this.stats.totalFailed++;
-          }
-        }
-
-        totalProcessed += response.results.length;
-        offset += batchLimit;
-
-        // If we got fewer results than requested, we've reached the end
-        if (response.results.length < batchLimit) {
-          logger.info('Reached end of available rooms');
-          break;
-        }
+      if (allRooms.length === 0) {
+        logger.warn('No online rooms found in feed');
+        return;
       }
+
+      // Cache the complete feed
+      feedCacheService.setFeed(allRooms, allRooms.length);
+      logger.info(`Feed cached with ${allRooms.length} rooms`);
+
+      // STEP 2: Process Priority 2 users FIRST (active tracking)
+      const priorityTwoUsers = await PriorityLookupService.getActiveTracking();
+      if (priorityTwoUsers.length > 0) {
+        logger.info(`Processing ${priorityTwoUsers.length} Priority 2 users (active tracking)`);
+        await this.processPriorityUsers(priorityTwoUsers, 2);
+      }
+
+      // STEP 3: Process Priority 1 users (initial population)
+      const priorityOneUsers = await PriorityLookupService.getPendingInitial();
+      if (priorityOneUsers.length > 0) {
+        logger.info(`Processing ${priorityOneUsers.length} Priority 1 users (initial population)`);
+        await this.processPriorityUsers(priorityOneUsers, 1);
+      }
+
+      // STEP 4: Process remaining users from cache
+      logger.info('Processing remaining users from cache');
+      await this.processRemainingUsers(allRooms);
 
       this.stats.lastRun = new Date();
       this.stats.totalRuns++;
@@ -222,11 +201,149 @@ export class AffiliatePollingJob {
       logger.info('Affiliate API polling cycle completed', {
         enriched: this.stats.lastRunEnriched,
         failed: this.stats.lastRunFailed,
-        totalProcessed,
+        totalRooms: allRooms.length,
       });
     } catch (error) {
       logger.error('Error in Affiliate API polling cycle', { error });
     }
+  }
+
+  /**
+   * Fetch entire feed from Affiliate API
+   */
+  private async fetchEntireFeed(
+    genders: Array<'m' | 'f' | 't' | 'c'>,
+    limit: number
+  ): Promise<any[]> {
+    const allRooms: any[] = [];
+    let offset = 0;
+    const batchSize = 500; // Affiliate API max per request
+    const fetchAll = limit === 0;
+
+    // Continue until we've fetched the limit OR fetched all (if limit = 0)
+    while (fetchAll || allRooms.length < limit) {
+      const batchLimit = fetchAll ? batchSize : Math.min(batchSize, limit - allRooms.length);
+
+      logger.debug(`Fetching feed batch (offset: ${offset}, limit: ${batchLimit})`);
+
+      // Fetch batch
+      const response = await chaturbateAffiliateClient.getOnlineRooms({
+        gender: genders,
+        limit: batchLimit,
+        offset,
+      });
+
+      if (response.results.length === 0) {
+        logger.info('No more online rooms found');
+        break;
+      }
+
+      allRooms.push(...response.results);
+      offset += batchLimit;
+
+      logger.debug(`Fetched ${response.results.length} rooms (total: ${allRooms.length})`);
+
+      // If we got fewer results than requested, we've reached the end
+      if (response.results.length < batchLimit) {
+        logger.info('Reached end of available rooms');
+        break;
+      }
+
+      // Small delay to avoid overwhelming the API
+      await this.sleep(500);
+    }
+
+    return allRooms;
+  }
+
+  /**
+   * Process priority users from cached feed
+   */
+  private async processPriorityUsers(
+    priorityUsers: any[],
+    priorityLevel: number
+  ): Promise<void> {
+    const processedUsernames = new Set<string>();
+
+    for (const priorityUser of priorityUsers) {
+      try {
+        // Find user in cached feed
+        const room = feedCacheService.findRoom(priorityUser.username);
+
+        if (room) {
+          // Enrich from cached data
+          await ProfileEnrichmentService.enrichFromAffiliateAPI(room.username);
+          this.stats.lastRunEnriched++;
+          this.stats.totalEnriched++;
+
+          processedUsernames.add(priorityUser.username);
+
+          // Mark Priority 1 users as completed after first successful lookup
+          if (priorityLevel === 1) {
+            await PriorityLookupService.markCompleted(priorityUser.username);
+            logger.info(`Priority 1 user completed: ${priorityUser.username}`);
+          } else {
+            // Update last_checked_at for Priority 2
+            await PriorityLookupService.updateLastChecked(priorityUser.username);
+          }
+
+          // Rate limiting
+          await this.sleep(DELAY_BETWEEN_REQUESTS);
+        } else {
+          logger.debug(`Priority ${priorityLevel} user not found in feed: ${priorityUser.username}`);
+          // Still update last_checked_at to track when we looked
+          await PriorityLookupService.updateLastChecked(priorityUser.username);
+        }
+      } catch (error) {
+        logger.error(`Error processing priority ${priorityLevel} user`, {
+          username: priorityUser.username,
+          error,
+        });
+        this.stats.lastRunFailed++;
+        this.stats.totalFailed++;
+      }
+    }
+
+    logger.info(`Processed ${processedUsernames.size} Priority ${priorityLevel} users`);
+  }
+
+  /**
+   * Process remaining users from cached feed (excluding already processed)
+   */
+  private async processRemainingUsers(allRooms: any[]): Promise<void> {
+    // Get all priority usernames to skip them
+    const allPriorityUsers = await PriorityLookupService.getAll();
+    const priorityUsernames = new Set(
+      allPriorityUsers.map(p => p.username.toLowerCase())
+    );
+
+    let processed = 0;
+
+    for (const room of allRooms) {
+      // Skip if this user was already processed as a priority user
+      if (priorityUsernames.has(room.username.toLowerCase())) {
+        continue;
+      }
+
+      try {
+        await ProfileEnrichmentService.enrichFromAffiliateAPI(room.username);
+        this.stats.lastRunEnriched++;
+        this.stats.totalEnriched++;
+        processed++;
+
+        // Rate limiting
+        await this.sleep(DELAY_BETWEEN_REQUESTS);
+      } catch (error) {
+        logger.error('Error enriching from cached feed', {
+          username: room.username,
+          error,
+        });
+        this.stats.lastRunFailed++;
+        this.stats.totalFailed++;
+      }
+    }
+
+    logger.info(`Processed ${processed} remaining users from cache`);
   }
 
   /**
