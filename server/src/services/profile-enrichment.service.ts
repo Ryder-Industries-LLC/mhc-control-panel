@@ -122,6 +122,11 @@ export class ProfileEnrichmentService {
       RETURNING *
     `;
 
+    // Convert spoken_languages string to array (e.g., "English, Spanish" -> ["English", "Spanish"])
+    const spokenLanguagesArray = roomData.spoken_languages
+      ? roomData.spoken_languages.split(',').map(lang => lang.trim()).filter(lang => lang.length > 0)
+      : [];
+
     const values = [
       personId,
       roomData.display_name || null,
@@ -130,7 +135,7 @@ export class ProfileEnrichmentService {
       roomData.gender,
       roomData.location || null,
       roomData.country || null,
-      roomData.spoken_languages || null,
+      spokenLanguagesArray,
       roomData.is_new,
       roomData.tags,
     ];

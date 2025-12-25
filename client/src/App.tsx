@@ -1,12 +1,12 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import './App.css';
-import Home from './pages/Home';
 import Hudson from './pages/Hudson';
 import Users from './pages/Users';
 import EventsFeed from './pages/EventsFeed';
-import Jobs from './pages/Jobs';
+import Admin from './pages/Admin';
 import Profile from './pages/Profile';
+import Follow from './pages/Follow';
 
 function App() {
   return (
@@ -18,25 +18,25 @@ function App() {
               <span className="nav-title">MHC Control Panel</span>
             </div>
             <div className="nav-links">
-              <Link to="/" className="nav-link">Lookup</Link>
+              <Link to="/" className="nav-link">Users</Link>
+              <Link to="/follow" className="nav-link">Follow</Link>
               <Link to="/profile" className="nav-link">Profile</Link>
               <Link to="/hudson" className="nav-link">Hudson</Link>
               <Link to="/events" className="nav-link">Events</Link>
-              <Link to="/users" className="nav-link">Users</Link>
-              <Link to="/jobs" className="nav-link">Jobs</Link>
+              <Link to="/admin" className="nav-link">Admin</Link>
             </div>
           </div>
         </nav>
 
         <main className="main-content">
           <Routes>
-            <Route path="/" element={<Home />} />
+            <Route path="/" element={<Users />} />
+            <Route path="/follow" element={<Follow />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/profile/:username" element={<Profile />} />
             <Route path="/hudson" element={<Hudson />} />
             <Route path="/events" element={<EventsFeed />} />
-            <Route path="/users" element={<Users />} />
-            <Route path="/jobs" element={<Jobs />} />
+            <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>
       </div>

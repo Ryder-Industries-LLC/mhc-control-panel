@@ -162,6 +162,23 @@ const Profile: React.FC<ProfilePageProps> = () => {
           {/* Profile Header */}
           <div className="profile-header-card">
             <div className="profile-header-content">
+              {((profileData.latestSession?.image_url_360x270) || (profileData.profile?.photos && profileData.profile.photos.length > 0)) && (
+                <div className="profile-image-container">
+                  {profileData.latestSession?.current_show && (
+                    <div className="live-indicator">
+                      ● LIVE
+                    </div>
+                  )}
+                  <img
+                    src={profileData.latestSession?.image_url_360x270 || (profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url)}
+                    alt={profileData.person.username}
+                    className="profile-image"
+                    width="360"
+                    height="270"
+                  />
+                </div>
+              )}
+
               <div className="profile-header-text">
                 <div style={{ marginBottom: '0.5rem' }}>
                   <span className="role-badge">{profileData.person.role}</span>
@@ -257,21 +274,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   </div>
                 )}
               </div>
-
-              {((profileData.latestSession?.image_url) || (profileData.profile?.photos && profileData.profile.photos.length > 0)) && (
-                <div className="profile-image-container">
-                  {profileData.latestSession?.current_show && (
-                    <div className="live-indicator">
-                      ● LIVE
-                    </div>
-                  )}
-                  <img
-                    src={profileData.latestSession?.image_url || (profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url)}
-                    alt={profileData.person.username}
-                    className="profile-image"
-                  />
-                </div>
-              )}
             </div>
           </div>
 

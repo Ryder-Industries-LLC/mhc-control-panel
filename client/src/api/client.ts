@@ -28,6 +28,16 @@ export interface PersonWithSource extends Person {
   source: string;
   interaction_count: number;
   snapshot_count: number;
+  image_url: string | null;
+  current_show: string | null;
+  tags: string[] | null;
+  age: number | null;
+  following: boolean;
+  follower: boolean;
+  following_since: string | null;
+  follower_since: string | null;
+  unfollowed_at: string | null;
+  unfollower_at: string | null;
 }
 
 export interface Snapshot {
@@ -290,6 +300,12 @@ export const api = {
 
   clearFeedCache: async (): Promise<void> => {
     await apiClient.post('/api/affiliate/cache/clear');
+  },
+
+  // Followers API
+  getUnfollowed: async (): Promise<{ unfollowed: any[]; total: number }> => {
+    const response = await apiClient.get('/api/followers/unfollowed');
+    return response.data;
   },
 };
 

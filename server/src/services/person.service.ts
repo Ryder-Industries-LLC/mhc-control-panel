@@ -230,7 +230,17 @@ export class PersonService {
           'manual'
         ) as source,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
-        (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count
+        (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
+        (SELECT COALESCE(image_path_360x270, image_url_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as image_url,
+        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags,
+        (SELECT age FROM profiles WHERE person_id = p.id LIMIT 1) as age,
+        (SELECT following FROM profiles WHERE person_id = p.id LIMIT 1) as following,
+        (SELECT follower FROM profiles WHERE person_id = p.id LIMIT 1) as follower,
+        (SELECT following_since FROM profiles WHERE person_id = p.id LIMIT 1) as following_since,
+        (SELECT follower_since FROM profiles WHERE person_id = p.id LIMIT 1) as follower_since,
+        (SELECT unfollowed_at FROM profiles WHERE person_id = p.id LIMIT 1) as unfollowed_at,
+        (SELECT unfollower_at FROM profiles WHERE person_id = p.id LIMIT 1) as unfollower_at
        FROM persons p
        WHERE is_excluded = false
        ORDER BY last_seen_at DESC

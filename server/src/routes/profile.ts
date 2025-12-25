@@ -35,7 +35,7 @@ router.get('/:username', async (req: Request, res: Response) => {
     // Get recent sessions
     const sessionsSql = `
       SELECT *
-      FROM broadcast_sessions
+      FROM affiliate_api_snapshots
       WHERE person_id = $1
       ORDER BY observed_at DESC
       LIMIT 20

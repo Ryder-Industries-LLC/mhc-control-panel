@@ -1,6 +1,7 @@
 import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
 import type { OnlineRoom } from '../api/chaturbate/affiliate-client.js';
+import { ImageStorageService } from './image-storage.service.js';
 
 export interface BroadcastSession {
   id: number;
@@ -16,6 +17,8 @@ export interface BroadcastSession {
   is_hd: boolean;
   image_url: string;
   image_url_360x270: string;
+  image_path: string | null;
+  image_path_360x270: string | null;
   created_at: Date;
 }
 
@@ -24,17 +27,26 @@ export class BroadcastSessionService {
    * Record a broadcast session snapshot from Affiliate API
    */
   static async recordSession(personId: string, roomData: OnlineRoom): Promise<BroadcastSession> {
+    // Download and save images locally
+    const imagePaths = await ImageStorageService.downloadBoth(
+      roomData.image_url,
+      roomData.image_url_360x270,
+      roomData.username
+    );
+
     const sql = `
-      INSERT INTO broadcast_sessions (
+      INSERT INTO affiliate_api_snapshots (
         person_id, observed_at, seconds_online, session_start,
         current_show, room_subject, tags,
         num_users, num_followers, is_hd,
-        image_url, image_url_360x270
+        image_url, image_url_360x270,
+        image_path, image_path_360x270
       ) VALUES (
         $1, NOW(), $2, NOW() - make_interval(secs => $2::integer),
         $3, $4, $5,
         $6, $7, $8,
-        $9, $10
+        $9, $10,
+        $11, $12
       )
       ON CONFLICT (person_id, observed_at) DO UPDATE SET
         seconds_online = EXCLUDED.seconds_online,
@@ -46,7 +58,9 @@ export class BroadcastSessionService {
         num_followers = EXCLUDED.num_followers,
         is_hd = EXCLUDED.is_hd,
         image_url = EXCLUDED.image_url,
-        image_url_360x270 = EXCLUDED.image_url_360x270
+        image_url_360x270 = EXCLUDED.image_url_360x270,
+        image_path = EXCLUDED.image_path,
+        image_path_360x270 = EXCLUDED.image_path_360x270
       RETURNING *
     `;
 
@@ -61,6 +75,8 @@ export class BroadcastSessionService {
       roomData.is_hd,
       roomData.image_url,
       roomData.image_url_360x270,
+      imagePaths.thumbnail,
+      imagePaths.full,
     ];
 
     try {
@@ -72,6 +88,7 @@ export class BroadcastSessionService {
         username: roomData.username,
         secondsOnline: roomData.seconds_online,
         numUsers: roomData.num_users,
+        imageSaved: !!imagePaths.full,
       });
 
       return this.mapRowToSession(row);
@@ -86,7 +103,7 @@ export class BroadcastSessionService {
    */
   static async getLatestSession(personId: string): Promise<BroadcastSession | null> {
     const sql = `
-      SELECT * FROM broadcast_sessions
+      SELECT * FROM affiliate_api_snapshots
       WHERE person_id = $1
       ORDER BY observed_at DESC
       LIMIT 1
@@ -110,7 +127,7 @@ export class BroadcastSessionService {
    */
   static async getSessionsByPerson(personId: string, limit = 100): Promise<BroadcastSession[]> {
     const sql = `
-      SELECT * FROM broadcast_sessions
+      SELECT * FROM affiliate_api_snapshots
       WHERE person_id = $1
       ORDER BY observed_at DESC
       LIMIT $2
@@ -134,7 +151,7 @@ export class BroadcastSessionService {
     endDate: Date
   ): Promise<BroadcastSession[]> {
     const sql = `
-      SELECT * FROM broadcast_sessions
+      SELECT * FROM affiliate_api_snapshots
       WHERE person_id = $1
         AND observed_at BETWEEN $2 AND $3
       ORDER BY observed_at DESC
@@ -170,7 +187,7 @@ export class BroadcastSessionService {
           MAX(num_followers) as final_followers,
           MIN(num_followers) as initial_followers,
           array_agg(DISTINCT tag) FILTER (WHERE tag IS NOT NULL) as all_tags
-        FROM broadcast_sessions, unnest(tags) as tag
+        FROM affiliate_api_snapshots, unnest(tags) as tag
         WHERE person_id = $1
           AND observed_at >= NOW() - INTERVAL '${days} days'
         GROUP BY person_id, session_start
@@ -191,7 +208,7 @@ export class BroadcastSessionService {
       // Get most used tags separately
       const tagsSql = `
         SELECT tag, COUNT(*) as count
-        FROM broadcast_sessions, unnest(tags) as tag
+        FROM affiliate_api_snapshots, unnest(tags) as tag
         WHERE person_id = $1
           AND observed_at >= NOW() - INTERVAL '${days} days'
         GROUP BY tag
@@ -236,6 +253,8 @@ export class BroadcastSessionService {
       is_hd: row.is_hd,
       image_url: row.image_url,
       image_url_360x270: row.image_url_360x270,
+      image_path: row.image_path,
+      image_path_360x270: row.image_path_360x270,
       created_at: row.created_at,
     };
   }
