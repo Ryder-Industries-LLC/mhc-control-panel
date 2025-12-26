@@ -1,6 +1,8 @@
-# Fixes Needed - December 24, 2025
+# Fixes Needed - December 26, 2025
 
 Based on user testing feedback from TESTING_GUIDE.md
+
+**Last Updated**: December 26, 2025
 
 ## CRITICAL - Tabs Not Visible ✅ FIXED
 
@@ -37,25 +39,35 @@ Based on user testing feedback from TESTING_GUIDE.md
 - Created `.username-with-role` wrapper with flex-column layout
 - Role badge now displays above username in all 4 tabs
 
-### 5. Fix Live Status Detection (FALSE POSITIVES)
+### 5. Fix Live Status Detection (FALSE POSITIVES) ✅ FIXED
+
 **Issue**: Users showing as "live" when they're actually offline
+
 **Examples**:
+
 - `samueldixky` - Shows live but ended 4h 45m ago
 - `adam_21cm` - Shows live but duration suggests show ended
 
 **Root Cause**:
+
 - Not checking if broadcast session has ended
 - Relying on `current_show` field which may be stale
 - No end time tracking for broadcasts
 
-**Fix Needed**:
-- Add logic to check if session is actually still active
-- Compare start time + duration vs current time
-- Don't show as "live" if session has likely ended
+**Fix Applied** (December 26, 2025):
 
-**Files to Modify**:
-- `server/src/services/person.service.ts` - Add live status calculation
-- Database - Ensure we're tracking session end times
+- Added `session_observed_at` field to track when session was last observed
+- Implemented 30-minute staleness check in `isSessionLive()` (Profile.tsx) and `isPersonLive()` (Users.tsx)
+- Only show "LIVE" if session was observed in the last 30 minutes AND has `current_show` value
+- Hudson route auto-ends sessions when user goes offline via Affiliate API
+
+**Files Modified**:
+
+- `server/src/services/person.service.ts` - Added `session_observed_at` to query
+- `client/src/api/client.ts` - Added `session_observed_at` to interface
+- `client/src/pages/Profile.tsx` - Added `isSessionLive()` helper
+- `client/src/pages/Users.tsx` - Added `isPersonLive()` helper
+- `server/src/routes/hudson.ts` - Auto-end session when offline
 
 ### 6. Default/Placeholder Images
 **Issue**: Chaturbate replaces user images with branded placeholder after user goes offline
@@ -67,10 +79,23 @@ Based on user testing feedback from TESTING_GUIDE.md
 - Size check or image comparison to detect placeholder
 - Keep history of images per user, show most recent valid one
 
-### 7. Add Live/Offline Toggle Filter
+### 7. Add Live/Offline Toggle Filter ✅ FIXED
+
 **File**: `client/src/pages/Users.tsx`
+
 **Requested**: Toggle button to filter by online/offline status
-**Fix**: Add filter button similar to role filters
+
+**Fix Applied** (December 26, 2025):
+
+- Added "Live Now" stat card to Users → Directory page
+- Card shows count of currently live users (using 30-minute staleness check)
+- Clicking card filters directory to only show live users
+- Added red-themed styling for live indicator (`.stat-card.stat-live`)
+
+**Files Modified**:
+
+- `client/src/pages/Users.tsx` - Added `'live'` to StatFilter type, filter logic, and UI card
+- `client/src/pages/Users.css` - Added `.stat-card.stat-live` styling
 
 ## MEDIUM PRIORITY FIXES
 
@@ -145,26 +170,31 @@ Based on user testing feedback from TESTING_GUIDE.md
 ## IMPLEMENTATION PRIORITY
 
 **Phase 1** (Do Now): ✅ COMPLETE
+
 1. ✅ Fix missing tabs (cache issue)
 2. ✅ Age column population
 3. ✅ Show all tags
 4. ✅ Sticky headers
 5. ✅ Move role badge
 
-**Phase 2** (Critical Functionality):
-6. Fix live status detection
-7. Add live/offline filter
-8. Fix admin config form
+**Phase 2** (Critical Functionality): ✅ MOSTLY COMPLETE
+
+1. ✅ Fix live status detection
+2. ✅ Add live/offline filter
+3. Fix admin config form (still pending)
 
 **Phase 3** (Polish):
-9. Improve error messages
-10. Fix timestamp formats
-11. Image validation
+
+1. Improve error messages
+2. Fix timestamp formats
+3. Image validation
 
 **Phase 4** (Future Enhancement):
-12. Notes system
-13. Browser automation
-14. CBHours polling integration
+
+1. Notes system
+2. Browser automation
+3. CBHours polling integration
+4. Tailwind CSS migration for professional styling
 
 ## TESTING AFTER FIXES
 
