@@ -8,6 +8,35 @@ interface ProfilePageProps {}
 
 type TabType = 'snapshot' | 'sessions' | 'profile' | 'interactions';
 
+// Check if a session is currently live (observed within the last 30 minutes)
+const isSessionLive = (session: any): boolean => {
+  if (!session?.observed_at || !session?.current_show) return false;
+  const observedAt = new Date(session.observed_at);
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+  return observedAt > thirtyMinutesAgo;
+};
+
+// Get the best available image URL
+// - If live: use Chaturbate's real-time thumbnail
+// - If offline: use our locally cached image
+const getSessionImageUrl = (session: any, isLive: boolean): string | null => {
+  if (!session) return null;
+
+  if (isLive) {
+    // When live, prefer real-time Chaturbate image
+    return session.image_url_360x270 || session.image_path_360x270
+      ? `http://localhost:3000/images/${session.image_path_360x270}`
+      : null;
+  }
+
+  // When offline, prefer local cached image
+  if (session.image_path_360x270) {
+    return `http://localhost:3000/images/${session.image_path_360x270}`;
+  }
+  // Fall back to external URL if no local cache
+  return session.image_url_360x270 || null;
+};
+
 const Profile: React.FC<ProfilePageProps> = () => {
   const { username: urlUsername } = useParams<{ username: string }>();
   const navigate = useNavigate();
@@ -162,15 +191,15 @@ const Profile: React.FC<ProfilePageProps> = () => {
           {/* Profile Header */}
           <div className="profile-header-card">
             <div className="profile-header-content">
-              {((profileData.latestSession?.image_url_360x270) || (profileData.profile?.photos && profileData.profile.photos.length > 0)) && (
+              {(getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile?.photos && profileData.profile.photos.length > 0)) && (
                 <div className="profile-image-container">
-                  {profileData.latestSession?.current_show && (
+                  {isSessionLive(profileData.latestSession) && (
                     <div className="live-indicator">
                       ● LIVE
                     </div>
                   )}
                   <img
-                    src={profileData.latestSession?.image_url_360x270 || (profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url)}
+                    src={getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url)}
                     alt={profileData.person.username}
                     className="profile-image"
                     width="360"
@@ -198,12 +227,12 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 </h2>
                 <div className="profile-header-meta">
                   {/* Broadcasting Status */}
-                  {profileData.latestSession?.current_show && (
+                  {isSessionLive(profileData.latestSession) && (
                     <span className="status-badge status-live">
                       ● LIVE
                     </span>
                   )}
-                  {!profileData.latestSession?.current_show && (
+                  {!isSessionLive(profileData.latestSession) && (
                     <span className="status-badge status-offline">
                       ○ OFFLINE
                     </span>
@@ -252,9 +281,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   )}
 
                   {/* Show Start Time (if live) or Last Seen (if offline) */}
-                  {profileData.latestSession?.current_show && profileData.latestSession?.observed_at ? (
+                  {isSessionLive(profileData.latestSession) ? (
                     <span className="show-start-badge">
-                      Show Started: {new Date(profileData.latestSession.observed_at).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'short', timeStyle: 'short' })} ET
+                      Live since: {new Date(profileData.latestSession.session_start).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'short', timeStyle: 'short' })} ET
                     </span>
                   ) : (
                     (profileData.latestSession?.observed_at || profileData.profile?.last_seen_online) && (

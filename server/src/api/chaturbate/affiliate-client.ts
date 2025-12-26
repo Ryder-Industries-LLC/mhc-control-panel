@@ -156,15 +156,43 @@ export class ChaturbateAffiliateClient {
 
   /**
    * Get a specific room by username
+   * Searches through all pages to find the user
    */
   async getRoomByUsername(username: string, options?: OnlineRoomsOptions): Promise<OnlineRoom | null> {
-    const response = await this.getOnlineRooms({
-      ...options,
-      limit: 500, // Get more results to increase chance of finding user
-    });
+    const limit = 500; // Max per request
+    let offset = 0;
+    const searchUsername = username.toLowerCase();
 
-    const room = response.results.find(r => r.username.toLowerCase() === username.toLowerCase());
-    return room || null;
+    // Search through all pages until we find the user or exhaust results
+    while (true) {
+      const response = await this.getOnlineRooms({
+        ...options,
+        limit,
+        offset,
+      });
+
+      // Search for user in this batch
+      const room = response.results.find(r => r.username.toLowerCase() === searchUsername);
+      if (room) {
+        logger.info(`Found user in Affiliate API`, { username, offset });
+        return room;
+      }
+
+      // Check if we've searched all rooms
+      if (response.results.length === 0 || offset + response.results.length >= response.count) {
+        logger.debug(`User not found in Affiliate API after searching all rooms`, {
+          username,
+          totalSearched: offset + response.results.length,
+          totalOnline: response.count
+        });
+        return null;
+      }
+
+      offset += limit;
+
+      // Add small delay between requests to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
   }
 
   /**

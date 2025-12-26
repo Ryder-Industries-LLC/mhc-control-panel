@@ -131,8 +131,13 @@ export class ChaturbateEventsClient {
           logger.debug('Longpoll timeout, continuing...');
           return;
         }
+        if (error.response?.status === 400) {
+          logger.error('Events API returned 400 Bad Request - token is likely expired or invalid. Generate a new token at https://chaturbate.com/statsapi/authtoken/ (select Events API scope) and update CHATURBATE_EVENTS_TOKEN in .env');
+          // Don't stop - keep retrying in case token gets updated
+          return;
+        }
         if (error.response?.status === 401) {
-          logger.error('Events API authentication failed - check token');
+          logger.error('Events API authentication failed - check token at https://chaturbate.com/statsapi/authtoken/');
           this.stop();
           return;
         }

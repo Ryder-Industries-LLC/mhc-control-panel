@@ -18,6 +18,7 @@ interface PersonWithSource {
   snapshot_count: number;
   image_url: string | null;
   current_show: string | null;
+  session_observed_at: string | null;
   tags: string[] | null;
   age: number | null;
 }
@@ -57,6 +58,17 @@ interface FeedCacheStatus {
 }
 
 type TabType = 'directory' | 'following' | 'followers' | 'unfollowed';
+type StatFilter = 'all' | 'live' | 'priority2' | 'priority1' | 'with_image' | 'models' | 'viewers';
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+
+// Check if a session is currently live (observed within the last 30 minutes)
+const isPersonLive = (person: PersonWithSource): boolean => {
+  if (!person.session_observed_at || !person.current_show) return false;
+  const observedAt = new Date(person.session_observed_at);
+  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+  return observedAt > thirtyMinutesAgo;
+};
 
 const Users: React.FC = () => {
   const location = useLocation();
@@ -79,6 +91,11 @@ const Users: React.FC = () => {
   const [priorityNotes, setPriorityNotes] = useState('');
   const [lookupLoading, setLookupLoading] = useState<string | null>(null);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [statFilter, setStatFilter] = useState<StatFilter>('all');
+
   // Lookup/Queue integration state
   const [lookupUsername, setLookupUsername] = useState('');
   const [lookupResult, setLookupResult] = useState<LookupResponse | null>(null);
@@ -88,12 +105,14 @@ const Users: React.FC = () => {
   const [followingUsers, setFollowingUsers] = useState<FollowingUser[]>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
   const [followingStats, setFollowingStats] = useState<any>(null);
+  const [followingFilter, setFollowingFilter] = useState<'all' | 'with_image' | 'models' | 'viewers' | 'unknown'>('all');
 
   // Followers tab state
   const [followerUsers, setFollowerUsers] = useState<FollowerUser[]>([]);
   const [followersLoading, setFollowersLoading] = useState(false);
   const [followersStats, setFollowersStats] = useState<any>(null);
   const [followerRoleFilter, setFollowerRoleFilter] = useState<string>('ALL');
+  const [followersFilter, setFollowersFilter] = useState<'all' | 'with_image' | 'models' | 'viewers' | 'unknown'>('all');
 
   // Unfollowed tab state
   const [unfollowedUsers, setUnfollowedUsers] = useState<UnfollowedUser[]>([]);
@@ -153,7 +172,8 @@ const Users: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await api.getAllPersons(1000, 0);
+      // Load all users - use a high limit to get everyone
+      const data = await api.getAllPersons(10000, 0);
       setPersons(data.persons);
     } catch (err) {
       setError('Failed to load persons');
@@ -185,11 +205,10 @@ const Users: React.FC = () => {
     try {
       setFollowingLoading(true);
       setError(null);
-      // TODO: Implement API endpoint to get following users with following_since
-      // For now, filter from persons
-      const data = await api.getAllPersons(1000, 0);
-      const following = data.persons.filter((p: any) => p.following === true);
-      setFollowingUsers(following);
+      // Use the dedicated following endpoint which returns all following users
+      const response = await fetch('http://localhost:3000/api/followers/following');
+      const data = await response.json();
+      setFollowingUsers(data.following || []);
     } catch (err) {
       setError('Failed to load following users');
       console.error(err);
@@ -202,10 +221,10 @@ const Users: React.FC = () => {
     try {
       setFollowersLoading(true);
       setError(null);
-      // TODO: Implement API endpoint to get followers with follower_since
-      const data = await api.getAllPersons(1000, 0);
-      const followers = data.persons.filter((p: any) => p.follower === true);
-      setFollowerUsers(followers);
+      // Use the dedicated followers endpoint which returns all followers
+      const response = await fetch('http://localhost:3000/api/followers/followers');
+      const data = await response.json();
+      setFollowerUsers(data.followers || []);
     } catch (err) {
       setError('Failed to load followers');
       console.error(err);
@@ -383,15 +402,37 @@ const Users: React.FC = () => {
       const hasTag = p.tags.some(tag => tag.toLowerCase().includes(tagFilter.toLowerCase()));
       if (!hasTag) return false;
     }
-    return true;
-  });
-
-  const filteredFollowers = followerUsers.filter(p => {
-    if (followerRoleFilter !== 'ALL' && p.role !== followerRoleFilter) {
-      return false;
+    // Apply stat filter
+    if (statFilter !== 'all') {
+      const priority = getPriorityLookup(p.username);
+      switch (statFilter) {
+        case 'live':
+          if (!isPersonLive(p)) return false;
+          break;
+        case 'priority2':
+          if (!priority || priority.status !== 'active') return false;
+          break;
+        case 'priority1':
+          if (!priority || priority.status !== 'pending') return false;
+          break;
+        case 'with_image':
+          if (!p.image_url) return false;
+          break;
+        case 'models':
+          if (p.role !== 'MODEL') return false;
+          break;
+        case 'viewers':
+          if (p.role !== 'VIEWER') return false;
+          break;
+      }
     }
     return true;
   });
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [roleFilter, searchQuery, tagFilter, statFilter]);
 
   const filteredUnfollowed = unfollowedUsers.filter(u => {
     if (!u.unfollower_at) return false;
@@ -418,6 +459,96 @@ const Users: React.FC = () => {
 
     return sortDirection === 'asc' ? comparison : -comparison;
   });
+
+  // Pagination calculations
+  const totalPages = Math.ceil(sortedPersons.length / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedPersons = sortedPersons.slice(startIndex, endIndex);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+    // Scroll to top of table
+    document.querySelector('.users-content')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleStatClick = (filter: StatFilter) => {
+    setStatFilter(statFilter === filter ? 'all' : filter);
+  };
+
+  // Pagination component
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+
+    const pages: (number | string)[] = [];
+    const maxVisible = 5;
+
+    if (totalPages <= maxVisible + 2) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push('...');
+
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+
+      for (let i = start; i <= end; i++) pages.push(i);
+
+      if (currentPage < totalPages - 2) pages.push('...');
+      pages.push(totalPages);
+    }
+
+    return (
+      <div className="pagination">
+        <button
+          className="pagination-btn"
+          onClick={() => handlePageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+        >
+          ‹ Prev
+        </button>
+
+        {pages.map((page, idx) => (
+          typeof page === 'number' ? (
+            <button
+              key={idx}
+              className={`pagination-btn ${currentPage === page ? 'active' : ''}`}
+              onClick={() => handlePageChange(page)}
+            >
+              {page}
+            </button>
+          ) : (
+            <span key={idx} className="pagination-ellipsis">...</span>
+          )
+        ))}
+
+        <button
+          className="pagination-btn"
+          onClick={() => handlePageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+        >
+          Next ›
+        </button>
+
+        <select
+          className="page-size-select"
+          value={pageSize}
+          onChange={(e) => {
+            setPageSize(Number(e.target.value));
+            setCurrentPage(1);
+          }}
+        >
+          {PAGE_SIZE_OPTIONS.map(size => (
+            <option key={size} value={size}>{size} per page</option>
+          ))}
+        </select>
+
+        <span className="pagination-info">
+          {startIndex + 1}-{Math.min(endIndex, sortedPersons.length)} of {sortedPersons.length}
+        </span>
+      </div>
+    );
+  };
 
   const getRoleBadgeClass = (role: string) => {
     switch (role) {
@@ -453,45 +584,40 @@ const Users: React.FC = () => {
 
   const renderDirectoryTab = () => (
     <>
-      {/* Lookup/Search Section */}
-      <div className="lookup-section">
-        <div className="lookup-header">
-          <h2>Lookup / Add User</h2>
-        </div>
-        <div className="lookup-controls">
-          <div className="form-group">
-            <input
-              type="text"
-              value={lookupUsername}
-              onChange={(e) => setLookupUsername(e.target.value.replace(/\//g, ''))}
-              placeholder="Enter username to lookup or add..."
-              className="lookup-input"
-              list="username-suggestions"
-              autoComplete="off"
-            />
-            <datalist id="username-suggestions">
-              {usernameSuggestions.map((suggestion, idx) => (
-                <option key={idx} value={suggestion} />
-              ))}
-            </datalist>
-          </div>
-          <button onClick={handleLookup} className="btn-primary">
-            Lookup / Queue
-          </button>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
+      {/* Stats Cards - Clickable to filter */}
       <div className="header-stats">
-        <div className="stat-card">
+        <div
+          className={`stat-card clickable ${statFilter === 'all' ? 'active' : ''}`}
+          onClick={() => handleStatClick('all')}
+        >
           <div className="stat-value">{persons.length}</div>
           <div className="stat-label">Total Users</div>
         </div>
-        <div className="stat-card">
+        <div
+          className={`stat-card clickable stat-live ${statFilter === 'live' ? 'active' : ''}`}
+          onClick={() => handleStatClick('live')}
+        >
+          <div className="stat-value">{persons.filter(p => isPersonLive(p)).length}</div>
+          <div className="stat-label">Live Now</div>
+        </div>
+        <div
+          className={`stat-card clickable ${statFilter === 'with_image' ? 'active' : ''}`}
+          onClick={() => handleStatClick('with_image')}
+        >
+          <div className="stat-value">{persons.filter(p => p.image_url).length}</div>
+          <div className="stat-label">With Images</div>
+        </div>
+        <div
+          className={`stat-card clickable ${statFilter === 'priority2' ? 'active' : ''}`}
+          onClick={() => handleStatClick('priority2')}
+        >
           <div className="stat-value">{priorityLookups.filter(p => p.status === 'active').length}</div>
           <div className="stat-label">Priority 2 (Active)</div>
         </div>
-        <div className="stat-card">
+        <div
+          className={`stat-card clickable ${statFilter === 'priority1' ? 'active' : ''}`}
+          onClick={() => handleStatClick('priority1')}
+        >
           <div className="stat-value">{priorityLookups.filter(p => p.status === 'pending').length}</div>
           <div className="stat-label">Priority 1 (Pending)</div>
         </div>
@@ -504,6 +630,14 @@ const Users: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Active filter indicator */}
+      {statFilter !== 'all' && (
+        <div className="active-filter-banner">
+          Filtering by: <strong>{statFilter.replace('_', ' ')}</strong>
+          <button onClick={() => setStatFilter('all')}>Clear ✕</button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="filter-controls">
@@ -567,6 +701,9 @@ const Users: React.FC = () => {
         ))}
       </div>
 
+      {/* Pagination - Top */}
+      {renderPagination()}
+
       {/* Directory Table */}
       <div className="users-content">
         <table className="users-table">
@@ -594,16 +731,16 @@ const Users: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {sortedPersons.map((person) => {
+            {paginatedPersons.map((person) => {
               const priority = getPriorityLookup(person.username);
               return (
                 <tr key={person.id}>
                   <td className="username-cell">
                     <div className="username-with-role">
-                      <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                      <Link to={`/profile/${person.username}`}>
+                      <Link to={`/profile/${person.username}`} className="username-link">
                         {person.username}
                       </Link>
+                      <span className={`${getRoleBadgeClass(person.role)} role-small`}>{person.role}</span>
                     </div>
                   </td>
                   <td className="image-cell">
@@ -614,12 +751,12 @@ const Users: React.FC = () => {
                           alt={person.username}
                           className="user-image"
                         />
-                        {person.current_show && (
+                        {isPersonLive(person) && (
                           <span className="live-dot" title="Currently live">●</span>
                         )}
                         <div className="image-popup">
                           <img src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`} alt={person.username} />
-                          {person.current_show && (
+                          {isPersonLive(person) && (
                             <div className="popup-live-badge">● LIVE</div>
                           )}
                         </div>
@@ -698,19 +835,43 @@ const Users: React.FC = () => {
           </tbody>
         </table>
 
-        {sortedPersons.length === 0 && (
+        {paginatedPersons.length === 0 && (
           <div className="empty-state">
             <p>No users found matching your filters.</p>
           </div>
         )}
       </div>
+
+      {/* Pagination - Bottom */}
+      {renderPagination()}
     </>
   );
 
-  const renderFollowingTab = () => (
+  const renderFollowingTab = () => {
+    const withImages = followingUsers.filter(p => p.image_url).length;
+    const models = followingUsers.filter(p => p.role === 'MODEL').length;
+    const viewers = followingUsers.filter(p => p.role === 'VIEWER').length;
+    const unknown = followingUsers.length - models - viewers;
+
+    // Filter following users based on selected filter
+    const filteredFollowing = followingUsers.filter(p => {
+      switch (followingFilter) {
+        case 'with_image': return !!p.image_url;
+        case 'models': return p.role === 'MODEL';
+        case 'viewers': return p.role === 'VIEWER';
+        case 'unknown': return p.role !== 'MODEL' && p.role !== 'VIEWER';
+        default: return true;
+      }
+    });
+
+    const handleFollowingFilterClick = (filter: typeof followingFilter) => {
+      setFollowingFilter(followingFilter === filter ? 'all' : filter);
+    };
+
+    return (
     <>
       <div className="tab-header">
-        <h2>Following ({followingUsers.length})</h2>
+        <h2>Following</h2>
         <div className="tab-actions">
           <label className="btn-primary file-upload-btn">
             {followingLoading ? 'Updating...' : 'Update Following List'}
@@ -724,6 +885,53 @@ const Users: React.FC = () => {
           </label>
         </div>
       </div>
+
+      {/* Stats Cards for Following - Clickable */}
+      <div className="header-stats">
+        <div
+          className={`stat-card clickable ${followingFilter === 'all' ? 'active' : ''}`}
+          onClick={() => handleFollowingFilterClick('all')}
+        >
+          <div className="stat-value">{followingUsers.length}</div>
+          <div className="stat-label">Total Following</div>
+        </div>
+        <div
+          className={`stat-card clickable ${followingFilter === 'with_image' ? 'active' : ''}`}
+          onClick={() => handleFollowingFilterClick('with_image')}
+        >
+          <div className="stat-value">{withImages}</div>
+          <div className="stat-label">With Images</div>
+        </div>
+        <div
+          className={`stat-card clickable ${followingFilter === 'models' ? 'active' : ''}`}
+          onClick={() => handleFollowingFilterClick('models')}
+        >
+          <div className="stat-value">{models}</div>
+          <div className="stat-label">Models</div>
+        </div>
+        <div
+          className={`stat-card clickable ${followingFilter === 'viewers' ? 'active' : ''}`}
+          onClick={() => handleFollowingFilterClick('viewers')}
+        >
+          <div className="stat-value">{viewers}</div>
+          <div className="stat-label">Viewers</div>
+        </div>
+        <div
+          className={`stat-card clickable ${followingFilter === 'unknown' ? 'active' : ''}`}
+          onClick={() => handleFollowingFilterClick('unknown')}
+        >
+          <div className="stat-value">{unknown}</div>
+          <div className="stat-label">Unknown</div>
+        </div>
+      </div>
+
+      {/* Active filter indicator */}
+      {followingFilter !== 'all' && (
+        <div className="active-filter-banner">
+          Filtering by: <strong>{followingFilter.replace('_', ' ')}</strong> ({filteredFollowing.length} users)
+          <button onClick={() => setFollowingFilter('all')}>Clear X</button>
+        </div>
+      )}
 
       {followingStats && (
         <div className="stats-banner">
@@ -747,7 +955,7 @@ const Users: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {followingUsers.map((person) => (
+            {filteredFollowing.map((person) => (
               <tr key={person.id}>
                 <td className="username-cell">
                   <div className="username-with-role">
@@ -791,19 +999,41 @@ const Users: React.FC = () => {
           </tbody>
         </table>
 
-        {followingUsers.length === 0 && (
+        {filteredFollowing.length === 0 && (
           <div className="empty-state">
-            <p>No following users. Upload your following list to populate this tab.</p>
+            <p>{followingUsers.length === 0 ? 'No following users. Upload your following list to populate this tab.' : 'No users match the selected filter.'}</p>
           </div>
         )}
       </div>
     </>
   );
+  };
 
-  const renderFollowersTab = () => (
+  const renderFollowersTab = () => {
+    const withImages = followerUsers.filter(p => p.image_url).length;
+    const models = followerUsers.filter(p => p.role === 'MODEL').length;
+    const viewers = followerUsers.filter(p => p.role === 'VIEWER').length;
+    const unknown = followerUsers.length - models - viewers;
+
+    // Filter followers based on selected filter
+    const filteredFollowersList = followerUsers.filter(p => {
+      switch (followersFilter) {
+        case 'with_image': return !!p.image_url;
+        case 'models': return p.role === 'MODEL';
+        case 'viewers': return p.role === 'VIEWER';
+        case 'unknown': return p.role !== 'MODEL' && p.role !== 'VIEWER';
+        default: return true;
+      }
+    });
+
+    const handleFollowersFilterClick = (filter: typeof followersFilter) => {
+      setFollowersFilter(followersFilter === filter ? 'all' : filter);
+    };
+
+    return (
     <>
       <div className="tab-header">
-        <h2>Followers ({followerUsers.length})</h2>
+        <h2>Followers</h2>
         <div className="tab-actions">
           <label className="btn-primary file-upload-btn">
             {followersLoading ? 'Updating...' : 'Update Followers List'}
@@ -818,6 +1048,53 @@ const Users: React.FC = () => {
         </div>
       </div>
 
+      {/* Stats Cards for Followers - Clickable */}
+      <div className="header-stats">
+        <div
+          className={`stat-card clickable ${followersFilter === 'all' ? 'active' : ''}`}
+          onClick={() => handleFollowersFilterClick('all')}
+        >
+          <div className="stat-value">{followerUsers.length}</div>
+          <div className="stat-label">Total Followers</div>
+        </div>
+        <div
+          className={`stat-card clickable ${followersFilter === 'with_image' ? 'active' : ''}`}
+          onClick={() => handleFollowersFilterClick('with_image')}
+        >
+          <div className="stat-value">{withImages}</div>
+          <div className="stat-label">With Images</div>
+        </div>
+        <div
+          className={`stat-card clickable ${followersFilter === 'models' ? 'active' : ''}`}
+          onClick={() => handleFollowersFilterClick('models')}
+        >
+          <div className="stat-value">{models}</div>
+          <div className="stat-label">Models</div>
+        </div>
+        <div
+          className={`stat-card clickable ${followersFilter === 'viewers' ? 'active' : ''}`}
+          onClick={() => handleFollowersFilterClick('viewers')}
+        >
+          <div className="stat-value">{viewers}</div>
+          <div className="stat-label">Viewers</div>
+        </div>
+        <div
+          className={`stat-card clickable ${followersFilter === 'unknown' ? 'active' : ''}`}
+          onClick={() => handleFollowersFilterClick('unknown')}
+        >
+          <div className="stat-value">{unknown}</div>
+          <div className="stat-label">Unknown</div>
+        </div>
+      </div>
+
+      {/* Active filter indicator */}
+      {followersFilter !== 'all' && (
+        <div className="active-filter-banner">
+          Filtering by: <strong>{followersFilter.replace('_', ' ')}</strong> ({filteredFollowersList.length} users)
+          <button onClick={() => setFollowersFilter('all')}>Clear X</button>
+        </div>
+      )}
+
       {followersStats && (
         <div className="stats-banner">
           <div className="stat-item">New Followers: {followersStats.newFollowers}</div>
@@ -825,29 +1102,6 @@ const Users: React.FC = () => {
           <div className="stat-item">Total: {followersStats.total}</div>
         </div>
       )}
-
-      <div className="filter-controls">
-        <div className="role-filters">
-          <button
-            className={followerRoleFilter === 'ALL' ? 'filter-btn active' : 'filter-btn'}
-            onClick={() => setFollowerRoleFilter('ALL')}
-          >
-            All ({followerUsers.length})
-          </button>
-          <button
-            className={followerRoleFilter === 'MODEL' ? 'filter-btn active' : 'filter-btn'}
-            onClick={() => setFollowerRoleFilter('MODEL')}
-          >
-            Models ({followerUsers.filter(p => p.role === 'MODEL').length})
-          </button>
-          <button
-            className={followerRoleFilter === 'VIEWER' ? 'filter-btn active' : 'filter-btn'}
-            onClick={() => setFollowerRoleFilter('VIEWER')}
-          >
-            Viewers ({followerUsers.filter(p => p.role === 'VIEWER').length})
-          </button>
-        </div>
-      </div>
 
       <div className="users-content">
         <table className="users-table">
@@ -862,7 +1116,7 @@ const Users: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {filteredFollowers.map((person) => (
+            {filteredFollowersList.map((person) => (
               <tr key={person.id}>
                 <td className="username-cell">
                   <div className="username-with-role">
@@ -896,14 +1150,15 @@ const Users: React.FC = () => {
           </tbody>
         </table>
 
-        {filteredFollowers.length === 0 && (
+        {filteredFollowersList.length === 0 && (
           <div className="empty-state">
-            <p>No followers found. Upload your followers list to populate this tab.</p>
+            <p>{followerUsers.length === 0 ? 'No followers found. Upload your followers list to populate this tab.' : 'No users match the selected filter.'}</p>
           </div>
         )}
       </div>
     </>
   );
+  };
 
   const renderUnfollowedTab = () => {
     const totalUnfollows = filteredUnfollowed.length;

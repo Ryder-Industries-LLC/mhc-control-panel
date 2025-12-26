@@ -151,7 +151,14 @@ const Follow: React.FC = () => {
   const handleAutoScrape = async (type: 'following' | 'followers') => {
     try {
       setScraping(true);
-      setScrapeStatus(`Scraping ${type}... (this may take 30-60 seconds)`);
+      setScrapeStatus(`⏳ Scraping ${type}... DO NOT navigate away! This may take 2-5 minutes for large lists.`);
+
+      // Warn user if they try to navigate away
+      const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+        e.preventDefault();
+        e.returnValue = 'Scraping in progress! Are you sure you want to leave?';
+      };
+      window.addEventListener('beforeunload', handleBeforeUnload);
 
       const endpoint = type === 'following'
         ? 'http://localhost:3000/api/followers/scrape-following'
@@ -164,18 +171,21 @@ const Follow: React.FC = () => {
 
       const data = await response.json();
 
+      // Remove navigation warning
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+
       if (data.success) {
-        setScrapeStatus(`✓ Updated: ${data.stats[type === 'following' ? 'totalFollowing' : 'totalFollowers']} total, ${data.stats[type === 'following' ? 'newFollowing' : 'newFollowers']} new`);
+        const totalCount = data.stats[type === 'following' ? 'totalFollowing' : 'totalFollowers'];
+        const newCount = data.stats[type === 'following' ? 'newFollowing' : 'newFollowers'];
+        setScrapeStatus(`✓ Complete! Total: ${totalCount} users, New: ${newCount} users. Click here to dismiss.`);
         await loadData();
-        setTimeout(() => setScrapeStatus(null), 5000);
+        // Don't auto-dismiss - let user click to dismiss
       } else {
-        setScrapeStatus(`✗ ${data.error || 'Failed to scrape'}`);
-        setTimeout(() => setScrapeStatus(null), 5000);
+        setScrapeStatus(`✗ ${data.error || 'Failed to scrape'}. Click to dismiss.`);
       }
     } catch (err) {
       console.error(err);
-      setScrapeStatus('✗ Error during automated scraping');
-      setTimeout(() => setScrapeStatus(null), 5000);
+      setScrapeStatus('✗ Error during automated scraping. Click to dismiss.');
     } finally {
       setScraping(false);
     }
@@ -272,7 +282,11 @@ const Follow: React.FC = () => {
             </div>
           )}
           {scrapeStatus && (
-            <div className={scrapeStatus.startsWith('✓') ? 'upload-status success' : 'upload-status error'}>
+            <div
+              className={scrapeStatus.startsWith('✓') ? 'upload-status success' : scrapeStatus.startsWith('⏳') ? 'upload-status warning' : 'upload-status error'}
+              onClick={() => !scraping && setScrapeStatus(null)}
+              style={{ cursor: scraping ? 'default' : 'pointer' }}
+            >
               {scrapeStatus}
             </div>
           )}

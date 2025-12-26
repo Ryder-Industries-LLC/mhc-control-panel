@@ -25,8 +25,28 @@ export interface BroadcastSession {
 export class BroadcastSessionService {
   /**
    * Record a broadcast session snapshot from Affiliate API
+   *
+   * This method intelligently handles session continuity:
+   * - If a session with the same session_start exists (within 10 min tolerance), update it
+   * - Otherwise, create a new session record
    */
   static async recordSession(personId: string, roomData: OnlineRoom): Promise<BroadcastSession> {
+    // Calculate session start time from seconds_online
+    const sessionStart = new Date(Date.now() - roomData.seconds_online * 1000);
+
+    // Check if there's an existing session for this broadcast
+    // We use a 10-minute tolerance to account for slight timing variations
+    const existingSessionSql = `
+      SELECT id, session_start FROM affiliate_api_snapshots
+      WHERE person_id = $1
+        AND session_start BETWEEN $2 - INTERVAL '10 minutes' AND $2 + INTERVAL '10 minutes'
+      ORDER BY observed_at DESC
+      LIMIT 1
+    `;
+
+    const existingResult = await query(existingSessionSql, [personId, sessionStart]);
+    const existingSession = existingResult.rows[0];
+
     // Download and save images locally
     const imagePaths = await ImageStorageService.downloadBoth(
       roomData.image_url,
@@ -34,68 +54,98 @@ export class BroadcastSessionService {
       roomData.username
     );
 
-    const sql = `
-      INSERT INTO affiliate_api_snapshots (
-        person_id, observed_at, seconds_online, session_start,
-        current_show, room_subject, tags,
-        num_users, num_followers, is_hd,
-        image_url, image_url_360x270,
-        image_path, image_path_360x270
-      ) VALUES (
-        $1, NOW(), $2, NOW() - make_interval(secs => $2::integer),
-        $3, $4, $5,
-        $6, $7, $8,
-        $9, $10,
-        $11, $12
-      )
-      ON CONFLICT (person_id, observed_at) DO UPDATE SET
-        seconds_online = EXCLUDED.seconds_online,
-        session_start = EXCLUDED.session_start,
-        current_show = EXCLUDED.current_show,
-        room_subject = EXCLUDED.room_subject,
-        tags = EXCLUDED.tags,
-        num_users = EXCLUDED.num_users,
-        num_followers = EXCLUDED.num_followers,
-        is_hd = EXCLUDED.is_hd,
-        image_url = EXCLUDED.image_url,
-        image_url_360x270 = EXCLUDED.image_url_360x270,
-        image_path = EXCLUDED.image_path,
-        image_path_360x270 = EXCLUDED.image_path_360x270
-      RETURNING *
-    `;
+    let result;
 
-    const values = [
-      personId,
-      roomData.seconds_online,
-      roomData.current_show,
-      roomData.room_subject,
-      roomData.tags,
-      roomData.num_users,
-      roomData.num_followers,
-      roomData.is_hd,
-      roomData.image_url,
-      roomData.image_url_360x270,
-      imagePaths.thumbnail,
-      imagePaths.full,
-    ];
+    if (existingSession) {
+      // Update the existing session with latest data
+      const updateSql = `
+        UPDATE affiliate_api_snapshots SET
+          observed_at = NOW(),
+          seconds_online = $2,
+          current_show = $3,
+          room_subject = $4,
+          tags = $5,
+          num_users = $6,
+          num_followers = $7,
+          is_hd = $8,
+          image_url = $9,
+          image_url_360x270 = $10,
+          image_path = COALESCE($11, image_path),
+          image_path_360x270 = COALESCE($12, image_path_360x270)
+        WHERE id = $1
+        RETURNING *
+      `;
 
-    try {
-      const result = await query(sql, values);
-      const row = result.rows[0];
+      const updateValues = [
+        existingSession.id,
+        roomData.seconds_online,
+        roomData.current_show,
+        roomData.room_subject,
+        roomData.tags,
+        roomData.num_users,
+        roomData.num_followers,
+        roomData.is_hd,
+        roomData.image_url,
+        roomData.image_url_360x270,
+        imagePaths.thumbnail,
+        imagePaths.full,
+      ];
 
-      logger.info('Broadcast session recorded', {
+      result = await query(updateSql, updateValues);
+
+      logger.debug('Broadcast session updated', {
+        personId,
+        username: roomData.username,
+        sessionId: existingSession.id,
+        secondsOnline: roomData.seconds_online,
+      });
+    } else {
+      // Create a new session
+      const insertSql = `
+        INSERT INTO affiliate_api_snapshots (
+          person_id, observed_at, seconds_online, session_start,
+          current_show, room_subject, tags,
+          num_users, num_followers, is_hd,
+          image_url, image_url_360x270,
+          image_path, image_path_360x270
+        ) VALUES (
+          $1, NOW(), $2, $3,
+          $4, $5, $6,
+          $7, $8, $9,
+          $10, $11,
+          $12, $13
+        )
+        RETURNING *
+      `;
+
+      const insertValues = [
+        personId,
+        roomData.seconds_online,
+        sessionStart,
+        roomData.current_show,
+        roomData.room_subject,
+        roomData.tags,
+        roomData.num_users,
+        roomData.num_followers,
+        roomData.is_hd,
+        roomData.image_url,
+        roomData.image_url_360x270,
+        imagePaths.thumbnail,
+        imagePaths.full,
+      ];
+
+      result = await query(insertSql, insertValues);
+
+      logger.info('New broadcast session created', {
         personId,
         username: roomData.username,
         secondsOnline: roomData.seconds_online,
         numUsers: roomData.num_users,
         imageSaved: !!imagePaths.full,
       });
-
-      return this.mapRowToSession(row);
-    } catch (error) {
-      logger.error('Error recording broadcast session', { error, personId });
-      throw error;
     }
+
+    return this.mapRowToSession(result.rows[0]);
   }
 
   /**

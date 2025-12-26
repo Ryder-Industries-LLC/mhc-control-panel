@@ -132,7 +132,7 @@
 
 .label,
 .metric-label {
-  color: #a0aec0;
+  color: #cbd5e0;
   font-weight: 500;
   font-size: 14px;
   margin-bottom: 8px;
@@ -185,17 +185,17 @@
 }
 
 .session-date {
-  color: #cbd5e0;
+  color: #f7fafc;
   font-weight: 500;
 }
 
 .session-duration {
-  color: #667eea;
+  color: #a5b4fc;
   font-weight: 600;
 }
 
 .session-ended {
-  color: #a0aec0;
+  color: #f7fafc;
   font-size: 14px;
 }
 
@@ -246,7 +246,7 @@
 }
 
 .interaction-date {
-  color: #a0aec0;
+  color: #f7fafc;
   font-size: 12px;
 }
 
@@ -283,24 +283,24 @@
 }
 
 .interaction-type-enter .interaction-username-primary {
-  color: #a0aec0;
+  color: #38b2ac;
 }
 
 .interaction-type-leave {
   border-left-color: #4a5568;
-  opacity: 0.4;
+  opacity: 0.6;
 }
 
 .interaction-type-leave .interaction-username-primary {
-  color: #718096;
+  color: #a0aec0;
 }
 
 .interaction-type-leave .interaction-type-secondary {
-  color: #718096;
+  color: #a0aec0;
 }
 
 .interaction-type-leave .interaction-date {
-  color: #718096;
+  color: #a0aec0;
 }
 
 .interaction-type-follow {

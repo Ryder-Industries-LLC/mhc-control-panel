@@ -42,6 +42,7 @@ services:
       STATBATE_PLUS_SESSION_COOKIE: ${STATBATE_PLUS_SESSION_COOKIE:-}
       STATBATE_PLUS_XSRF_TOKEN: ${STATBATE_PLUS_XSRF_TOKEN:-}
     volumes:
+      - browser_data:/app/data
       - image_data:/app/data/images
     depends_on:
       db:
@@ -87,6 +88,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  browser_data:
     driver: local
   image_data:
     driver: local

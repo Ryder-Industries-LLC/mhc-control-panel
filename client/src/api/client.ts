@@ -30,6 +30,7 @@ export interface PersonWithSource extends Person {
   snapshot_count: number;
   image_url: string | null;
   current_show: string | null;
+  session_observed_at: string | null;
   tags: string[] | null;
   age: number | null;
   following: boolean;

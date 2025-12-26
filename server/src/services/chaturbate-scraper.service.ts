@@ -1,10 +1,15 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
+import puppeteerExtra from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { logger } from '../config/logger.js';
 import { FollowerScraperService } from './follower-scraper.service.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { promises as fs } from 'fs';
+
+// Add stealth plugin to avoid detection
+puppeteerExtra.use(StealthPlugin());
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,7 +35,26 @@ export class ChaturbateScraperService {
         userDataDir: this.userDataDir,
       });
 
-      this.browser = await puppeteer.launch({
+      // Remove browser profile lock files if they exist
+      try {
+        const lockFiles = [
+          path.join(this.userDataDir, 'SingletonLock'),
+          path.join(this.userDataDir, 'SingletonCookie'),
+          path.join(this.userDataDir, 'SingletonSocket'),
+        ];
+        for (const lockFile of lockFiles) {
+          try {
+            await fs.unlink(lockFile);
+            logger.info('Removed browser profile lock file', { file: lockFile });
+          } catch {
+            // File doesn't exist, ignore
+          }
+        }
+      } catch (error) {
+        logger.warn('Error cleaning browser profile locks', { error });
+      }
+
+      this.browser = await puppeteerExtra.launch({
         headless,
         userDataDir: this.userDataDir, // Persist cookies and session data
         args: [
@@ -39,7 +63,9 @@ export class ChaturbateScraperService {
           '--disable-dev-shm-usage',
           '--disable-accelerated-2d-canvas',
           '--disable-gpu',
+          '--disable-blink-features=AutomationControlled', // Hide automation
         ],
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       });
     }
     return this.browser;
@@ -186,11 +212,11 @@ export class ChaturbateScraperService {
       if (paginate) {
         logger.info('Collecting all pages...');
         let allHTML = '';
-        let pageNumber = 0;
+        let pageNumber = 1; // Start at page 1, not 0 (Chaturbate pagination starts at 1)
         const maxPages = 50; // Safety limit
         let emptyPageCount = 0;
 
-        while (pageNumber < maxPages && emptyPageCount < 2) {
+        while (pageNumber <= maxPages && emptyPageCount < 2) {
           // Construct page URL
           const pageUrl = baseUrl.includes('?')
             ? `${baseUrl}&page=${pageNumber}`
@@ -205,21 +231,49 @@ export class ChaturbateScraperService {
 
           // Check if we got redirected to login (not logged in)
           const currentUrl = page.url();
+          const pageTitle = await page.title();
+          logger.info(`Current URL after navigation: ${currentUrl}, Page title: "${pageTitle}"`);
 
-          if (currentUrl.includes('/auth/login')) {
+          if (currentUrl.includes('/auth/login') || currentUrl === 'https://chaturbate.com/' || currentUrl.includes('/?next=')) {
             if (appliedCookies) {
-              logger.warn('Redirected to login page even with cookies - cookies may be expired. Please re-import cookies.');
+              logger.warn('Redirected away from followed-cams page - cookies may be expired or invalid. Please re-import cookies.');
             } else {
-              logger.warn('Redirected to login page - not authenticated. Please import cookies first.');
+              logger.warn('Redirected away from followed-cams page - not authenticated. Please import cookies first.');
             }
             return pageNumber === 0 ? null : allHTML;
           }
 
-          // Wait for content to load
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          // Check for Cloudflare challenge page
+          if (pageTitle.includes('Just a moment')) {
+            logger.info(`Cloudflare challenge detected on page ${pageNumber}, waiting 15 seconds...`);
+            await new Promise(resolve => setTimeout(resolve, 15000));
 
-          // Count rooms on current page
-          const roomCount = await page.evaluate('document.querySelectorAll("li.room_list_room").length') as number;
+            // Check title again after waiting
+            const newTitle = await page.title();
+            if (newTitle.includes('Just a moment')) {
+              logger.warn(`Cloudflare challenge still present after waiting, skipping page ${pageNumber}`);
+              emptyPageCount++;
+              if (emptyPageCount >= 2) {
+                logger.info(`Two consecutive failed pages, stopping pagination`);
+                break;
+              }
+              pageNumber++;
+              continue;
+            }
+          }
+
+          // Wait for content to load
+          await new Promise(resolve => setTimeout(resolve, 5000));
+
+          // Add delay between pages to avoid rate limiting
+          if (pageNumber > 1) {
+            const delay = 3000 + Math.random() * 2000; // 3-5 second random delay
+            logger.info(`Adding ${Math.round(delay/1000)}s delay before next page to avoid rate limiting`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+
+          // Count rooms on current page (use [data-room] selector which matches Chaturbate's structure)
+          const roomCount = await page.evaluate('document.querySelectorAll("[data-room]").length') as number;
           logger.info(`Page ${pageNumber}: found ${roomCount} rooms`);
 
           if (roomCount === 0) {
@@ -358,11 +412,16 @@ export class ChaturbateScraperService {
         usernames: allUsernames,
       };
     } catch (error) {
-      logger.error('Error scraping following list', { error });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : '';
+      logger.error('Error scraping following list', {
+        error: errorMessage,
+        stack: errorStack
+      });
       return {
         success: false,
         usernames: [],
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: errorMessage,
       };
     } finally {
       if (page) {

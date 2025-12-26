@@ -9,17 +9,18 @@
   color: #333;
 }
 
-/* Card Styles */
+/* Card Styles - Dark Theme */
 .card {
-  background: white;
+  background: rgba(45, 55, 72, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   margin-bottom: 20px;
 }
 
 .card-header {
   padding: 20px;
-  border-bottom: 1px solid #e0e0e0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -28,7 +29,7 @@
 .card-header h2 {
   margin: 0;
   font-size: 1.5rem;
-  color: #333;
+  color: #fff;
 }
 
 .card-body {
@@ -72,17 +73,18 @@
   justify-content: space-between;
   align-items: center;
   padding: 10px;
-  background: #f9fafb;
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .status-label {
   font-weight: 600;
-  color: #6b7280;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .status-value {
-  color: #111827;
+  color: #fff;
   font-weight: 500;
 }
 
@@ -119,13 +121,13 @@
 .last-run-details {
   margin-top: 20px;
   padding-top: 20px;
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .last-run-details h3 {
   font-size: 1.125rem;
   margin-bottom: 15px;
-  color: #333;
+  color: #fff;
 }
 
 /* Form Styles */
@@ -141,24 +143,26 @@
   display: block;
   margin-bottom: 8px;
   font-weight: 600;
-  color: #374151;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .form-group input[type="number"],
 .form-group select {
   width: 100%;
   padding: 10px;
-  border: 1px solid #d1d5db;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 6px;
   font-size: 1rem;
   transition: border-color 0.2s;
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
 }
 
 .form-group input[type="number"]:focus,
 .form-group select:focus {
   outline: none;
   border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
 }
 
 .form-group input[type="checkbox"] {
@@ -171,12 +175,13 @@
 .checkbox-label {
   font-weight: 600;
   cursor: pointer;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .form-group small {
   display: block;
   margin-top: 4px;
-  color: #6b7280;
+  color: rgba(255, 255, 255, 0.6);
   font-size: 0.875rem;
 }
 
@@ -262,15 +267,15 @@
 }
 
 .alert-error {
-  background-color: #fee2e2;
+  background-color: rgba(239, 68, 68, 0.15);
   border-left: 4px solid #ef4444;
-  color: #991b1b;
+  color: #fca5a5;
 }
 
 .alert-warning {
-  background-color: #fef3c7;
+  background-color: rgba(245, 158, 11, 0.15);
   border-left: 4px solid #f59e0b;
-  color: #92400e;
+  color: #fcd34d;
 }
 
 .alert strong {
@@ -342,9 +347,9 @@
 }
 
 .tab-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 1);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(102, 126, 234, 0.1);
+  color: #a5b4fc;
+  border-color: rgba(102, 126, 234, 0.4);
 }
 
 .tab-btn.active {
@@ -455,4 +460,112 @@
 .stat-card-large .stat-label {
   font-size: 1.1rem;
   color: rgba(255, 255, 255, 0.8);
+}
+
+/* Cookie Dialog Styles */
+.cookie-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.cookie-dialog {
+  background: #1e2536;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  max-width: 700px;
+  width: 90%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.cookie-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cookie-dialog-header h2 {
+  margin: 0;
+  color: #fff;
+  font-size: 1.25rem;
+}
+
+.cookie-dialog-header .close-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  line-height: 1;
+}
+
+.cookie-dialog-header .close-btn:hover {
+  color: #fff;
+}
+
+.cookie-dialog-content {
+  padding: 1.5rem;
+}
+
+.cookie-instructions {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.9rem;
+  line-height: 1.8;
+  margin-bottom: 1rem;
+}
+
+.cookie-instructions strong {
+  color: #fff;
+}
+
+.cookie-command {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 1rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.8rem;
+  color: #22c55e;
+  overflow-x: auto;
+  margin: 1rem 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.cookie-textarea {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 1rem;
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  resize: vertical;
+  margin-top: 0.5rem;
+}
+
+.cookie-textarea:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.cookie-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }

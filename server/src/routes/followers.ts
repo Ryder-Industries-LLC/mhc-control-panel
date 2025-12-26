@@ -7,17 +7,24 @@ const router = Router();
 
 /**
  * POST /api/followers/update-following
- * Accept HTML from followed-cams page and update following list
+ * Accept HTML from followed-cams page OR array of usernames and update following list
  */
 router.post('/update-following', async (req: Request, res: Response) => {
   try {
-    const { html } = req.body;
+    const { html, usernames: providedUsernames } = req.body;
 
-    if (!html || typeof html !== 'string') {
-      return res.status(400).json({ error: 'HTML content required' });
+    let usernames: string[];
+
+    if (providedUsernames && Array.isArray(providedUsernames)) {
+      // Accept direct usernames array (from local parsing)
+      usernames = providedUsernames.map((u: string) => u.toLowerCase());
+    } else if (html && typeof html === 'string') {
+      // Parse HTML to extract usernames
+      usernames = FollowerScraperService.parseFollowingHTML(html);
+    } else {
+      return res.status(400).json({ error: 'HTML content or usernames array required' });
     }
 
-    const usernames = FollowerScraperService.parseFollowingHTML(html);
     const stats = await FollowerScraperService.updateFollowing(usernames);
 
     logger.info('Following list updated via API', stats);
@@ -35,17 +42,24 @@ router.post('/update-following', async (req: Request, res: Response) => {
 
 /**
  * POST /api/followers/update-followers
- * Accept HTML from followers page and update followers list
+ * Accept HTML from followers page OR array of usernames and update followers list
  */
 router.post('/update-followers', async (req: Request, res: Response) => {
   try {
-    const { html } = req.body;
+    const { html, usernames: providedUsernames } = req.body;
 
-    if (!html || typeof html !== 'string') {
-      return res.status(400).json({ error: 'HTML content required' });
+    let usernames: string[];
+
+    if (providedUsernames && Array.isArray(providedUsernames)) {
+      // Accept direct usernames array (from local parsing)
+      usernames = providedUsernames.map((u: string) => u.toLowerCase());
+    } else if (html && typeof html === 'string') {
+      // Parse HTML to extract usernames
+      usernames = FollowerScraperService.parseFollowersHTML(html);
+    } else {
+      return res.status(400).json({ error: 'HTML content or usernames array required' });
     }
 
-    const usernames = FollowerScraperService.parseFollowersHTML(html);
     const stats = await FollowerScraperService.updateFollowers(usernames);
 
     logger.info('Followers list updated via API', stats);

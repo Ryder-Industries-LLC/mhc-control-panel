@@ -233,6 +233,7 @@ export class PersonService {
         (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
         (SELECT COALESCE(image_path_360x270, image_url_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as image_url,
         (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
         (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags,
         (SELECT age FROM profiles WHERE person_id = p.id LIMIT 1) as age,
         (SELECT following FROM profiles WHERE person_id = p.id LIMIT 1) as following,

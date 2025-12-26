@@ -357,12 +357,12 @@
   margin-bottom: 10px;
 }
 
-.session-date {
+.profile-page .session-date {
   font-weight: 600;
   color: #374151;
 }
 
-.session-duration {
+.profile-page .session-duration {
   color: #6b7280;
   font-size: 0.875rem;
 }
@@ -448,12 +448,12 @@
   text-transform: uppercase;
 }
 
-.interaction-date {
+.profile-page .interaction-date {
   color: #6b7280;
   font-size: 0.875rem;
 }
 
-.interaction-content {
+.profile-page .interaction-content {
   padding: 10px;
   background: white;
   border-radius: 4px;

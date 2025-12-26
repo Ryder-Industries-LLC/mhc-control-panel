@@ -4,6 +4,7 @@ import { SnapshotService } from '../services/snapshot.service.js';
 import { InteractionService } from '../services/interaction.service.js';
 import { SessionService } from '../services/session.service.js';
 import { chaturbateStatsClient, normalizeChaturbateStats } from '../api/chaturbate/stats-client.js';
+import { chaturbateAffiliateClient } from '../api/chaturbate/affiliate-client.js';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
 import { query } from '../db/client.js';
@@ -47,9 +48,67 @@ router.get('/', async (_req: Request, res: Response) => {
     // Get delta for CB stats
     const cbDelta = await SnapshotService.getDelta(person.id, 'cb_stats');
 
-    // Get current session
-    const currentSession = await SessionService.getCurrentSession(username);
+    // Get current session from Events API tracking
+    let currentSession = await SessionService.getCurrentSession(username);
     let currentSessionStats = null;
+    let affiliateOnlineData = null;
+
+    // Check Affiliate API for current online status
+    let isCurrentlyOnline = false;
+    try {
+      const affiliateRoom = await chaturbateAffiliateClient.getRoomByUsername(username);
+      if (affiliateRoom) {
+        isCurrentlyOnline = true;
+
+        // If no active session, auto-start one
+        if (!currentSession) {
+          logger.info('User is online via Affiliate API, auto-starting session', {
+            username,
+            secondsOnline: affiliateRoom.seconds_online,
+          });
+
+          // Calculate session start time based on seconds_online
+          const sessionStartTime = new Date(Date.now() - affiliateRoom.seconds_online * 1000);
+
+          // Create a session record
+          currentSession = await SessionService.start(username);
+
+          // Store affiliate data for the response
+          affiliateOnlineData = {
+            isLive: true,
+            secondsOnline: affiliateRoom.seconds_online,
+            numUsers: affiliateRoom.num_users,
+            numFollowers: affiliateRoom.num_followers,
+            roomSubject: affiliateRoom.room_subject,
+            currentShow: affiliateRoom.current_show,
+            estimatedStart: sessionStartTime.toISOString(),
+          };
+        } else {
+          // Session exists and user is online - update affiliate data
+          affiliateOnlineData = {
+            isLive: true,
+            secondsOnline: affiliateRoom.seconds_online,
+            numUsers: affiliateRoom.num_users,
+            numFollowers: affiliateRoom.num_followers,
+            roomSubject: affiliateRoom.room_subject,
+            currentShow: affiliateRoom.current_show,
+          };
+        }
+      }
+    } catch (error) {
+      logger.error('Error checking Affiliate API for online status', { error });
+    }
+
+    // If there's an active session but user is NOT online, end the session
+    if (currentSession && !isCurrentlyOnline) {
+      logger.info('User is offline via Affiliate API, ending session', {
+        username,
+        sessionId: currentSession.id,
+      });
+      await SessionService.end(currentSession.id);
+      currentSession = null; // Clear so UI shows offline
+    }
+
     if (currentSession) {
       currentSessionStats = await SessionService.getSessionStats(currentSession.id);
     }
@@ -99,6 +158,7 @@ router.get('/', async (_req: Request, res: Response) => {
       cbDelta: cbDelta.delta,
       currentSession,
       currentSessionStats,
+      affiliateOnlineData,
       recentSessions,
       recentInteractions,
     });
