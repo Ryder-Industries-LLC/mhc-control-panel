@@ -105,14 +105,14 @@ const Users: React.FC = () => {
   const [followingUsers, setFollowingUsers] = useState<FollowingUser[]>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
   const [followingStats, setFollowingStats] = useState<any>(null);
-  const [followingFilter, setFollowingFilter] = useState<'all' | 'with_image' | 'models' | 'viewers' | 'unknown'>('all');
+  const [followingFilter, setFollowingFilter] = useState<'all' | 'live' | 'with_image' | 'models' | 'viewers' | 'unknown'>('all');
 
   // Followers tab state
   const [followerUsers, setFollowerUsers] = useState<FollowerUser[]>([]);
   const [followersLoading, setFollowersLoading] = useState(false);
   const [followersStats, setFollowersStats] = useState<any>(null);
   const [followerRoleFilter, setFollowerRoleFilter] = useState<string>('ALL');
-  const [followersFilter, setFollowersFilter] = useState<'all' | 'with_image' | 'models' | 'viewers' | 'unknown'>('all');
+  const [followersFilter, setFollowersFilter] = useState<'all' | 'live' | 'with_image' | 'models' | 'viewers' | 'unknown'>('all');
 
   // Unfollowed tab state
   const [unfollowedUsers, setUnfollowedUsers] = useState<UnfollowedUser[]>([]);
@@ -1061,10 +1061,12 @@ const Users: React.FC = () => {
     const models = followingUsers.filter(p => p.role === 'MODEL').length;
     const viewers = followingUsers.filter(p => p.role === 'VIEWER').length;
     const unknown = followingUsers.length - models - viewers;
+    const liveFollowing = followingUsers.filter(p => isPersonLive(p)).length;
 
     // Filter following users based on selected filter
     const filteredFollowing = followingUsers.filter(p => {
       switch (followingFilter) {
+        case 'live': return isPersonLive(p);
         case 'with_image': return !!p.image_url;
         case 'models': return p.role === 'MODEL';
         case 'viewers': return p.role === 'VIEWER';
@@ -1096,7 +1098,7 @@ const Users: React.FC = () => {
       </div>
 
       {/* Stats Cards for Following - Clickable */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mt-4">
         <div
           className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
             followingFilter === 'all' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
@@ -1105,6 +1107,15 @@ const Users: React.FC = () => {
         >
           <div className="text-3xl font-bold text-white mb-1">{followingUsers.length}</div>
           <div className="text-sm text-white/70">Total Following</div>
+        </div>
+        <div
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            followingFilter === 'live' ? 'border-red-500 bg-red-500/15 shadow-lg shadow-red-500/30' : 'border-white/10 hover:border-red-500/40'
+          }`}
+          onClick={() => handleFollowingFilterClick('live')}
+        >
+          <div className="text-3xl font-bold text-red-400 mb-1">{liveFollowing}</div>
+          <div className="text-sm text-white/70">Live Now</div>
         </div>
         <div
           className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
@@ -1253,10 +1264,12 @@ const Users: React.FC = () => {
     const models = followerUsers.filter(p => p.role === 'MODEL').length;
     const viewers = followerUsers.filter(p => p.role === 'VIEWER').length;
     const unknown = followerUsers.length - models - viewers;
+    const liveFollowers = followerUsers.filter(p => isPersonLive(p)).length;
 
     // Filter followers based on selected filter
     const filteredFollowersList = followerUsers.filter(p => {
       switch (followersFilter) {
+        case 'live': return isPersonLive(p);
         case 'with_image': return !!p.image_url;
         case 'models': return p.role === 'MODEL';
         case 'viewers': return p.role === 'VIEWER';
@@ -1288,7 +1301,7 @@ const Users: React.FC = () => {
       </div>
 
       {/* Stats Cards for Followers - Clickable */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mt-4">
         <div
           className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
             followersFilter === 'all' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
@@ -1297,6 +1310,15 @@ const Users: React.FC = () => {
         >
           <div className="text-3xl font-bold text-white mb-1">{followerUsers.length}</div>
           <div className="text-sm text-white/70">Total Followers</div>
+        </div>
+        <div
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            followersFilter === 'live' ? 'border-red-500 bg-red-500/15 shadow-lg shadow-red-500/30' : 'border-white/10 hover:border-red-500/40'
+          }`}
+          onClick={() => handleFollowersFilterClick('live')}
+        >
+          <div className="text-3xl font-bold text-red-400 mb-1">{liveFollowers}</div>
+          <div className="text-sm text-white/70">Live Now</div>
         </div>
         <div
           className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
