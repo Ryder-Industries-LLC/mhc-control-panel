@@ -38,11 +38,14 @@ If you're continuing work on this project with a new Claude Code account, start 
 
 ### Recent Enhancements (December 2025)
 
+- **Tailwind CSS Migration**: All 10 React pages migrated from custom CSS to Tailwind utility classes
+- **Theme System**: 5 dark themes (Midnight, Charcoal, Ocean, Forest, Ember) with localStorage persistence
+- **Grid/List View Toggle**: Users page supports both table and responsive image grid views
 - **Profile Schema Optimization**: Updated to match Chaturbate Affiliate API structure
 - **Profile Header Redesign**: Image on right, prominent LIVE indicator, HD icon, show start time in ET
 - **Multi-Source Data Integration**: Intelligent prioritization of Affiliate API, scraped profiles, and Statbate data
 
-See [PROFILE_SCHEMA_UPDATE.md](PROFILE_SCHEMA_UPDATE.md) and [CLAUDE_CODE_SETUP.md](CLAUDE_CODE_SETUP.md) for details.
+See [docs/SESSION_SUMMARY_2025-12-27.md](docs/SESSION_SUMMARY_2025-12-27.md) for latest changes.
 
 ---
 
@@ -52,7 +55,7 @@ See [PROFILE_SCHEMA_UPDATE.md](PROFILE_SCHEMA_UPDATE.md) and [CLAUDE_CODE_SETUP.
 
 - **Backend**: Node.js + TypeScript + Express
 - **Database**: PostgreSQL (Render.com or Docker)
-- **Frontend**: React + TypeScript + Nginx
+- **Frontend**: React + TypeScript + Tailwind CSS + Nginx
 - **Hosting**: Render.com (web + worker processes) or Docker (local)
 
 ### Process Model
