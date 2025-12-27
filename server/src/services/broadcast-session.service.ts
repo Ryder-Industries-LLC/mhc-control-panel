@@ -36,10 +36,11 @@ export class BroadcastSessionService {
 
     // Check if there's an existing session for this broadcast
     // We use a 10-minute tolerance to account for slight timing variations
+    // Cast $2 to timestamptz to ensure proper interval arithmetic
     const existingSessionSql = `
       SELECT id, session_start FROM affiliate_api_snapshots
       WHERE person_id = $1
-        AND session_start BETWEEN $2 - INTERVAL '10 minutes' AND $2 + INTERVAL '10 minutes'
+        AND session_start BETWEEN ($2::timestamptz - INTERVAL '10 minutes') AND ($2::timestamptz + INTERVAL '10 minutes')
       ORDER BY observed_at DESC
       LIMIT 1
     `;
