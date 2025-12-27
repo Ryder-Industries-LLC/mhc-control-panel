@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import { api, LookupResponse } from '../api/client';
 import { formatDate, formatNumber, formatNumberWithoutCommas, formatLabel, formatValue } from '../utils/formatting';
 import { DateRangePreset, getDateRange, getPresetLabel, supportsComparison, getComparisonPreset } from '../utils/dateRanges';
-import './Home.css';
+// Home.css removed - fully migrated to Tailwind CSS
 
 const Home: React.FC = () => {
   const location = useLocation();
@@ -99,22 +99,46 @@ const Home: React.FC = () => {
     return () => clearTimeout(timer);
   }, [username]);
 
+  // Helper function for interaction type styling
+  const getInteractionStyles = (type: string) => {
+    switch (type) {
+      case 'TIP_EVENT':
+        return { border: 'border-l-emerald-500', text: 'text-emerald-500' };
+      case 'CHAT_MESSAGE':
+        return { border: 'border-l-mhc-primary', text: 'text-mhc-primary' };
+      case 'PRIVATE_MESSAGE':
+        return { border: 'border-l-purple-400', text: 'text-purple-400' };
+      case 'USER_ENTER':
+        return { border: 'border-l-teal-500', text: 'text-mhc-text-dim' };
+      case 'USER_LEAVE':
+        return { border: 'border-l-gray-600', text: 'text-gray-500', opacity: 'opacity-40' };
+      case 'FOLLOW':
+        return { border: 'border-l-orange-500', text: 'text-orange-500' };
+      default:
+        return { border: 'border-l-mhc-primary', text: 'text-mhc-primary' };
+    }
+  };
+
   return (
-    <div className="home">
-      <div className="header">
-        <h1>MHC Control Panel</h1>
-        <p>Streaming Intelligence & Memory System</p>
+    <div className="max-w-6xl mx-auto p-5">
+      <div className="text-center mb-10 py-8 border-b-2 border-mhc-primary">
+        <h1 className="text-mhc-primary text-4xl font-bold m-0 mb-2">MHC Control Panel</h1>
+        <p className="text-mhc-text-dim text-lg">Streaming Intelligence & Memory System</p>
       </div>
 
-      <div className="lookup-section">
-        <div className="lookup-header">
-          <h2>Lookup User</h2>
-          <div className="role-toggle-wrapper-inline">
-            <label>Role</label>
-            <div className="role-toggle-switch">
+      <div className="bg-mhc-surface p-8 rounded-xl mb-8 shadow-lg">
+        <div className="flex justify-between items-center mb-5">
+          <h2 className="text-mhc-text m-0 text-xl font-semibold">Lookup User</h2>
+          <div className="flex items-center gap-3">
+            <label className="text-mhc-text-muted font-medium text-sm m-0">Role</label>
+            <div className="inline-flex bg-mhc-surface-light rounded-full p-1 border-2 border-gray-600">
               <button
                 type="button"
-                className={`toggle-switch-option ${rolePreference === 'MODEL' ? 'active' : ''}`}
+                className={`bg-transparent border-none px-6 py-2 rounded-full text-sm font-medium cursor-pointer transition-all min-w-[100px] text-center ${
+                  rolePreference === 'MODEL'
+                    ? 'bg-mhc-primary text-white font-semibold shadow-lg'
+                    : 'text-mhc-text-dim hover:text-mhc-text-muted'
+                }`}
                 onClick={() => setRolePreference('MODEL')}
                 disabled={loading}
               >
@@ -122,7 +146,11 @@ const Home: React.FC = () => {
               </button>
               <button
                 type="button"
-                className={`toggle-switch-option ${rolePreference === 'VIEWER' ? 'active' : ''}`}
+                className={`bg-transparent border-none px-6 py-2 rounded-full text-sm font-medium cursor-pointer transition-all min-w-[100px] text-center ${
+                  rolePreference === 'VIEWER'
+                    ? 'bg-mhc-primary text-white font-semibold shadow-lg'
+                    : 'text-mhc-text-dim hover:text-mhc-text-muted'
+                }`}
                 onClick={() => setRolePreference('VIEWER')}
                 disabled={loading}
               >
@@ -132,8 +160,8 @@ const Home: React.FC = () => {
           </div>
         </div>
 
-        <div className="form-group">
-          <label>Username</label>
+        <div className="mb-5">
+          <label className="block text-mhc-text-muted mb-2 font-medium">Username</label>
           <input
             type="text"
             value={username}
@@ -142,6 +170,7 @@ const Home: React.FC = () => {
             disabled={loading}
             list="username-suggestions"
             autoComplete="off"
+            className="w-full px-3 py-3 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm font-inherit focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/10"
           />
           <datalist id="username-suggestions">
             {usernameSuggestions.map((suggestion, idx) => (
@@ -150,15 +179,15 @@ const Home: React.FC = () => {
           </datalist>
         </div>
 
-        <div className="button-row">
-          <button onClick={handleLookup} disabled={loading} className="btn-primary">
+        <div className="flex justify-between items-center mb-5">
+          <button onClick={handleLookup} disabled={loading} className="bg-gradient-primary text-white border-none px-8 py-3 rounded-md text-base font-semibold cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-mhc-primary/30 disabled:opacity-60 disabled:cursor-not-allowed disabled:transform-none">
             {loading ? 'Looking up...' : 'Lookup'}
           </button>
           {!showPasteField && (
             <button
               type="button"
               onClick={() => setShowPasteField(true)}
-              className="btn-secondary"
+              className="bg-transparent text-mhc-primary border border-mhc-primary px-5 py-2.5 rounded-md text-sm font-medium cursor-pointer transition-all hover:bg-mhc-primary hover:text-white disabled:opacity-60 disabled:cursor-not-allowed"
               disabled={loading}
             >
               + Paste Text
@@ -167,67 +196,37 @@ const Home: React.FC = () => {
         </div>
 
         {showPasteField && (
-          <div className="form-group">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label>Or Paste Text</label>
+          <div className="mb-5">
+            <div className="flex justify-between items-center">
+              <label className="block text-mhc-text-muted mb-2 font-medium">Or Paste Text</label>
               <button
                 type="button"
                 onClick={() => {
                   setShowPasteField(false);
                   setPastedText('');
                 }}
-                className="btn-collapse"
+                className="bg-transparent text-mhc-text-dim border border-gray-600 px-3 py-1 rounded text-xs cursor-pointer transition-all hover:bg-mhc-surface-light hover:border-mhc-primary hover:text-mhc-text-muted disabled:opacity-60 disabled:cursor-not-allowed"
                 disabled={loading}
               >
                 Collapse
               </button>
             </div>
 
-            <div className="paste-type-selector">
-              <label className="paste-type-label">
-                <input
-                  type="radio"
-                  name="pasteType"
-                  value="PM"
-                  checked={pasteType === 'PM'}
-                  onChange={(e) => setPasteType(e.target.value as 'PM')}
-                  disabled={loading}
-                />
-                PM
-              </label>
-              <label className="paste-type-label">
-                <input
-                  type="radio"
-                  name="pasteType"
-                  value="DM"
-                  checked={pasteType === 'DM'}
-                  onChange={(e) => setPasteType(e.target.value as 'DM')}
-                  disabled={loading}
-                />
-                DM
-              </label>
-              <label className="paste-type-label">
-                <input
-                  type="radio"
-                  name="pasteType"
-                  value="PROFILE"
-                  checked={pasteType === 'PROFILE'}
-                  onChange={(e) => setPasteType(e.target.value as 'PROFILE')}
-                  disabled={loading}
-                />
-                Profile
-              </label>
-              <label className="paste-type-label">
-                <input
-                  type="radio"
-                  name="pasteType"
-                  value="NOTES"
-                  checked={pasteType === 'NOTES'}
-                  onChange={(e) => setPasteType(e.target.value as 'NOTES')}
-                  disabled={loading}
-                />
-                Notes
-              </label>
+            <div className="flex gap-4 mb-3 py-2">
+              {(['PM', 'DM', 'PROFILE', 'NOTES'] as const).map((type) => (
+                <label key={type} className="flex items-center cursor-pointer text-mhc-text-muted font-normal text-sm m-0 hover:text-gray-200">
+                  <input
+                    type="radio"
+                    name="pasteType"
+                    value={type}
+                    checked={pasteType === type}
+                    onChange={(e) => setPasteType(e.target.value as typeof type)}
+                    disabled={loading}
+                    className="mr-1.5 w-4 h-4 cursor-pointer accent-mhc-primary"
+                  />
+                  {type === 'PROFILE' ? 'Profile' : type === 'NOTES' ? 'Notes' : type}
+                </label>
+              ))}
             </div>
 
             <textarea
@@ -236,26 +235,28 @@ const Home: React.FC = () => {
               placeholder="Paste profile text, chat logs, etc..."
               rows={4}
               disabled={loading}
+              className="w-full px-3 py-3 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm font-inherit focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/10"
             />
           </div>
         )}
       </div>
 
       {error && (
-        <div className="error-message">
+        <div className="bg-red-400 text-white p-4 rounded-md mb-5">
           {error}
         </div>
       )}
 
       {result && (
-        <div className="results-section">
-          <h2>
+        <div className="animate-fade-in">
+          <h2 className="text-mhc-text mb-5 flex justify-between items-center">
             <span>Results</span>
-            <label className="results-header-toggle">
+            <label className="flex items-center gap-2 text-sm font-normal text-mhc-text-muted cursor-pointer">
               <input
                 type="checkbox"
                 checked={showRawData}
                 onChange={(e) => setShowRawData(e.target.checked)}
+                className="w-4 h-4 cursor-pointer"
               />
               Show Raw Data
             </label>
@@ -263,11 +264,11 @@ const Home: React.FC = () => {
 
           {/* Date Range Selector - Only show for MODEL role with Statbate data */}
           {rolePreference === 'MODEL' && result.latestSnapshot?.source?.includes('statbate_model') && (
-            <div className="date-range-selector">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <label className="date-range-label">Date Range:</label>
+            <div className="my-5 p-5 bg-mhc-surface-light rounded-lg">
+              <div className="flex justify-between items-center mb-3">
+                <label className="text-mhc-text-muted font-semibold text-sm block">Date Range:</label>
                 {supportsComparison(dateRangePreset) && (
-                  <label className="results-header-toggle">
+                  <label className="flex items-center gap-2 text-sm font-normal text-mhc-text-muted cursor-pointer">
                     <input
                       type="checkbox"
                       checked={comparisonMode}
@@ -277,16 +278,21 @@ const Home: React.FC = () => {
                         setTimeout(() => handleLookup(), 100);
                       }}
                       disabled={loading}
+                      className="w-4 h-4 cursor-pointer"
                     />
                     Compare with Previous Period
                   </label>
                 )}
               </div>
-              <div className="date-range-tabs">
+              <div className="flex gap-2 flex-wrap">
                 {(['all_time', 'this_week', 'last_week', 'this_month', 'last_month', 'this_year', 'last_year'] as DateRangePreset[]).map((preset) => (
                   <button
                     key={preset}
-                    className={`date-range-tab ${dateRangePreset === preset ? 'active' : ''}`}
+                    className={`px-4 py-2 rounded-md text-sm font-medium cursor-pointer transition-all border-2 ${
+                      dateRangePreset === preset
+                        ? 'bg-mhc-primary border-mhc-primary text-white font-semibold'
+                        : 'bg-mhc-surface border-gray-600 text-mhc-text-muted hover:bg-gray-600 hover:border-mhc-primary hover:text-mhc-text'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
                     onClick={() => {
                       setDateRangePreset(preset);
                       // Auto-refresh data with new date range
@@ -302,80 +308,80 @@ const Home: React.FC = () => {
           )}
 
           {showRawData && (
-            <div className="raw-data-content">
-              <div style={{ marginBottom: '20px', borderBottom: '1px solid #2d3748', paddingBottom: '10px' }}>
-                <h4 style={{ color: '#667eea', margin: '0 0 10px 0' }}>API Request</h4>
-                <pre>{JSON.stringify(apiRequest, null, 2)}</pre>
+            <div className="mt-3 bg-black border border-mhc-surface-light rounded-md p-4 overflow-x-auto">
+              <div className="mb-5 pb-2.5 border-b border-mhc-surface-light">
+                <h4 className="text-mhc-primary m-0 mb-2.5">API Request</h4>
+                <pre className="m-0 text-emerald-500 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">{JSON.stringify(apiRequest, null, 2)}</pre>
               </div>
               {result.statbateApiUrl && (
-                <div style={{ marginBottom: '20px', borderBottom: '1px solid #2d3748', paddingBottom: '10px' }}>
-                  <h4 style={{ color: '#667eea', margin: '0 0 10px 0' }}>Statbate API URL</h4>
-                  <pre>{result.statbateApiUrl}</pre>
+                <div className="mb-5 pb-2.5 border-b border-mhc-surface-light">
+                  <h4 className="text-mhc-primary m-0 mb-2.5">Statbate API URL</h4>
+                  <pre className="m-0 text-emerald-500 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">{result.statbateApiUrl}</pre>
                 </div>
               )}
               <div>
-                <h4 style={{ color: '#667eea', margin: '0 0 10px 0' }}>API Response</h4>
-                <pre>{JSON.stringify(result, null, 2)}</pre>
+                <h4 className="text-mhc-primary m-0 mb-2.5">API Response</h4>
+                <pre className="m-0 text-emerald-500 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">{JSON.stringify(result, null, 2)}</pre>
               </div>
             </div>
           )}
 
           {result.extractedUsernames.length > 1 && (
-            <div className="extracted-usernames">
-              <h3>Extracted Usernames</h3>
-              <div className="username-list">
+            <div className="bg-mhc-surface-light p-5 rounded-lg mb-5">
+              <h3 className="text-mhc-text mt-0 mb-3 text-lg">Extracted Usernames</h3>
+              <div className="flex flex-wrap gap-2">
                 {result.extractedUsernames.map((user, idx) => (
-                  <span key={idx} className="username-tag">{user}</span>
+                  <span key={idx} className="bg-mhc-primary text-white px-3 py-1.5 rounded text-sm">{user}</span>
                 ))}
               </div>
             </div>
           )}
 
-          <div className="person-card">
-            <div className="person-card-header">
-              <h3>
+          <div className="bg-mhc-surface p-6 rounded-lg mb-5 border border-mhc-surface-light">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="m-0">
                 <a
                   href={`https://chaturbate.com/${result.person.username}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="username-link"
+                  className="text-mhc-primary no-underline font-semibold hover:text-indigo-400 hover:underline transition-colors"
                 >
                   {result.person.username}
                 </a>
               </h3>
-              <span className="person-role">{result.person.role}</span>
+              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase bg-mhc-primary text-white">{result.person.role}</span>
             </div>
-            <div className="details-grid">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
               {result.latestSnapshot?.normalized_metrics?.gender !== undefined && (
-                <div className="detail-item">
-                  <span className="label">Gender</span>
-                  <span className="value">{formatValue(result.latestSnapshot.normalized_metrics.gender, 'gender')}</span>
+                <div className="flex flex-col gap-1">
+                  <span className="text-mhc-text-dim font-medium text-sm">Gender</span>
+                  <span className="text-mhc-text font-semibold text-sm">{formatValue(result.latestSnapshot.normalized_metrics.gender, 'gender')}</span>
                 </div>
               )}
               {result.latestSnapshot?.normalized_metrics?.rank !== undefined && (
-                <div className="detail-item">
-                  <span className="label">Rank</span>
-                  <span className="value">{formatValue(result.latestSnapshot.normalized_metrics.rank, 'rank')}</span>
+                <div className="flex flex-col gap-1">
+                  <span className="text-mhc-text-dim font-medium text-sm">Rank</span>
+                  <span className="text-mhc-text font-semibold text-sm">{formatValue(result.latestSnapshot.normalized_metrics.rank, 'rank')}</span>
                 </div>
               )}
-              <div className="detail-item">
-                <span className="label">Last Seen</span>
-                <span className="value">{formatDate(result.person.last_seen_at)}</span>
+              <div className="flex flex-col gap-1">
+                <span className="text-mhc-text-dim font-medium text-sm">Last Seen</span>
+                <span className="text-mhc-text font-semibold text-sm">{formatDate(result.person.last_seen_at)}</span>
               </div>
             </div>
           </div>
 
           {result.latestSnapshot && (
-            <div className="snapshot-card">
-              <h3>Latest Snapshot</h3>
-              <div className="snapshot-meta">
+            <div className="bg-mhc-surface p-6 rounded-lg mb-5 border border-mhc-surface-light">
+              <h3 className="text-mhc-text mt-0 mb-4 border-b-2 border-mhc-primary pb-2">Latest Snapshot</h3>
+              <div className="flex justify-between mb-4 p-3 bg-mhc-surface-light rounded-md text-mhc-text-muted text-sm">
                 <span>Source: {result.latestSnapshot.source}</span>
                 <span>Last Captured: {formatDate(result.latestSnapshot.captured_at, { includeTime: false })}</span>
               </div>
 
               {result.latestSnapshot.normalized_metrics && (
                 <>
-                  <div className="metrics-grid">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-start">
                     {(() => {
                       const metrics = result.latestSnapshot.normalized_metrics;
                       const isViewer = result.latestSnapshot.source === 'statbate_member';
@@ -431,9 +437,9 @@ const Home: React.FC = () => {
                       }
 
                       return orderedMetrics.map(([key, value]) => (
-                        <div key={key} className="metric-item">
-                          <span className="metric-label">{formatLabel(key)}:</span>
-                          <span className="metric-value">
+                        <div key={key} className="flex flex-col p-4 bg-mhc-surface-light rounded-md gap-2">
+                          <span className="text-mhc-text-dim font-medium text-sm">{formatLabel(key)}:</span>
+                          <span className="text-mhc-text font-semibold text-2xl break-words">
                             {key === 'first_seen' ? formatDate(value, { includeTime: false }) :
                              key === 'first_tip_date' || key === 'last_tip_date' || key === 'first_message_date' ? formatDate(value, { includeTime: false }) :
                              key === 'rid' || key === 'did' ? formatNumberWithoutCommas(value as number) :
@@ -446,9 +452,9 @@ const Home: React.FC = () => {
 
                   {/* Model Tags */}
                   {result.latestSnapshot.normalized_metrics.tags && (
-                    <div className="tags-row">
-                      <span className="metric-label">Tags:</span>
-                      <span className="metric-value">{formatValue(result.latestSnapshot.normalized_metrics.tags, 'tags')}</span>
+                    <div className="flex flex-col p-4 bg-mhc-surface-light rounded-md gap-2 mt-4">
+                      <span className="text-mhc-text-dim font-medium text-sm">Tags:</span>
+                      <span className="text-mhc-text font-semibold text-2xl break-words">{formatValue(result.latestSnapshot.normalized_metrics.tags, 'tags')}</span>
                     </div>
                   )}
 
@@ -456,11 +462,11 @@ const Home: React.FC = () => {
                   {result.latestSnapshot.source === 'statbate_member' && result.latestSnapshot.normalized_metrics.models_tipped_2weeks_list &&
                    Array.isArray(result.latestSnapshot.normalized_metrics.models_tipped_2weeks_list) &&
                    (result.latestSnapshot.normalized_metrics.models_tipped_2weeks_list as string[]).length > 0 && (
-                    <div className="models-list-section">
-                      <h4>Models Tipped (Last 2 Weeks)</h4>
-                      <div className="models-list">
+                    <div className="mt-4 p-3 bg-mhc-surface-light rounded-md">
+                      <h4 className="text-mhc-text m-0 mb-2.5 text-sm">Models Tipped (Last 2 Weeks)</h4>
+                      <div className="flex flex-wrap gap-2">
                         {(result.latestSnapshot.normalized_metrics.models_tipped_2weeks_list as string[]).map((model, idx) => (
-                          <a key={idx} href={`/?username=${model}`} className="model-tag">{model}</a>
+                          <a key={idx} href={`/?username=${model}`} className="bg-mhc-primary text-white px-2.5 py-1 rounded text-sm no-underline transition-colors hover:bg-indigo-600 hover:underline">{model}</a>
                         ))}
                       </div>
                     </div>
@@ -470,11 +476,11 @@ const Home: React.FC = () => {
                   {result.latestSnapshot.source === 'statbate_member' && result.latestSnapshot.normalized_metrics.models_messaged_2weeks_list &&
                    Array.isArray(result.latestSnapshot.normalized_metrics.models_messaged_2weeks_list) &&
                    (result.latestSnapshot.normalized_metrics.models_messaged_2weeks_list as string[]).length > 0 && (
-                    <div className="models-list-section">
-                      <h4>Models Messaged (Last 2 Weeks)</h4>
-                      <div className="models-list">
+                    <div className="mt-4 p-3 bg-mhc-surface-light rounded-md">
+                      <h4 className="text-mhc-text m-0 mb-2.5 text-sm">Models Messaged (Last 2 Weeks)</h4>
+                      <div className="flex flex-wrap gap-2">
                         {(result.latestSnapshot.normalized_metrics.models_messaged_2weeks_list as string[]).map((model, idx) => (
-                          <a key={idx} href={`/?username=${model}`} className="model-tag">{model}</a>
+                          <a key={idx} href={`/?username=${model}`} className="bg-mhc-primary text-white px-2.5 py-1 rounded text-sm no-underline transition-colors hover:bg-indigo-600 hover:underline">{model}</a>
                         ))}
                       </div>
                     </div>
@@ -484,15 +490,18 @@ const Home: React.FC = () => {
                   {result.latestSnapshot.source === 'statbate_member' && result.latestSnapshot.normalized_metrics.per_day_tokens &&
                    Array.isArray(result.latestSnapshot.normalized_metrics.per_day_tokens) &&
                    (result.latestSnapshot.normalized_metrics.per_day_tokens as any[]).length > 0 && (
-                    <details className="per-day-tokens-section">
-                      <summary>
-                        <h4>Daily Token Activity ({(result.latestSnapshot.normalized_metrics.per_day_tokens as any[]).length} days)</h4>
+                    <details className="mt-4 p-3 bg-mhc-surface-light rounded-md">
+                      <summary className="cursor-pointer list-none select-none">
+                        <h4 className="text-mhc-text m-0 text-sm inline-flex items-center">
+                          <span className="mr-2 text-xs transition-transform">▶</span>
+                          Daily Token Activity ({(result.latestSnapshot.normalized_metrics.per_day_tokens as any[]).length} days)
+                        </h4>
                       </summary>
-                      <div className="per-day-tokens-grid">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 mt-3 max-h-[300px] overflow-y-auto">
                         {(result.latestSnapshot.normalized_metrics.per_day_tokens as any[]).map((day: any, idx: number) => (
-                          <div key={idx} className="per-day-token-item">
-                            <span className="token-date">{formatDate(day.date, { includeTime: false })}</span>
-                            <span className="token-amount">{formatNumber(day.tokens)} tokens</span>
+                          <div key={idx} className="flex justify-between items-center px-2.5 py-1.5 bg-mhc-surface rounded">
+                            <span className="text-mhc-text-muted text-xs">{formatDate(day.date, { includeTime: false })}</span>
+                            <span className="text-emerald-500 font-semibold text-sm">{formatNumber(day.tokens)} tokens</span>
                           </div>
                         ))}
                       </div>
@@ -503,22 +512,25 @@ const Home: React.FC = () => {
 
               {/* Member Tips History */}
               {result.memberTips && result.memberTips.data && result.memberTips.data.length > 0 && (
-                <details className="member-tips-section" open>
-                  <summary>
-                    <h4>Tip History ({result.memberTips.data.length} tips, ${result.memberTips.data.reduce((sum, tip) => sum + tip.usd, 0).toFixed(2)} total)</h4>
+                <details className="mt-4 p-3 bg-mhc-surface-light rounded-md" open>
+                  <summary className="cursor-pointer list-none select-none">
+                    <h4 className="text-mhc-text m-0 text-sm inline-flex items-center">
+                      <span className="mr-2 text-xs transition-transform">▶</span>
+                      Tip History ({result.memberTips.data.length} tips, ${result.memberTips.data.reduce((sum, tip) => sum + tip.usd, 0).toFixed(2)} total)
+                    </h4>
                   </summary>
-                  <div className="member-tips-grid">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-3 max-h-[400px] overflow-y-auto">
                     {result.memberTips.data.map((tip, idx) => (
-                      <div key={idx} className="member-tip-item">
-                        <div className="tip-item-header">
+                      <div key={idx} className="flex flex-col gap-1.5 p-2.5 bg-mhc-surface rounded border-l-[3px] border-l-emerald-500">
+                        <div className="flex justify-between items-center gap-2">
                           {tip.model && (
-                            <a href={`/?username=${tip.model}`} className="tip-model-link">{tip.model}</a>
+                            <a href={`/?username=${tip.model}`} className="text-mhc-primary no-underline font-semibold text-sm transition-opacity hover:opacity-80 hover:underline">{tip.model}</a>
                           )}
-                          <span className="tip-time">{formatDate(tip.time)}</span>
+                          <span className="text-mhc-text-dim text-xs whitespace-nowrap">{formatDate(tip.time)}</span>
                         </div>
-                        <div className="tip-item-amounts">
-                          <span className="tip-tokens">{formatNumber(tip.tokens)} tokens</span>
-                          <span className="tip-usd">${tip.usd.toFixed(2)}</span>
+                        <div className="flex justify-between items-center">
+                          <span className="text-emerald-400 font-semibold text-sm">{formatNumber(tip.tokens)} tokens</span>
+                          <span className="text-emerald-500 font-bold text-base px-1.5 py-0.5 bg-emerald-500/10 rounded">${tip.usd.toFixed(2)}</span>
                         </div>
                       </div>
                     ))}
@@ -527,9 +539,9 @@ const Home: React.FC = () => {
               )}
 
               {result.delta && Object.keys(result.delta).length > 0 && !comparisonMode && (
-                <div className="delta-section">
-                  <h4>Changes Since Last Snapshot</h4>
-                  <div className="delta-grid">
+                <div className="mt-5 p-4 bg-mhc-surface-light rounded-md">
+                  <h4 className="text-mhc-text mt-0 mb-3">Changes Since Last Snapshot</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     {Object.entries(result.delta)
                       .filter(([key]) => key !== 'tags' && key !== 'gender')
                       .map(([key, value]) => {
@@ -538,9 +550,9 @@ const Home: React.FC = () => {
                         const numValue = isNumber ? value : 0;
 
                         return (
-                          <div key={key} className="delta-item">
-                            <span className="delta-label">{formatLabel(key)}:</span>
-                            <span className={`delta-value ${isNumber && numValue > 0 ? 'positive' : isNumber && numValue < 0 ? 'negative' : ''}`}>
+                          <div key={key} className="flex justify-between">
+                            <span className="text-mhc-text-muted">{formatLabel(key)}:</span>
+                            <span className={`font-semibold ${isNumber && numValue > 0 ? 'text-emerald-500' : isNumber && numValue < 0 ? 'text-red-400' : 'text-mhc-text'}`}>
                               {value === null ? 'N/A' : isNumber ? (numValue > 0 ? `+${formatNumber(numValue)}` : formatNumber(numValue)) : formatValue(value, key)}
                             </span>
                           </div>
@@ -552,11 +564,11 @@ const Home: React.FC = () => {
 
               {/* Comparison View */}
               {comparisonMode && result.comparison && result.comparison.comparisonDelta && (
-                <div className="comparison-section">
-                  <h4>
+                <div className="mt-5 p-4 bg-mhc-surface-light rounded-md">
+                  <h4 className="text-mhc-text mt-0 mb-3 text-base">
                     {getPresetLabel(getComparisonPreset(dateRangePreset) || 'last_week')} vs {getPresetLabel(dateRangePreset)}
                   </h4>
-                  <div className="comparison-grid">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     {Object.entries(result.comparison.comparisonDelta)
                       .filter(([key]) => key !== 'tags' && key !== 'gender')
                       .map(([key, value]) => {
@@ -568,17 +580,21 @@ const Home: React.FC = () => {
                         const period2Value = result.comparison?.period2Snapshot?.normalized_metrics?.[key];
 
                         return (
-                          <div key={key} className="comparison-item">
-                            <span className="comparison-label">{formatLabel(key)}:</span>
-                            <div className="comparison-values">
-                              <span className="comparison-old">
+                          <div key={key} className="flex flex-col gap-1.5 p-2 bg-mhc-surface rounded">
+                            <span className="text-mhc-text-muted font-medium text-sm">{formatLabel(key)}:</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-gray-200 text-sm px-1.5 py-0.5 bg-gray-600 rounded">
                                 {period1Value !== undefined ? formatValue(period1Value, key) : 'N/A'}
                               </span>
-                              <span className="comparison-arrow">→</span>
-                              <span className="comparison-new">
+                              <span className="text-mhc-text-dim font-bold">→</span>
+                              <span className="text-mhc-text font-semibold text-base px-1.5 py-0.5 bg-mhc-primary rounded">
                                 {period2Value !== undefined ? formatValue(period2Value, key) : 'N/A'}
                               </span>
-                              <span className={`comparison-delta ${isNumber && numValue > 0 ? 'positive' : isNumber && numValue < 0 ? 'negative' : ''}`}>
+                              <span className={`text-sm font-medium px-1.5 py-0.5 rounded ${
+                                isNumber && numValue > 0 ? 'text-emerald-400 bg-emerald-500/10' :
+                                isNumber && numValue < 0 ? 'text-red-400 bg-red-500/10' :
+                                'text-gray-200 bg-gray-600'
+                              }`}>
                                 {value === null ? 'N/A' : isNumber ? (numValue > 0 ? `+${formatNumber(numValue)}` : formatNumber(numValue)) : ''}
                               </span>
                             </div>
@@ -592,9 +608,9 @@ const Home: React.FC = () => {
           )}
 
           {result.interactions.length > 0 && (
-            <div className="interactions-card">
-              <h3>Recent Interactions ({result.interactions.length})</h3>
-              <div className="interactions-list">
+            <div className="bg-mhc-surface p-6 rounded-lg mb-5 border border-mhc-surface-light">
+              <h3 className="text-mhc-text mt-0 mb-4 border-b-2 border-mhc-primary pb-2">Recent Interactions ({result.interactions.length})</h3>
+              <div className="flex flex-col gap-3">
                 {result.interactions.slice(0, 10).map((interaction) => {
                   const username = interaction.metadata?.username as string | undefined;
                   const fromUser = interaction.metadata?.fromUser as string | undefined;
@@ -609,28 +625,19 @@ const Home: React.FC = () => {
                     displayText = `${username} to hudson_cage`;
                   }
 
-                  // Determine interaction type class for color coding
-                  const getInteractionTypeClass = (type: string) => {
-                    if (type === 'TIP_EVENT') return 'interaction-type-tip';
-                    if (type === 'CHAT_MESSAGE') return 'interaction-type-chat';
-                    if (type === 'PRIVATE_MESSAGE') return 'interaction-type-pm';
-                    if (type === 'USER_ENTER') return 'interaction-type-enter';
-                    if (type === 'USER_LEAVE') return 'interaction-type-leave';
-                    if (type === 'FOLLOW') return 'interaction-type-follow';
-                    return 'interaction-type-default';
-                  };
+                  const styles = getInteractionStyles(interaction.type);
 
                   return (
-                    <div key={interaction.id} className={`interaction-item ${getInteractionTypeClass(interaction.type)}`}>
-                      <div className="interaction-header">
-                        <span className="interaction-username-primary">
+                    <div key={interaction.id} className={`bg-mhc-surface-light p-4 rounded-md border-l-[3px] ${styles.border} ${styles.opacity || ''}`}>
+                      <div className="flex justify-between mb-2">
+                        <span className={`font-semibold text-sm ${styles.text}`}>
                           {displayText}
-                          {username && <span className="interaction-type-secondary"> - {interaction.type}</span>}
+                          {username && <span className="text-mhc-text-muted font-medium uppercase text-xs ml-1"> - {interaction.type}</span>}
                         </span>
-                        <span className="interaction-date">{formatDate(interaction.timestamp)}</span>
+                        <span className="text-mhc-text text-xs">{formatDate(interaction.timestamp)}</span>
                       </div>
                       {interaction.content && (
-                        <div className="interaction-content">{interaction.content}</div>
+                        <div className="text-gray-200 leading-relaxed">{interaction.content}</div>
                       )}
                     </div>
                   );

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { api, LookupResponse } from '../api/client';
 import { formatDate, formatNumber } from '../utils/formatting';
-import './Users.css';
+// Users.css removed - fully migrated to Tailwind CSS
 
 interface PersonWithSource {
   id: string;
@@ -118,6 +118,17 @@ const Users: React.FC = () => {
   const [unfollowedUsers, setUnfollowedUsers] = useState<UnfollowedUser[]>([]);
   const [unfollowedLoading, setUnfollowedLoading] = useState(false);
   const [timeframeFilter, setTimeframeFilter] = useState<number>(30); // days
+
+  // View mode state (list or grid)
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
+    const saved = localStorage.getItem('mhc-view-mode');
+    return (saved === 'grid' || saved === 'list') ? saved : 'list';
+  });
+
+  // Persist view mode to localStorage
+  useEffect(() => {
+    localStorage.setItem('mhc-view-mode', viewMode);
+  }, [viewMode]);
 
   useEffect(() => {
     if (activeTab === 'directory') {
@@ -476,6 +487,158 @@ const Users: React.FC = () => {
     setStatFilter(statFilter === filter ? 'all' : filter);
   };
 
+  // Helper functions for styling
+  const getRoleBadgeClass = (role: string) => {
+    const base = "inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide";
+    switch (role) {
+      case 'MODEL':
+        return `${base} bg-purple-500/20 text-purple-400 border border-purple-500/30`;
+      case 'VIEWER':
+        return `${base} bg-blue-500/20 text-blue-400 border border-blue-500/30`;
+      default:
+        return `${base} bg-gray-500/20 text-gray-400 border border-gray-500/30`;
+    }
+  };
+
+  const getPriorityBadgeClass = (priority: PriorityLookup) => {
+    const base = "inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide";
+    if (priority.priority_level === 1 && priority.status === 'pending') {
+      return `${base} bg-yellow-500/20 text-yellow-400 border border-yellow-500/30`;
+    }
+    if (priority.priority_level === 1 && priority.status === 'completed') {
+      return `${base} bg-emerald-500/20 text-emerald-400 border border-emerald-500/30`;
+    }
+    if (priority.priority_level === 2 && priority.status === 'active') {
+      return `${base} bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse`;
+    }
+    return base;
+  };
+
+  const formatCacheAge = (ageMs: number | null): string => {
+    if (ageMs === null) return 'N/A';
+    const seconds = Math.floor(ageMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 1) return `${seconds}s`;
+    return `${minutes}m ${seconds % 60}s`;
+  };
+
+  const calculateDaysFollowed = (since: string | null, until: string | null): number | null => {
+    if (!since || !until) return null;
+    const start = new Date(since);
+    const end = new Date(until);
+    return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  // Get image URL with fallback handling
+  const getImageUrl = (imageUrl: string | null): string | null => {
+    if (!imageUrl) return null;
+    return imageUrl.startsWith('http') ? imageUrl : `http://localhost:3000/images/${imageUrl}`;
+  };
+
+  // View mode toggle component
+  const renderViewModeToggle = () => (
+    <div className="flex gap-1 bg-mhc-surface-light rounded-lg p-1">
+      <button
+        onClick={() => setViewMode('list')}
+        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${
+          viewMode === 'list'
+            ? 'bg-gradient-primary text-white shadow-md'
+            : 'text-white/60 hover:text-white hover:bg-white/10'
+        }`}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+        List
+      </button>
+      <button
+        onClick={() => setViewMode('grid')}
+        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${
+          viewMode === 'grid'
+            ? 'bg-gradient-primary text-white shadow-md'
+            : 'text-white/60 hover:text-white hover:bg-white/10'
+        }`}
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+        </svg>
+        Grid
+      </button>
+    </div>
+  );
+
+  // User grid card component
+  const renderUserGridCard = (person: PersonWithSource) => {
+    const imageUrl = getImageUrl(person.image_url);
+    const isLive = isPersonLive(person);
+
+    return (
+      <Link
+        key={person.id}
+        to={`/profile/${person.username}`}
+        className="group block bg-mhc-surface rounded-lg overflow-hidden border border-white/5 transition-all hover:border-mhc-primary/50 hover:-translate-y-1 hover:shadow-lg hover:shadow-mhc-primary/20"
+      >
+        {/* Image container with 4:3 aspect ratio */}
+        <div className="relative aspect-[4/3] bg-mhc-surface-light overflow-hidden">
+          {imageUrl ? (
+            <img
+              src={imageUrl}
+              alt={person.username}
+              className="w-full h-full object-cover transition-transform group-hover:scale-105"
+              loading="lazy"
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full text-5xl text-white/20">
+              <svg className="w-16 h-16" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+              </svg>
+            </div>
+          )}
+          {/* Live indicator */}
+          {isLive && (
+            <div className="absolute top-2 right-2 bg-red-500/90 text-white px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wide animate-pulse flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-white rounded-full" />
+              LIVE
+            </div>
+          )}
+          {/* Priority indicator */}
+          {getPriorityLookup(person.username) && (
+            <div className="absolute top-2 left-2 bg-yellow-500/90 text-black px-1.5 py-0.5 rounded text-xs font-bold">
+              P{getPriorityLookup(person.username)?.priority_level}
+            </div>
+          )}
+        </div>
+        {/* Info section */}
+        <div className="p-3">
+          <div className="font-semibold text-white truncate group-hover:text-mhc-primary transition-colors">
+            {person.username}
+          </div>
+          <div className="flex items-center gap-2 mt-1.5 text-xs">
+            <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.65rem]`}>
+              {person.role}
+            </span>
+            <span className="text-white/40">•</span>
+            <span className="text-white/50 truncate">
+              {formatDate(person.last_seen_at, { relative: true })}
+            </span>
+          </div>
+          {person.tags && person.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {person.tags.slice(0, 3).map((tag, idx) => (
+                <span key={idx} className="text-[0.6rem] px-1.5 py-0.5 bg-purple-500/15 text-purple-400 rounded">
+                  {tag}
+                </span>
+              ))}
+              {person.tags.length > 3 && (
+                <span className="text-[0.6rem] text-white/30">+{person.tags.length - 3}</span>
+              )}
+            </div>
+          )}
+        </div>
+      </Link>
+    );
+  };
+
   // Pagination component
   const renderPagination = () => {
     if (totalPages <= 1) return null;
@@ -499,9 +662,9 @@ const Users: React.FC = () => {
     }
 
     return (
-      <div className="pagination">
+      <div className="flex items-center justify-center gap-2 p-4 my-4 flex-wrap">
         <button
-          className="pagination-btn"
+          className="px-3 py-2 bg-white/5 border border-white/10 rounded-md text-white/70 text-sm cursor-pointer transition-all hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
           onClick={() => handlePageChange(currentPage - 1)}
           disabled={currentPage === 1}
         >
@@ -512,18 +675,22 @@ const Users: React.FC = () => {
           typeof page === 'number' ? (
             <button
               key={idx}
-              className={`pagination-btn ${currentPage === page ? 'active' : ''}`}
+              className={`min-w-[40px] px-3 py-2 border rounded-md text-sm cursor-pointer transition-all text-center ${
+                currentPage === page
+                  ? 'bg-gradient-primary text-white border-transparent'
+                  : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
               onClick={() => handlePageChange(page)}
             >
               {page}
             </button>
           ) : (
-            <span key={idx} className="pagination-ellipsis">...</span>
+            <span key={idx} className="text-white/40 px-1">...</span>
           )
         ))}
 
         <button
-          className="pagination-btn"
+          className="px-3 py-2 bg-white/5 border border-white/10 rounded-md text-white/70 text-sm cursor-pointer transition-all hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
           onClick={() => handlePageChange(currentPage + 1)}
           disabled={currentPage === totalPages}
         >
@@ -531,7 +698,7 @@ const Users: React.FC = () => {
         </button>
 
         <select
-          className="page-size-select"
+          className="ml-4 px-3 py-2 bg-white/5 border border-white/10 rounded-md text-white cursor-pointer text-sm focus:outline-none focus:border-mhc-primary"
           value={pageSize}
           onChange={(e) => {
             setPageSize(Number(e.target.value));
@@ -539,92 +706,74 @@ const Users: React.FC = () => {
           }}
         >
           {PAGE_SIZE_OPTIONS.map(size => (
-            <option key={size} value={size}>{size} per page</option>
+            <option key={size} value={size} className="bg-mhc-surface text-white">{size} per page</option>
           ))}
         </select>
 
-        <span className="pagination-info">
+        <span className="ml-4 text-white/50 text-sm">
           {startIndex + 1}-{Math.min(endIndex, sortedPersons.length)} of {sortedPersons.length}
         </span>
       </div>
     );
   };
 
-  const getRoleBadgeClass = (role: string) => {
-    switch (role) {
-      case 'MODEL':
-        return 'role-badge role-model';
-      case 'VIEWER':
-        return 'role-badge role-viewer';
-      default:
-        return 'role-badge role-unknown';
-    }
-  };
-
-  const getPriorityBadgeClass = (priority: PriorityLookup) => {
-    const level = priority.priority_level === 1 ? 'p1' : 'p2';
-    const status = priority.status;
-    return `priority-badge priority-${level} priority-${status}`;
-  };
-
-  const formatCacheAge = (ageMs: number | null): string => {
-    if (ageMs === null) return 'N/A';
-    const seconds = Math.floor(ageMs / 1000);
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 1) return `${seconds}s`;
-    return `${minutes}m ${seconds % 60}s`;
-  };
-
-  const calculateDaysFollowed = (since: string | null, until: string | null): number | null => {
-    if (!since || !until) return null;
-    const start = new Date(since);
-    const end = new Date(until);
-    return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-  };
-
   const renderDirectoryTab = () => (
     <>
       {/* Stats Cards - Clickable to filter */}
-      <div className="header-stats">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mt-4">
         <div
-          className={`stat-card clickable ${statFilter === 'all' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            statFilter === 'all' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleStatClick('all')}
         >
-          <div className="stat-value">{persons.length}</div>
-          <div className="stat-label">Total Users</div>
+          <div className="text-3xl font-bold text-white mb-1">{persons.length}</div>
+          <div className="text-sm text-white/70">Total Users</div>
         </div>
         <div
-          className={`stat-card clickable stat-live ${statFilter === 'live' ? 'active' : ''}`}
+          className={`border rounded-lg p-4 text-center cursor-pointer transition-all hover:-translate-y-0.5 ${
+            statFilter === 'live'
+              ? 'border-red-500 bg-red-500/20 shadow-lg shadow-red-500/30'
+              : 'border-red-500/30 bg-red-500/10 hover:border-red-500/50'
+          }`}
           onClick={() => handleStatClick('live')}
         >
-          <div className="stat-value">{persons.filter(p => isPersonLive(p)).length}</div>
-          <div className="stat-label">Live Now</div>
+          <div className="text-3xl font-bold text-red-400 mb-1">{persons.filter(p => isPersonLive(p)).length}</div>
+          <div className="text-sm text-red-300">Live Now</div>
         </div>
         <div
-          className={`stat-card clickable ${statFilter === 'with_image' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            statFilter === 'with_image' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleStatClick('with_image')}
         >
-          <div className="stat-value">{persons.filter(p => p.image_url).length}</div>
-          <div className="stat-label">With Images</div>
+          <div className="text-3xl font-bold text-white mb-1">{persons.filter(p => p.image_url).length}</div>
+          <div className="text-sm text-white/70">With Images</div>
         </div>
         <div
-          className={`stat-card clickable ${statFilter === 'priority2' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            statFilter === 'priority2' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleStatClick('priority2')}
         >
-          <div className="stat-value">{priorityLookups.filter(p => p.status === 'active').length}</div>
-          <div className="stat-label">Priority 2 (Active)</div>
+          <div className="text-3xl font-bold text-white mb-1">{priorityLookups.filter(p => p.status === 'active').length}</div>
+          <div className="text-sm text-white/70">Priority 2 (Active)</div>
         </div>
         <div
-          className={`stat-card clickable ${statFilter === 'priority1' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            statFilter === 'priority1' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleStatClick('priority1')}
         >
-          <div className="stat-value">{priorityLookups.filter(p => p.status === 'pending').length}</div>
-          <div className="stat-label">Priority 1 (Pending)</div>
+          <div className="text-3xl font-bold text-white mb-1">{priorityLookups.filter(p => p.status === 'pending').length}</div>
+          <div className="text-sm text-white/70">Priority 1 (Pending)</div>
         </div>
         {cacheStatus && (
-          <div className={`stat-card ${cacheStatus.fresh ? 'stat-success' : 'stat-warning'}`}>
-            <div className="stat-value">{cacheStatus.roomCount}</div>
-            <div className="stat-label">
+          <div className={`border rounded-lg p-4 text-center ${
+            cacheStatus.fresh ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-orange-500/30 bg-orange-500/10'
+          }`}>
+            <div className="text-3xl font-bold text-white mb-1">{cacheStatus.roomCount}</div>
+            <div className="text-sm text-white/70">
               Cached ({cacheStatus.fresh ? formatCacheAge(cacheStatus.ageMs) : 'Stale'})
             </div>
           </div>
@@ -633,54 +782,74 @@ const Users: React.FC = () => {
 
       {/* Active filter indicator */}
       {statFilter !== 'all' && (
-        <div className="active-filter-banner">
-          Filtering by: <strong>{statFilter.replace('_', ' ')}</strong>
-          <button onClick={() => setStatFilter('all')}>Clear ✕</button>
+        <div className="flex items-center gap-4 px-4 py-3 bg-mhc-primary/15 border border-mhc-primary/30 rounded-lg mt-4 text-indigo-300 text-sm">
+          Filtering by: <strong className="text-white capitalize">{statFilter.replace('_', ' ')}</strong>
+          <button
+            onClick={() => setStatFilter('all')}
+            className="ml-auto bg-transparent border border-white/20 text-white/70 px-3 py-1 rounded text-xs cursor-pointer transition-all hover:bg-white/10 hover:text-white"
+          >
+            Clear ✕
+          </button>
         </div>
       )}
 
       {/* Filters */}
-      <div className="filter-controls">
-        <div className="search-box">
+      <div className="flex gap-4 flex-wrap items-center mt-4">
+        <div className="flex-1 min-w-[250px]">
           <input
             type="text"
             placeholder="Search usernames..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="search-input"
+            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white text-base placeholder:text-white/40 focus:outline-none focus:border-mhc-primary focus:bg-white/8"
           />
         </div>
 
-        <div className="tag-search-box">
+        <div className="relative flex-1 min-w-[200px]">
           <input
             type="text"
             placeholder="Filter by tag..."
             value={tagFilter}
             onChange={(e) => setTagFilter(e.target.value)}
-            className="search-input"
+            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white text-base placeholder:text-white/40 focus:outline-none focus:border-mhc-primary focus:bg-white/8"
           />
           {tagFilter && (
-            <button className="clear-tag-btn" onClick={() => setTagFilter('')}>
+            <button
+              className="absolute right-3 top-1/2 -translate-y-1/2 bg-transparent border-none text-white/40 cursor-pointer text-base p-1 transition-colors hover:text-red-400"
+              onClick={() => setTagFilter('')}
+            >
               ✕
             </button>
           )}
         </div>
 
-        <div className="role-filters">
+        <div className="flex gap-2">
           <button
-            className={roleFilter === 'ALL' ? 'filter-btn active' : 'filter-btn'}
+            className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+              roleFilter === 'ALL'
+                ? 'bg-gradient-primary text-white border-transparent'
+                : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
             onClick={() => setRoleFilter('ALL')}
           >
             All ({persons.length})
           </button>
           <button
-            className={roleFilter === 'MODEL' ? 'filter-btn active' : 'filter-btn'}
+            className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+              roleFilter === 'MODEL'
+                ? 'bg-gradient-primary text-white border-transparent'
+                : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
             onClick={() => setRoleFilter('MODEL')}
           >
             Models ({persons.filter(p => p.role === 'MODEL').length})
           </button>
           <button
-            className={roleFilter === 'VIEWER' ? 'filter-btn active' : 'filter-btn'}
+            className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+              roleFilter === 'VIEWER'
+                ? 'bg-gradient-primary text-white border-transparent'
+                : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
             onClick={() => setRoleFilter('VIEWER')}
           >
             Viewers ({persons.filter(p => p.role === 'VIEWER').length})
@@ -689,11 +858,15 @@ const Users: React.FC = () => {
       </div>
 
       {/* Preset Tag Filters */}
-      <div className="preset-tags">
+      <div className="flex flex-wrap gap-2 mt-4 p-4 bg-white/3 rounded-lg border border-white/5">
         {['smoke', 'master', 'leather', 'bdsm', 'findom', 'dirty', 'fetish', 'daddy', 'alpha', 'dom', 'slave', 'bulge'].map(tag => (
           <button
             key={tag}
-            className={tagFilter.toLowerCase() === tag ? 'tag-filter-btn active' : 'tag-filter-btn'}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-all ${
+              tagFilter.toLowerCase() === tag
+                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white border-transparent shadow-lg shadow-purple-500/40'
+                : 'bg-purple-500/10 border border-purple-500/20 text-purple-400 hover:bg-purple-500/20 hover:border-purple-500/40 hover:-translate-y-0.5'
+            }`}
             onClick={() => setTagFilter(tagFilter.toLowerCase() === tag ? '' : tag)}
           >
             #{tag}
@@ -701,93 +874,128 @@ const Users: React.FC = () => {
         ))}
       </div>
 
-      {/* Pagination - Top */}
-      {renderPagination()}
+      {/* View Mode Toggle & Pagination Row */}
+      <div className="flex items-center justify-between mt-4 flex-wrap gap-4">
+        {renderViewModeToggle()}
+        <div className="flex-1">{renderPagination()}</div>
+      </div>
 
-      {/* Directory Table */}
-      <div className="users-content">
-        <table className="users-table">
-          <thead>
+      {/* Directory Content - Grid or List */}
+      {viewMode === 'grid' ? (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 mt-4">
+            {paginatedPersons.map(person => renderUserGridCard(person))}
+          </div>
+          {paginatedPersons.length === 0 && (
+            <div className="p-12 text-center text-white/50 bg-white/5 border border-white/10 rounded-xl mt-4">
+              <p>No users found matching your filters.</p>
+            </div>
+          )}
+        </>
+      ) : (
+      /* Directory Table */
+      <div className="users-content bg-white/5 border border-white/10 rounded-xl overflow-auto max-h-[calc(100vh-400px)] min-h-[400px] mt-4">
+        <table className="w-full border-collapse">
+          <thead className="sticky top-0 z-10">
             <tr>
-              <th onClick={() => handleSort('username')} className="sortable username-column">
+              <th
+                onClick={() => handleSort('username')}
+                className="w-[180px] px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30 cursor-pointer select-none hover:bg-white/8"
+              >
                 Username {sortField === 'username' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="image-column">Image</th>
-              <th onClick={() => handleSort('age')} className="sortable">
+              <th className="w-[140px] px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
+              <th
+                onClick={() => handleSort('age')}
+                className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30 cursor-pointer select-none hover:bg-white/8"
+              >
                 Age {sortField === 'age' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="tags-column">Tags</th>
-              <th>Priority</th>
-              <th onClick={() => handleSort('interaction_count')} className="sortable">
+              <th className="w-[200px] px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Tags</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Priority</th>
+              <th
+                onClick={() => handleSort('interaction_count')}
+                className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30 cursor-pointer select-none hover:bg-white/8"
+              >
                 Events {sortField === 'interaction_count' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th onClick={() => handleSort('snapshot_count')} className="sortable">
+              <th
+                onClick={() => handleSort('snapshot_count')}
+                className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30 cursor-pointer select-none hover:bg-white/8"
+              >
                 Snapshots {sortField === 'snapshot_count' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th onClick={() => handleSort('last_seen_at')} className="sortable">
+              <th
+                onClick={() => handleSort('last_seen_at')}
+                className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30 cursor-pointer select-none hover:bg-white/8"
+              >
                 Last Seen {sortField === 'last_seen_at' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="actions-column">Actions</th>
+              <th className="w-[150px] px-4 py-4 text-center font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Actions</th>
             </tr>
           </thead>
           <tbody>
             {paginatedPersons.map((person) => {
               const priority = getPriorityLookup(person.username);
               return (
-                <tr key={person.id}>
-                  <td className="username-cell">
-                    <div className="username-with-role">
-                      <Link to={`/profile/${person.username}`} className="username-link">
+                <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
+                  <td className="px-4 py-4 text-white/80">
+                    <div className="flex items-center gap-2">
+                      <Link to={`/profile/${person.username}`} className="text-white no-underline font-semibold text-base transition-colors hover:text-mhc-primary hover:underline">
                         {person.username}
                       </Link>
-                      <span className={`${getRoleBadgeClass(person.role)} role-small`}>{person.role}</span>
+                      <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem] opacity-80`}>{person.role}</span>
                     </div>
                   </td>
-                  <td className="image-cell">
+                  <td className="px-2 py-2">
                     {person.image_url && (
-                      <div className="image-wrapper">
+                      <div className="relative w-[120px] h-[90px] cursor-pointer group">
                         <img
                           src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
                           alt={person.username}
-                          className="user-image"
+                          className="w-full h-full object-cover rounded-md border-2 border-white/10 transition-all group-hover:border-mhc-primary group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-mhc-primary/40"
                         />
                         {isPersonLive(person) && (
-                          <span className="live-dot" title="Currently live">●</span>
+                          <span className="absolute top-0.5 right-0.5 text-red-500 text-xs animate-pulse drop-shadow-[0_0_4px_rgba(239,68,68,0.8)]">●</span>
                         )}
-                        <div className="image-popup">
-                          <img src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`} alt={person.username} />
+                        <div className="hidden group-hover:block absolute left-[130px] top-1/2 -translate-y-1/2 z-[100] bg-[#1a1a2e] border-2 border-white/20 rounded-lg p-2 shadow-2xl pointer-events-none">
+                          <img src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`} alt={person.username} className="w-[360px] h-[270px] object-cover rounded" />
                           {isPersonLive(person) && (
-                            <div className="popup-live-badge">● LIVE</div>
+                            <div className="absolute top-3 left-3 bg-red-500/90 text-white px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide animate-pulse">● LIVE</div>
                           )}
                         </div>
                       </div>
                     )}
                   </td>
-                  <td>{person.age || '—'}</td>
-                  <td className="tags-cell">
+                  <td className="px-4 py-4 text-white/80">{person.age || '—'}</td>
+                  <td className="px-2 py-2">
                     {person.tags && person.tags.length > 0 ? (
-                      <div className="tags-container">
+                      <div className="flex flex-wrap gap-1 items-center">
                         {person.tags.slice(0, 5).map((tag, idx) => (
-                          <span key={idx} className="tag-badge" onClick={() => setTagFilter(tag)}>
+                          <span
+                            key={idx}
+                            className="inline-block px-2 py-0.5 bg-purple-500/15 border border-purple-500/30 rounded-xl text-xs text-purple-400 cursor-pointer transition-all whitespace-nowrap hover:bg-purple-500/25 hover:border-purple-500/50 hover:scale-105"
+                            onClick={() => setTagFilter(tag)}
+                          >
                             {tag}
                           </span>
                         ))}
                         {person.tags.length > 5 && (
-                          <span className="tag-more">+{person.tags.length - 5}</span>
+                          <span className="text-xs text-white/40 font-medium">+{person.tags.length - 5}</span>
                         )}
                       </div>
                     ) : (
-                      <span className="no-tags">—</span>
+                      <span className="text-white/30">—</span>
                     )}
                   </td>
-                  <td>
+                  <td className="px-4 py-4">
                     {priority ? (
-                      <div className="priority-cell">
+                      <div className="flex items-center gap-2">
                         <span className={getPriorityBadgeClass(priority)}>
                           P{priority.priority_level} - {priority.status.toUpperCase()}
                         </span>
                         <button
-                          className="btn-remove-priority"
+                          className="bg-transparent border-none text-white/40 cursor-pointer text-sm px-2 py-1 transition-colors hover:text-red-400"
                           onClick={() => handleRemoveFromPriority(person.username)}
                           title="Remove from priority queue"
                         >
@@ -795,17 +1003,17 @@ const Users: React.FC = () => {
                         </button>
                       </div>
                     ) : (
-                      <span className="no-priority">—</span>
+                      <span className="text-white/30">—</span>
                     )}
                   </td>
-                  <td className="count-cell">{person.interaction_count}</td>
-                  <td className="count-cell">{person.snapshot_count}</td>
-                  <td>{formatDate(person.last_seen_at, { relative: true })}</td>
-                  <td className="actions-cell">
-                    <div className="action-buttons">
+                  <td className="px-4 py-4 text-center font-mono text-white/60">{person.interaction_count}</td>
+                  <td className="px-4 py-4 text-center font-mono text-white/60">{person.snapshot_count}</td>
+                  <td className="px-4 py-4 text-white/80">{formatDate(person.last_seen_at, { relative: true })}</td>
+                  <td className="px-4 py-4 text-center">
+                    <div className="flex gap-2 justify-center">
                       {!priority && (
                         <button
-                          className="btn-action btn-priority"
+                          className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-yellow-500/20 hover:border-yellow-500/30 hover:scale-110"
                           onClick={() => handleAddToPriority(person.username)}
                           title="Add to priority queue"
                         >
@@ -813,7 +1021,7 @@ const Users: React.FC = () => {
                         </button>
                       )}
                       <button
-                        className="btn-action btn-lookup"
+                        className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-blue-500/20 hover:border-blue-500/30 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
                         onClick={() => handleOnDemandLookup(person.username)}
                         disabled={lookupLoading === person.username}
                         title="On-demand lookup"
@@ -821,7 +1029,7 @@ const Users: React.FC = () => {
                         {lookupLoading === person.username ? '⟳' : '🔍'}
                       </button>
                       <button
-                        className="btn-action btn-delete"
+                        className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-red-500/20 hover:border-red-500/30 hover:scale-110"
                         onClick={() => handleDelete(person.id, person.username)}
                         title="Delete user"
                       >
@@ -836,11 +1044,12 @@ const Users: React.FC = () => {
         </table>
 
         {paginatedPersons.length === 0 && (
-          <div className="empty-state">
+          <div className="p-12 text-center text-white/50">
             <p>No users found matching your filters.</p>
           </div>
         )}
       </div>
+      )}
 
       {/* Pagination - Bottom */}
       {renderPagination()}
@@ -870,16 +1079,16 @@ const Users: React.FC = () => {
 
     return (
     <>
-      <div className="tab-header">
-        <h2>Following</h2>
-        <div className="tab-actions">
-          <label className="btn-primary file-upload-btn">
+      <div className="flex justify-between items-center my-6">
+        <h2 className="text-2xl text-white font-semibold">Following</h2>
+        <div className="flex gap-4">
+          <label className="bg-gradient-primary text-white px-6 py-3 rounded-md font-medium cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-mhc-primary/40">
             {followingLoading ? 'Updating...' : 'Update Following List'}
             <input
               type="file"
               accept=".html,.htm"
               onChange={handleUpdateFollowing}
-              style={{ display: 'none' }}
+              className="hidden"
               disabled={followingLoading}
             />
           </label>
@@ -887,107 +1096,136 @@ const Users: React.FC = () => {
       </div>
 
       {/* Stats Cards for Following - Clickable */}
-      <div className="header-stats">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-4">
         <div
-          className={`stat-card clickable ${followingFilter === 'all' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            followingFilter === 'all' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleFollowingFilterClick('all')}
         >
-          <div className="stat-value">{followingUsers.length}</div>
-          <div className="stat-label">Total Following</div>
+          <div className="text-3xl font-bold text-white mb-1">{followingUsers.length}</div>
+          <div className="text-sm text-white/70">Total Following</div>
         </div>
         <div
-          className={`stat-card clickable ${followingFilter === 'with_image' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            followingFilter === 'with_image' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleFollowingFilterClick('with_image')}
         >
-          <div className="stat-value">{withImages}</div>
-          <div className="stat-label">With Images</div>
+          <div className="text-3xl font-bold text-white mb-1">{withImages}</div>
+          <div className="text-sm text-white/70">With Images</div>
         </div>
         <div
-          className={`stat-card clickable ${followingFilter === 'models' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            followingFilter === 'models' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleFollowingFilterClick('models')}
         >
-          <div className="stat-value">{models}</div>
-          <div className="stat-label">Models</div>
+          <div className="text-3xl font-bold text-white mb-1">{models}</div>
+          <div className="text-sm text-white/70">Models</div>
         </div>
         <div
-          className={`stat-card clickable ${followingFilter === 'viewers' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            followingFilter === 'viewers' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleFollowingFilterClick('viewers')}
         >
-          <div className="stat-value">{viewers}</div>
-          <div className="stat-label">Viewers</div>
+          <div className="text-3xl font-bold text-white mb-1">{viewers}</div>
+          <div className="text-sm text-white/70">Viewers</div>
         </div>
         <div
-          className={`stat-card clickable ${followingFilter === 'unknown' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            followingFilter === 'unknown' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleFollowingFilterClick('unknown')}
         >
-          <div className="stat-value">{unknown}</div>
-          <div className="stat-label">Unknown</div>
+          <div className="text-3xl font-bold text-white mb-1">{unknown}</div>
+          <div className="text-sm text-white/70">Unknown</div>
         </div>
       </div>
 
       {/* Active filter indicator */}
       {followingFilter !== 'all' && (
-        <div className="active-filter-banner">
-          Filtering by: <strong>{followingFilter.replace('_', ' ')}</strong> ({filteredFollowing.length} users)
-          <button onClick={() => setFollowingFilter('all')}>Clear X</button>
+        <div className="flex items-center gap-4 px-4 py-3 bg-mhc-primary/15 border border-mhc-primary/30 rounded-lg mt-4 text-indigo-300 text-sm">
+          Filtering by: <strong className="text-white capitalize">{followingFilter.replace('_', ' ')}</strong> ({filteredFollowing.length} users)
+          <button onClick={() => setFollowingFilter('all')} className="ml-auto bg-transparent border border-white/20 text-white/70 px-3 py-1 rounded text-xs cursor-pointer transition-all hover:bg-white/10 hover:text-white">Clear X</button>
         </div>
       )}
 
       {followingStats && (
-        <div className="stats-banner">
-          <div className="stat-item">New Follows: {followingStats.newFollows}</div>
-          <div className="stat-item">Unfollowed: {followingStats.unfollows}</div>
-          <div className="stat-item">Total: {followingStats.total}</div>
+        <div className="flex gap-8 p-4 bg-mhc-primary/10 border border-mhc-primary/30 rounded-lg mb-4 mt-4">
+          <div className="text-white text-sm">New Follows: {followingStats.newFollows}</div>
+          <div className="text-white text-sm">Unfollowed: {followingStats.unfollows}</div>
+          <div className="text-white text-sm">Total: {followingStats.total}</div>
         </div>
       )}
 
-      <div className="users-content">
-        <table className="users-table">
+      {/* View Mode Toggle */}
+      <div className="flex items-center justify-between mt-4 mb-4">
+        {renderViewModeToggle()}
+        <span className="text-white/50 text-sm">{filteredFollowing.length} users</span>
+      </div>
+
+      {/* Following Content - Grid or List */}
+      {viewMode === 'grid' ? (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {filteredFollowing.map(person => renderUserGridCard(person))}
+          </div>
+          {filteredFollowing.length === 0 && (
+            <div className="p-12 text-center text-white/50 bg-white/5 border border-white/10 rounded-xl mt-4">
+              <p>{followingUsers.length === 0 ? 'No following users. Upload your following list to populate this tab.' : 'No users match the selected filter.'}</p>
+            </div>
+          )}
+        </>
+      ) : (
+      <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+        <table className="w-full border-collapse">
           <thead>
             <tr>
-              <th>Username</th>
-              <th>Image</th>
-              <th>Age</th>
-              <th>Tags</th>
-              <th>Following Since</th>
-              <th>Last Seen</th>
-              <th>Actions</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Age</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Tags</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Following Since</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Seen</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredFollowing.map((person) => (
-              <tr key={person.id}>
-                <td className="username-cell">
-                  <div className="username-with-role">
+              <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
+                <td className="px-4 py-4">
+                  <div className="flex items-center gap-2">
                     <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                    <Link to={`/profile/${person.username}`}>{person.username}</Link>
+                    <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
                   </div>
                 </td>
-                <td className="image-cell">
+                <td className="px-2 py-2">
                   {person.image_url && (
                     <img
                       src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
                       alt={person.username}
-                      className="user-image"
+                      className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
                     />
                   )}
                 </td>
-                <td>{person.age || '—'}</td>
-                <td className="tags-cell">
+                <td className="px-4 py-4 text-white/80">{person.age || '—'}</td>
+                <td className="px-2 py-2">
                   {person.tags && person.tags.length > 0 ? (
-                    <div className="tags-container">
+                    <div className="flex flex-wrap gap-1">
                       {person.tags.slice(0, 5).map((tag, idx) => (
-                        <span key={idx} className="tag-badge">{tag}</span>
+                        <span key={idx} className="inline-block px-2 py-0.5 bg-purple-500/15 border border-purple-500/30 rounded-xl text-xs text-purple-400">{tag}</span>
                       ))}
-                      {person.tags.length > 5 && <span className="tag-more">+{person.tags.length - 5}</span>}
+                      {person.tags.length > 5 && <span className="text-xs text-white/40">+{person.tags.length - 5}</span>}
                     </div>
-                  ) : <span className="no-tags">—</span>}
+                  ) : <span className="text-white/30">—</span>}
                 </td>
-                <td>{person.following_since ? formatDate(person.following_since, { includeTime: false }) : '—'}</td>
-                <td>{formatDate(person.last_seen_at, { relative: true })}</td>
-                <td className="actions-cell">
+                <td className="px-4 py-4 text-white/80">{person.following_since ? formatDate(person.following_since, { includeTime: false }) : '—'}</td>
+                <td className="px-4 py-4 text-white/80">{formatDate(person.last_seen_at, { relative: true })}</td>
+                <td className="px-4 py-4 text-center">
                   <button
-                    className="btn-action btn-lookup"
+                    className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-blue-500/20 hover:border-blue-500/30 hover:scale-110"
                     onClick={() => handleOnDemandLookup(person.username)}
                     title="Refresh data"
                   >
@@ -1000,11 +1238,12 @@ const Users: React.FC = () => {
         </table>
 
         {filteredFollowing.length === 0 && (
-          <div className="empty-state">
+          <div className="p-12 text-center text-white/50">
             <p>{followingUsers.length === 0 ? 'No following users. Upload your following list to populate this tab.' : 'No users match the selected filter.'}</p>
           </div>
         )}
       </div>
+      )}
     </>
   );
   };
@@ -1032,16 +1271,16 @@ const Users: React.FC = () => {
 
     return (
     <>
-      <div className="tab-header">
-        <h2>Followers</h2>
-        <div className="tab-actions">
-          <label className="btn-primary file-upload-btn">
+      <div className="flex justify-between items-center my-6">
+        <h2 className="text-2xl text-white font-semibold">Followers</h2>
+        <div className="flex gap-4">
+          <label className="bg-gradient-primary text-white px-6 py-3 rounded-md font-medium cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-mhc-primary/40">
             {followersLoading ? 'Updating...' : 'Update Followers List'}
             <input
               type="file"
               accept=".html,.htm"
               onChange={handleUpdateFollowers}
-              style={{ display: 'none' }}
+              className="hidden"
               disabled={followersLoading}
             />
           </label>
@@ -1049,96 +1288,125 @@ const Users: React.FC = () => {
       </div>
 
       {/* Stats Cards for Followers - Clickable */}
-      <div className="header-stats">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-4">
         <div
-          className={`stat-card clickable ${followersFilter === 'all' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            followersFilter === 'all' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleFollowersFilterClick('all')}
         >
-          <div className="stat-value">{followerUsers.length}</div>
-          <div className="stat-label">Total Followers</div>
+          <div className="text-3xl font-bold text-white mb-1">{followerUsers.length}</div>
+          <div className="text-sm text-white/70">Total Followers</div>
         </div>
         <div
-          className={`stat-card clickable ${followersFilter === 'with_image' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            followersFilter === 'with_image' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleFollowersFilterClick('with_image')}
         >
-          <div className="stat-value">{withImages}</div>
-          <div className="stat-label">With Images</div>
+          <div className="text-3xl font-bold text-white mb-1">{withImages}</div>
+          <div className="text-sm text-white/70">With Images</div>
         </div>
         <div
-          className={`stat-card clickable ${followersFilter === 'models' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            followersFilter === 'models' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleFollowersFilterClick('models')}
         >
-          <div className="stat-value">{models}</div>
-          <div className="stat-label">Models</div>
+          <div className="text-3xl font-bold text-white mb-1">{models}</div>
+          <div className="text-sm text-white/70">Models</div>
         </div>
         <div
-          className={`stat-card clickable ${followersFilter === 'viewers' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            followersFilter === 'viewers' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleFollowersFilterClick('viewers')}
         >
-          <div className="stat-value">{viewers}</div>
-          <div className="stat-label">Viewers</div>
+          <div className="text-3xl font-bold text-white mb-1">{viewers}</div>
+          <div className="text-sm text-white/70">Viewers</div>
         </div>
         <div
-          className={`stat-card clickable ${followersFilter === 'unknown' ? 'active' : ''}`}
+          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
+            followersFilter === 'unknown' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
+          }`}
           onClick={() => handleFollowersFilterClick('unknown')}
         >
-          <div className="stat-value">{unknown}</div>
-          <div className="stat-label">Unknown</div>
+          <div className="text-3xl font-bold text-white mb-1">{unknown}</div>
+          <div className="text-sm text-white/70">Unknown</div>
         </div>
       </div>
 
       {/* Active filter indicator */}
       {followersFilter !== 'all' && (
-        <div className="active-filter-banner">
-          Filtering by: <strong>{followersFilter.replace('_', ' ')}</strong> ({filteredFollowersList.length} users)
-          <button onClick={() => setFollowersFilter('all')}>Clear X</button>
+        <div className="flex items-center gap-4 px-4 py-3 bg-mhc-primary/15 border border-mhc-primary/30 rounded-lg mt-4 text-indigo-300 text-sm">
+          Filtering by: <strong className="text-white capitalize">{followersFilter.replace('_', ' ')}</strong> ({filteredFollowersList.length} users)
+          <button onClick={() => setFollowersFilter('all')} className="ml-auto bg-transparent border border-white/20 text-white/70 px-3 py-1 rounded text-xs cursor-pointer transition-all hover:bg-white/10 hover:text-white">Clear X</button>
         </div>
       )}
 
       {followersStats && (
-        <div className="stats-banner">
-          <div className="stat-item">New Followers: {followersStats.newFollowers}</div>
-          <div className="stat-item">Unfollowers: {followersStats.unfollowers}</div>
-          <div className="stat-item">Total: {followersStats.total}</div>
+        <div className="flex gap-8 p-4 bg-mhc-primary/10 border border-mhc-primary/30 rounded-lg mb-4 mt-4">
+          <div className="text-white text-sm">New Followers: {followersStats.newFollowers}</div>
+          <div className="text-white text-sm">Unfollowers: {followersStats.unfollowers}</div>
+          <div className="text-white text-sm">Total: {followersStats.total}</div>
         </div>
       )}
 
-      <div className="users-content">
-        <table className="users-table">
+      {/* View Mode Toggle */}
+      <div className="flex items-center justify-between mt-4 mb-4">
+        {renderViewModeToggle()}
+        <span className="text-white/50 text-sm">{filteredFollowersList.length} users</span>
+      </div>
+
+      {/* Followers Content - Grid or List */}
+      {viewMode === 'grid' ? (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+            {filteredFollowersList.map(person => renderUserGridCard(person))}
+          </div>
+          {filteredFollowersList.length === 0 && (
+            <div className="p-12 text-center text-white/50 bg-white/5 border border-white/10 rounded-xl mt-4">
+              <p>{followerUsers.length === 0 ? 'No followers found. Upload your followers list to populate this tab.' : 'No users match the selected filter.'}</p>
+            </div>
+          )}
+        </>
+      ) : (
+      <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+        <table className="w-full border-collapse">
           <thead>
             <tr>
-              <th>Username</th>
-              <th>Image</th>
-              <th>Age</th>
-              <th>Follower Since</th>
-              <th>Last Seen</th>
-              <th>Actions</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Age</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Follower Since</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Seen</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredFollowersList.map((person) => (
-              <tr key={person.id}>
-                <td className="username-cell">
-                  <div className="username-with-role">
+              <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
+                <td className="px-4 py-4">
+                  <div className="flex items-center gap-2">
                     <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                    <Link to={`/profile/${person.username}`}>{person.username}</Link>
+                    <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
                   </div>
                 </td>
-                <td className="image-cell">
+                <td className="px-2 py-2">
                   {person.image_url && (
                     <img
                       src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
                       alt={person.username}
-                      className="user-image"
+                      className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
                     />
                   )}
                 </td>
-                <td>{person.age || '—'}</td>
-                <td>{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '—'}</td>
-                <td>{formatDate(person.last_seen_at, { relative: true })}</td>
-                <td className="actions-cell">
+                <td className="px-4 py-4 text-white/80">{person.age || '—'}</td>
+                <td className="px-4 py-4 text-white/80">{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '—'}</td>
+                <td className="px-4 py-4 text-white/80">{formatDate(person.last_seen_at, { relative: true })}</td>
+                <td className="px-4 py-4 text-center">
                   <button
-                    className="btn-action btn-lookup"
+                    className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-blue-500/20 hover:border-blue-500/30 hover:scale-110"
                     onClick={() => handleOnDemandLookup(person.username)}
                     title="Refresh data"
                   >
@@ -1151,11 +1419,12 @@ const Users: React.FC = () => {
         </table>
 
         {filteredFollowersList.length === 0 && (
-          <div className="empty-state">
+          <div className="p-12 text-center text-white/50">
             <p>{followerUsers.length === 0 ? 'No followers found. Upload your followers list to populate this tab.' : 'No users match the selected filter.'}</p>
           </div>
         )}
       </div>
+      )}
     </>
   );
   };
@@ -1168,23 +1437,35 @@ const Users: React.FC = () => {
 
     return (
       <>
-        <div className="tab-header">
-          <h2>Unfollowed ({totalUnfollows})</h2>
-          <div className="timeframe-filters">
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Unfollowed ({totalUnfollows})</h2>
+          <div className="flex gap-2">
             <button
-              className={timeframeFilter === 7 ? 'filter-btn active' : 'filter-btn'}
+              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                timeframeFilter === 7
+                  ? 'bg-gradient-primary text-white border-transparent'
+                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
               onClick={() => setTimeframeFilter(7)}
             >
               Last 7 Days
             </button>
             <button
-              className={timeframeFilter === 30 ? 'filter-btn active' : 'filter-btn'}
+              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                timeframeFilter === 30
+                  ? 'bg-gradient-primary text-white border-transparent'
+                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
               onClick={() => setTimeframeFilter(30)}
             >
               Last 30 Days
             </button>
             <button
-              className={timeframeFilter === 90 ? 'filter-btn active' : 'filter-btn'}
+              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                timeframeFilter === 90
+                  ? 'bg-gradient-primary text-white border-transparent'
+                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
               onClick={() => setTimeframeFilter(90)}
             >
               Last 90 Days
@@ -1193,58 +1474,77 @@ const Users: React.FC = () => {
         </div>
 
         {totalUnfollows > 0 && (
-          <div className="insights-banner">
-            <div className="insight-item">
-              <div className="insight-value">{totalUnfollows}</div>
-              <div className="insight-label">Total Unfollows</div>
+          <div className="flex gap-8 p-6 bg-purple-500/10 border border-purple-500/30 rounded-lg mb-4">
+            <div className="text-center">
+              <div className="text-4xl font-bold text-purple-400 mb-1">{totalUnfollows}</div>
+              <div className="text-sm text-white/70">Total Unfollows</div>
             </div>
-            <div className="insight-item">
-              <div className="insight-value">{avgDuration.toFixed(1)}</div>
-              <div className="insight-label">Avg Days Followed</div>
+            <div className="text-center">
+              <div className="text-4xl font-bold text-purple-400 mb-1">{avgDuration.toFixed(1)}</div>
+              <div className="text-sm text-white/70">Avg Days Followed</div>
             </div>
           </div>
         )}
 
-        <div className="users-content">
-          <table className="users-table">
+        {/* View Mode Toggle */}
+        <div className="flex items-center justify-between mt-4 mb-4">
+          {renderViewModeToggle()}
+          <span className="text-white/50 text-sm">{filteredUnfollowed.length} users</span>
+        </div>
+
+        {/* Unfollowed Content - Grid or List */}
+        {viewMode === 'grid' ? (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+              {filteredUnfollowed.map(person => renderUserGridCard(person))}
+            </div>
+            {filteredUnfollowed.length === 0 && (
+              <div className="p-12 text-center text-white/50 bg-white/5 border border-white/10 rounded-xl mt-4">
+                <p>No unfollowed users in the selected timeframe.</p>
+              </div>
+            )}
+          </>
+        ) : (
+        <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+          <table className="w-full border-collapse">
             <thead>
               <tr>
-                <th>Username</th>
-                <th>Image</th>
-                <th>Age</th>
-                <th>Followed On</th>
-                <th>Unfollowed On</th>
-                <th>Days Followed</th>
-                <th>Last Seen</th>
-                <th>Actions</th>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Age</th>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Followed On</th>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Unfollowed On</th>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Days Followed</th>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Seen</th>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredUnfollowed.map((person) => (
-                <tr key={person.id}>
-                  <td className="username-cell">
-                    <div className="username-with-role">
+                <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
+                  <td className="px-4 py-4">
+                    <div className="flex items-center gap-2">
                       <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                      <Link to={`/profile/${person.username}`}>{person.username}</Link>
+                      <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
                     </div>
                   </td>
-                  <td className="image-cell">
+                  <td className="px-2 py-2">
                     {person.image_url && (
                       <img
                         src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
                         alt={person.username}
-                        className="user-image"
+                        className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
                       />
                     )}
                   </td>
-                  <td>{person.age || '—'}</td>
-                  <td>{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '—'}</td>
-                  <td>{person.unfollower_at ? formatDate(person.unfollower_at, { includeTime: false }) : '—'}</td>
-                  <td>{person.days_followed !== null ? `${person.days_followed} days` : '—'}</td>
-                  <td>{formatDate(person.last_seen_at, { relative: true })}</td>
-                  <td className="actions-cell">
+                  <td className="px-4 py-4 text-white/80">{person.age || '—'}</td>
+                  <td className="px-4 py-4 text-white/80">{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '—'}</td>
+                  <td className="px-4 py-4 text-white/80">{person.unfollower_at ? formatDate(person.unfollower_at, { includeTime: false }) : '—'}</td>
+                  <td className="px-4 py-4 text-white/80">{person.days_followed !== null ? `${person.days_followed} days` : '—'}</td>
+                  <td className="px-4 py-4 text-white/80">{formatDate(person.last_seen_at, { relative: true })}</td>
+                  <td className="px-4 py-4 text-center">
                     <button
-                      className="btn-action btn-lookup"
+                      className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-blue-500/20 hover:border-blue-500/30 hover:scale-110"
                       onClick={() => handleOnDemandLookup(person.username)}
                       title="Refresh data"
                     >
@@ -1257,58 +1557,79 @@ const Users: React.FC = () => {
           </table>
 
           {filteredUnfollowed.length === 0 && (
-            <div className="empty-state">
+            <div className="p-12 text-center text-white/50">
               <p>No unfollowed users in the selected timeframe.</p>
             </div>
           )}
         </div>
+        )}
       </>
     );
   };
 
   if (loading && activeTab === 'directory') {
     return (
-      <div className="users">
-        <div className="users-header">
-          <h1>Users</h1>
-          <p>Loading...</p>
+      <div className="max-w-[1600px] mx-auto p-8">
+        <div className="mb-8">
+          <h1 className="text-3xl mb-4 bg-gradient-primary bg-clip-text text-transparent font-bold">Users</h1>
+          <p className="text-white/70">Loading...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="users">
+    <div className="max-w-[1600px] mx-auto p-8">
       {/* Header */}
-      <div className="users-header">
-        <div className="header-main">
-          <h1>Users</h1>
+      <div className="mb-8">
+        <div className="mb-6">
+          <h1 className="text-3xl mb-4 bg-gradient-primary bg-clip-text text-transparent font-bold">Users</h1>
         </div>
 
-        {error && <div className="error-message">{error}</div>}
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-lg mb-4">
+            {error}
+          </div>
+        )}
 
         {/* Tabs */}
-        <div className="tabs">
+        <div className="flex gap-2 mt-6 border-b-2 border-white/10">
           <button
-            className={activeTab === 'directory' ? 'tab-btn active' : 'tab-btn'}
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'directory'
+                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
             onClick={() => setActiveTab('directory')}
           >
             Directory
           </button>
           <button
-            className={activeTab === 'following' ? 'tab-btn active' : 'tab-btn'}
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'following'
+                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
             onClick={() => setActiveTab('following')}
           >
             Following
           </button>
           <button
-            className={activeTab === 'followers' ? 'tab-btn active' : 'tab-btn'}
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'followers'
+                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
             onClick={() => setActiveTab('followers')}
           >
             Followers
           </button>
           <button
-            className={activeTab === 'unfollowed' ? 'tab-btn active' : 'tab-btn'}
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'unfollowed'
+                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
             onClick={() => setActiveTab('unfollowed')}
           >
             Unfollowed
@@ -1324,58 +1645,70 @@ const Users: React.FC = () => {
 
       {/* Add to Priority Modal */}
       {showPriorityModal && (
-        <div className="modal-overlay" onClick={() => setShowPriorityModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <h2>Add to Priority Queue</h2>
-            <div className="modal-body">
-              <div className="form-field">
-                <label>Username:</label>
-                <input type="text" value={selectedUsername} disabled className="input-disabled" />
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000] backdrop-blur-sm" onClick={() => setShowPriorityModal(false)}>
+          <div className="bg-[#1a1a2e] border border-white/10 rounded-xl max-w-[500px] w-[90%] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <h2 className="m-0 p-6 border-b border-white/10 text-white text-xl">Add to Priority Queue</h2>
+            <div className="p-6">
+              <div className="mb-6">
+                <label className="block mb-2 text-white/90 font-medium text-sm">Username:</label>
+                <input type="text" value={selectedUsername} disabled className="w-full px-3 py-3 bg-white/3 border border-white/10 rounded-md text-white/50 text-base" />
               </div>
 
-              <div className="form-field">
-                <label>Priority Level:</label>
-                <div className="priority-options">
-                  <label className="radio-label">
+              <div className="mb-6">
+                <label className="block mb-2 text-white/90 font-medium text-sm">Priority Level:</label>
+                <div className="flex flex-col gap-4">
+                  <label className="flex items-start gap-3 p-4 bg-white/3 border border-white/10 rounded-lg cursor-pointer transition-all hover:bg-white/5 hover:border-white/20">
                     <input
                       type="radio"
                       name="priority"
                       checked={priorityLevel === 1}
                       onChange={() => setPriorityLevel(1)}
+                      className="mt-1"
                     />
-                    <span>Priority 1 - Initial Population</span>
-                    <p className="help-text">Fetched once, then marked complete</p>
+                    <div>
+                      <span className="text-white font-medium block mb-1">Priority 1 - Initial Population</span>
+                      <p className="text-sm text-white/50 m-0">Fetched once, then marked complete</p>
+                    </div>
                   </label>
-                  <label className="radio-label">
+                  <label className="flex items-start gap-3 p-4 bg-white/3 border border-white/10 rounded-lg cursor-pointer transition-all hover:bg-white/5 hover:border-white/20">
                     <input
                       type="radio"
                       name="priority"
                       checked={priorityLevel === 2}
                       onChange={() => setPriorityLevel(2)}
+                      className="mt-1"
                     />
-                    <span>Priority 2 - Frequent Tracking</span>
-                    <p className="help-text">Checked on every poll cycle</p>
+                    <div>
+                      <span className="text-white font-medium block mb-1">Priority 2 - Frequent Tracking</span>
+                      <p className="text-sm text-white/50 m-0">Checked on every poll cycle</p>
+                    </div>
                   </label>
                 </div>
               </div>
 
-              <div className="form-field">
-                <label>Notes (optional):</label>
+              <div className="mb-6">
+                <label className="block mb-2 text-white/90 font-medium text-sm">Notes (optional):</label>
                 <textarea
                   value={priorityNotes}
                   onChange={(e) => setPriorityNotes(e.target.value)}
                   placeholder="Add notes about this user..."
-                  className="textarea"
+                  className="w-full px-3 py-3 bg-white/5 border border-white/10 rounded-md text-white text-base font-inherit resize-y placeholder:text-white/40 focus:outline-none focus:border-mhc-primary focus:bg-white/8"
                   rows={3}
                 />
               </div>
             </div>
 
-            <div className="modal-footer">
-              <button className="btn-secondary" onClick={() => setShowPriorityModal(false)}>
+            <div className="p-6 border-t border-white/10 flex gap-4 justify-end">
+              <button
+                className="px-6 py-3 bg-white/5 text-white/70 border border-white/10 rounded-md text-base font-medium cursor-pointer transition-all hover:bg-white/10 hover:text-white"
+                onClick={() => setShowPriorityModal(false)}
+              >
                 Cancel
               </button>
-              <button className="btn-primary" onClick={handleSubmitPriority}>
+              <button
+                className="px-6 py-3 bg-gradient-primary text-white border-none rounded-md text-base font-medium cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-mhc-primary/40"
+                onClick={handleSubmitPriority}
+              >
                 Add to Queue
               </button>
             </div>

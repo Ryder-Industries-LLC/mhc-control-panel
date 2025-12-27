@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
 import { formatDate } from '../utils/formatting';
-import './Directory.css';
+// Directory.css removed - fully migrated to Tailwind CSS
 
 interface PersonWithSource {
   id: string;
@@ -121,28 +121,30 @@ const Directory: React.FC = () => {
     return sortDirection === 'asc' ? comparison : -comparison;
   });
 
-  const getRoleBadgeClass = (role: string) => {
+  const getRoleBadge = (role: string) => {
+    const base = "inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase";
     switch (role) {
       case 'MODEL':
-        return 'role-badge role-model';
+        return `${base} bg-mhc-primary text-white`;
       case 'VIEWER':
-        return 'role-badge role-viewer';
+        return `${base} bg-emerald-500 text-white`;
       default:
-        return 'role-badge role-unknown';
+        return `${base} bg-gray-600 text-gray-200`;
     }
   };
 
-  const getSourceBadgeClass = (source: string) => {
+  const getSourceBadge = (source: string) => {
+    const base = "inline-block px-3 py-1 rounded-full text-xs font-semibold";
     if (source.includes('statbate')) {
-      return 'source-badge source-statbate';
+      return `${base} bg-purple-500 text-white`;
     }
     if (source === 'cb_events') {
-      return 'source-badge source-cb-events';
+      return `${base} bg-teal-500 text-white`;
     }
     if (source === 'cb_stats') {
-      return 'source-badge source-cb-stats';
+      return `${base} bg-violet-600 text-white`;
     }
-    return 'source-badge source-manual';
+    return `${base} bg-gray-500 text-white`;
   };
 
   const formatSource = (source: string) => {
@@ -155,10 +157,10 @@ const Directory: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="directory">
-        <div className="directory-header">
-          <h1>Directory</h1>
-          <p>Loading...</p>
+      <div className="max-w-7xl mx-auto p-5">
+        <div className="text-center mb-10 py-8 border-b-2 border-mhc-primary">
+          <h1 className="text-mhc-primary text-4xl font-bold mb-2">Directory</h1>
+          <p className="text-mhc-text-dim text-lg">Loading...</p>
         </div>
       </div>
     );
@@ -166,47 +168,68 @@ const Directory: React.FC = () => {
 
   if (error) {
     return (
-      <div className="directory">
-        <div className="directory-header">
-          <h1>Directory</h1>
+      <div className="max-w-7xl mx-auto p-5">
+        <div className="text-center mb-10 py-8 border-b-2 border-mhc-primary">
+          <h1 className="text-mhc-primary text-4xl font-bold mb-2">Directory</h1>
         </div>
-        <div className="error-message">{error}</div>
-        <button onClick={loadPersons} className="btn-retry">Retry</button>
+        <div className="bg-red-400 text-white p-4 rounded-md mb-5">{error}</div>
+        <button
+          onClick={loadPersons}
+          className="bg-mhc-primary text-white px-5 py-2.5 rounded-md text-sm font-semibold hover:bg-indigo-600 transition-colors"
+        >
+          Retry
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="directory">
-      <div className="directory-header">
-        <h1>Directory</h1>
-        <p>All tracked persons ({persons.length})</p>
+    <div className="max-w-7xl mx-auto p-5">
+      <div className="text-center mb-10 py-8 border-b-2 border-mhc-primary">
+        <h1 className="text-mhc-primary text-4xl font-bold mb-2">Directory</h1>
+        <p className="text-mhc-text-dim text-lg">All tracked persons ({persons.length})</p>
 
         {/* Background job runs automatically in worker process */}
 
-        <div className="filter-controls">
-          <label>Filter by Role:</label>
-          <div className="role-filters">
+        <div className="mt-5">
+          <label className="block text-mhc-text-muted text-sm font-semibold mb-2">Filter by Role:</label>
+          <div className="flex gap-2.5 justify-center">
             <button
-              className={roleFilter === 'ALL' ? 'filter-btn active' : 'filter-btn'}
+              className={`px-4 py-2 rounded-md text-sm font-semibold border-2 transition-all ${
+                roleFilter === 'ALL'
+                  ? 'bg-mhc-primary text-white border-mhc-primary'
+                  : 'bg-mhc-surface-light text-mhc-text-muted border-gray-600 hover:bg-gray-600 hover:border-mhc-primary'
+              }`}
               onClick={() => setRoleFilter('ALL')}
             >
               All ({persons.length})
             </button>
             <button
-              className={roleFilter === 'MODEL' ? 'filter-btn active' : 'filter-btn'}
+              className={`px-4 py-2 rounded-md text-sm font-semibold border-2 transition-all ${
+                roleFilter === 'MODEL'
+                  ? 'bg-mhc-primary text-white border-mhc-primary'
+                  : 'bg-mhc-surface-light text-mhc-text-muted border-gray-600 hover:bg-gray-600 hover:border-mhc-primary'
+              }`}
               onClick={() => setRoleFilter('MODEL')}
             >
               Models ({persons.filter(p => p.role === 'MODEL').length})
             </button>
             <button
-              className={roleFilter === 'VIEWER' ? 'filter-btn active' : 'filter-btn'}
+              className={`px-4 py-2 rounded-md text-sm font-semibold border-2 transition-all ${
+                roleFilter === 'VIEWER'
+                  ? 'bg-mhc-primary text-white border-mhc-primary'
+                  : 'bg-mhc-surface-light text-mhc-text-muted border-gray-600 hover:bg-gray-600 hover:border-mhc-primary'
+              }`}
               onClick={() => setRoleFilter('VIEWER')}
             >
               Viewers ({persons.filter(p => p.role === 'VIEWER').length})
             </button>
             <button
-              className={roleFilter === 'UNKNOWN' ? 'filter-btn active' : 'filter-btn'}
+              className={`px-4 py-2 rounded-md text-sm font-semibold border-2 transition-all ${
+                roleFilter === 'UNKNOWN'
+                  ? 'bg-mhc-primary text-white border-mhc-primary'
+                  : 'bg-mhc-surface-light text-mhc-text-muted border-gray-600 hover:bg-gray-600 hover:border-mhc-primary'
+              }`}
               onClick={() => setRoleFilter('UNKNOWN')}
             >
               Unknown ({persons.filter(p => p.role === 'UNKNOWN').length})
@@ -215,57 +238,80 @@ const Directory: React.FC = () => {
         </div>
       </div>
 
-      <div className="directory-content">
-        <table className="directory-table">
-          <thead>
+      <div className="bg-mhc-surface rounded-xl overflow-hidden shadow-lg">
+        <table className="w-full border-collapse">
+          <thead className="bg-mhc-surface-light sticky top-0 z-10">
             <tr>
-              <th onClick={() => handleSort('username')} className="sortable">
+              <th
+                onClick={() => handleSort('username')}
+                className="px-3 py-4 text-left text-mhc-text-muted font-semibold text-sm border-b-2 border-gray-600 cursor-pointer select-none hover:bg-gray-600 transition-colors"
+              >
                 Username {sortField === 'username' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th onClick={() => handleSort('role')} className="sortable">
+              <th
+                onClick={() => handleSort('role')}
+                className="px-3 py-4 text-left text-mhc-text-muted font-semibold text-sm border-b-2 border-gray-600 cursor-pointer select-none hover:bg-gray-600 transition-colors"
+              >
                 Role {sortField === 'role' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th onClick={() => handleSort('source')} className="sortable">
+              <th
+                onClick={() => handleSort('source')}
+                className="px-3 py-4 text-left text-mhc-text-muted font-semibold text-sm border-b-2 border-gray-600 cursor-pointer select-none hover:bg-gray-600 transition-colors"
+              >
                 Source {sortField === 'source' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th onClick={() => handleSort('interaction_count')} className="sortable">
+              <th
+                onClick={() => handleSort('interaction_count')}
+                className="px-3 py-4 text-left text-mhc-text-muted font-semibold text-sm border-b-2 border-gray-600 cursor-pointer select-none hover:bg-gray-600 transition-colors"
+              >
                 Events {sortField === 'interaction_count' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th onClick={() => handleSort('snapshot_count')} className="sortable">
+              <th
+                onClick={() => handleSort('snapshot_count')}
+                className="px-3 py-4 text-left text-mhc-text-muted font-semibold text-sm border-b-2 border-gray-600 cursor-pointer select-none hover:bg-gray-600 transition-colors"
+              >
                 Snapshots {sortField === 'snapshot_count' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th onClick={() => handleSort('first_seen_at')} className="sortable">
+              <th
+                onClick={() => handleSort('first_seen_at')}
+                className="px-3 py-4 text-left text-mhc-text-muted font-semibold text-sm border-b-2 border-gray-600 cursor-pointer select-none hover:bg-gray-600 transition-colors"
+              >
                 First Seen {sortField === 'first_seen_at' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th onClick={() => handleSort('last_seen_at')} className="sortable">
+              <th
+                onClick={() => handleSort('last_seen_at')}
+                className="px-3 py-4 text-left text-mhc-text-muted font-semibold text-sm border-b-2 border-gray-600 cursor-pointer select-none hover:bg-gray-600 transition-colors"
+              >
                 Last Seen {sortField === 'last_seen_at' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th>Actions</th>
+              <th className="px-3 py-4 text-left text-mhc-text-muted font-semibold text-sm border-b-2 border-gray-600">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>
             {sortedPersons.map((person) => (
-              <tr key={person.id}>
-                <td className="username-cell">
-                  <Link to={`/profile/${person.username}`}>
+              <tr key={person.id} className="border-b border-mhc-surface-light hover:bg-mhc-surface-light transition-colors">
+                <td className="px-3 py-3 text-gray-200 text-sm font-semibold">
+                  <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline hover:text-indigo-400 hover:underline transition-colors">
                     {person.username}
                   </Link>
                 </td>
-                <td>
-                  <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
+                <td className="px-3 py-3 text-gray-200 text-sm">
+                  <span className={getRoleBadge(person.role)}>{person.role}</span>
                 </td>
-                <td>
-                  <span className={getSourceBadgeClass(person.source)}>
+                <td className="px-3 py-3 text-gray-200 text-sm">
+                  <span className={getSourceBadge(person.source)}>
                     {formatSource(person.source)}
                   </span>
                 </td>
-                <td className="count-cell">{person.interaction_count}</td>
-                <td className="count-cell">{person.snapshot_count}</td>
-                <td>{formatDate(person.first_seen_at, { relative: true })}</td>
-                <td>{formatDate(person.last_seen_at, { relative: true })}</td>
-                <td>
+                <td className="px-3 py-3 text-gray-200 text-sm text-center">{person.interaction_count}</td>
+                <td className="px-3 py-3 text-gray-200 text-sm text-center">{person.snapshot_count}</td>
+                <td className="px-3 py-3 text-gray-200 text-sm">{formatDate(person.first_seen_at, { relative: true })}</td>
+                <td className="px-3 py-3 text-gray-200 text-sm">{formatDate(person.last_seen_at, { relative: true })}</td>
+                <td className="px-3 py-3 text-gray-200 text-sm">
                   <button
-                    className="btn-delete"
+                    className="bg-red-400 text-white px-3 py-1.5 rounded text-xs font-semibold hover:bg-red-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     onClick={() => handleDelete(person.id, person.username)}
                     disabled={deletingId === person.id}
                   >
