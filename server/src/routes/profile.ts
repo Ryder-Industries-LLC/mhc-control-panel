@@ -302,7 +302,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 /**
  * PATCH /api/profile/:username
- * Update profile fields (notes, banned_me, active_sub, first_service_date, last_service_date, friend_tier, etc.)
+ * Update profile fields (notes, banned_me, active_sub, first_service_date, last_service_date, friend_tier, stream_summary, etc.)
  */
 router.patch('/:username', async (req: Request, res: Response) => {
   try {
@@ -314,6 +314,7 @@ router.patch('/:username', async (req: Request, res: Response) => {
       first_service_date,
       last_service_date,
       friend_tier,
+      stream_summary,
     } = req.body;
 
     if (!username) {
@@ -369,38 +370,61 @@ router.patch('/:username', async (req: Request, res: Response) => {
       values.push(friend_tier);
     }
 
+    if (stream_summary !== undefined) {
+      updates.push(`stream_summary = $${paramIndex++}`);
+      values.push(stream_summary);
+    }
+
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
 
     updates.push('updated_at = NOW()');
-    values.push(person.id);
 
+    // First ensure profile exists using UPSERT
+    const existingProfile = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (existingProfile.rows.length === 0) {
+      // Create minimal profile if it doesn't exist
+      await query(
+        `INSERT INTO profiles (person_id, notes, banned_me, active_sub, first_service_date, last_service_date, friend_tier, stream_summary)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          person.id,
+          notes !== undefined ? notes : null,
+          banned_me !== undefined ? banned_me : false,
+          active_sub !== undefined ? active_sub : false,
+          first_service_date !== undefined ? first_service_date : null,
+          last_service_date !== undefined ? last_service_date : null,
+          friend_tier !== undefined ? friend_tier : null,
+          stream_summary !== undefined ? stream_summary : null,
+        ]
+      );
+
+      // Return the newly created profile
+      const newProfile = await query('SELECT * FROM profiles WHERE person_id = $1', [person.id]);
+      const profile = newProfile.rows[0];
+
+      logger.info(`Created new profile for ${username}`, {
+        notes: !!notes,
+        banned_me,
+        active_sub,
+        first_service_date,
+        last_service_date,
+        friend_tier,
+        stream_summary: !!stream_summary,
+      });
+
+      return res.json({ success: true, profile });
+    }
+
+    // Profile exists, run UPDATE
+    values.push(person.id);
     const sql = `
       UPDATE profiles
       SET ${updates.join(', ')}
       WHERE person_id = $${paramIndex}
       RETURNING *
     `;
-
-    // First ensure profile exists
-    const existingProfile = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
-    if (existingProfile.rows.length === 0) {
-      // Create minimal profile if it doesn't exist
-      await query(
-        `INSERT INTO profiles (person_id, notes, banned_me, active_sub, first_service_date, last_service_date, friend_tier)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          person.id,
-          notes || null,
-          banned_me || false,
-          active_sub || false,
-          first_service_date || null,
-          last_service_date || null,
-          friend_tier || null,
-        ]
-      );
-    }
 
     const result = await query(sql, values);
     const profile = result.rows[0];
@@ -412,6 +436,7 @@ router.patch('/:username', async (req: Request, res: Response) => {
       first_service_date,
       last_service_date,
       friend_tier,
+      stream_summary: !!stream_summary,
     });
 
     res.json({ success: true, profile });

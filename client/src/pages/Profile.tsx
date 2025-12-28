@@ -70,6 +70,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
   // Notes and status state
   const [notes, setNotes] = useState('');
+  const [streamSummary, setStreamSummary] = useState('');
   const [bannedMe, setBannedMe] = useState(false);
   const [activeSub, setActiveSub] = useState(false);
   const [firstServiceDate, setFirstServiceDate] = useState('');
@@ -129,6 +130,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
   useEffect(() => {
     if (profileData?.profile) {
       setNotes(profileData.profile.notes || '');
+      setStreamSummary(profileData.profile.stream_summary || '');
       setBannedMe(profileData.profile.banned_me || false);
       setActiveSub(profileData.profile.active_sub || false);
       setFirstServiceDate(profileData.profile.first_service_date ? profileData.profile.first_service_date.split('T')[0] : '');
@@ -203,6 +205,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           notes,
+          stream_summary: streamSummary,
           banned_me: bannedMe,
           active_sub: activeSub,
           first_service_date: firstServiceDate || null,
@@ -280,6 +283,24 @@ const Profile: React.FC<ProfilePageProps> = () => {
       setActiveSub(!newValue);
       setFirstServiceDate(firstServiceDate);
       setLastServiceDate(lastServiceDate);
+    }
+  };
+
+  const handleFriendTierChange = async (newTier: number | null) => {
+    if (!profileData?.person?.username) return;
+
+    const oldTier = friendTier;
+    setFriendTier(newTier);
+
+    try {
+      await fetch(`/api/profile/${profileData.person.username}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ friend_tier: newTier }),
+      });
+    } catch (err) {
+      // Revert on error
+      setFriendTier(oldTier);
     }
   };
 
@@ -572,7 +593,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   <label className="text-mhc-text font-medium whitespace-nowrap">Friend Tier:</label>
                   <select
                     value={friendTier || ''}
-                    onChange={(e) => setFriendTier(e.target.value ? parseInt(e.target.value, 10) : null)}
+                    onChange={(e) => handleFriendTierChange(e.target.value ? parseInt(e.target.value, 10) : null)}
                     className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20 min-w-[150px]"
                   >
                     <option value="">None</option>
@@ -595,7 +616,19 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 </label>
               </div>
 
-              {/* Row 3: Notes */}
+              {/* Row 3: Stream Summary */}
+              <div className="flex-1">
+                <label className="block text-mhc-text-muted text-sm font-semibold mb-2">Stream Summary</label>
+                <textarea
+                  value={streamSummary}
+                  onChange={(e) => setStreamSummary(e.target.value)}
+                  placeholder="Post-broadcast notes and summary..."
+                  rows={3}
+                  className="w-full px-4 py-2.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                />
+              </div>
+
+              {/* Row 4: Notes and Save Button */}
               <div className="flex-1">
                 <label className="block text-mhc-text-muted text-sm font-semibold mb-2">Notes</label>
                 <div className="flex gap-3">
