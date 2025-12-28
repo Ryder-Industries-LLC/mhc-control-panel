@@ -48,17 +48,21 @@ export class BroadcastSessionService {
     const existingResult = await query(existingSessionSql, [personId, sessionStart]);
     const existingSession = existingResult.rows[0];
 
-    // Download and save images locally
+    // Download and save images locally (skips placeholder images)
     const imagePaths = await ImageStorageService.downloadBoth(
       roomData.image_url,
       roomData.image_url_360x270,
       roomData.username
     );
 
+    // If we got a valid new image, use it; otherwise keep as null (don't use placeholder URLs)
+    const shouldClearOldImage = imagePaths.full !== null;
+
     let result;
 
     if (existingSession) {
       // Update the existing session with latest data
+      // Always update image paths when we have a new valid image
       const updateSql = `
         UPDATE affiliate_api_snapshots SET
           observed_at = NOW(),
@@ -71,8 +75,8 @@ export class BroadcastSessionService {
           is_hd = $8,
           image_url = $9,
           image_url_360x270 = $10,
-          image_path = COALESCE($11, image_path),
-          image_path_360x270 = COALESCE($12, image_path_360x270)
+          image_path = CASE WHEN $13 THEN $11 ELSE COALESCE($11, image_path) END,
+          image_path_360x270 = CASE WHEN $13 THEN $12 ELSE COALESCE($12, image_path_360x270) END
         WHERE id = $1
         RETURNING *
       `;
@@ -90,6 +94,7 @@ export class BroadcastSessionService {
         roomData.image_url_360x270,
         imagePaths.thumbnail,
         imagePaths.full,
+        shouldClearOldImage, // $13 - whether to replace old image with new one
       ];
 
       result = await query(updateSql, updateValues);

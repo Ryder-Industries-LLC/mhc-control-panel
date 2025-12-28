@@ -17,6 +17,37 @@ interface JobStats {
   lastRunFailed: number;
 }
 
+interface ProfileScrapeConfig {
+  intervalMinutes: number;
+  maxProfilesPerRun: number;
+  delayBetweenProfiles: number;
+  refreshDays: number;
+  enabled: boolean;
+  prioritizeFollowing: boolean;
+}
+
+interface ProfileScrapeStats {
+  lastRun: string | null;
+  totalRuns: number;
+  totalScraped: number;
+  totalFailed: number;
+  totalSkipped: number;
+  lastRunScraped: number;
+  lastRunFailed: number;
+  lastRunSkipped: number;
+  currentUsername: string | null;
+  progress: number;
+  total: number;
+}
+
+interface ProfileScrapeJobStatus {
+  isRunning: boolean;
+  isPaused: boolean;
+  isProcessing: boolean;
+  config: ProfileScrapeConfig;
+  stats: ProfileScrapeStats;
+}
+
 interface JobStatus {
   isRunning: boolean;
   isPaused: boolean;
@@ -54,7 +85,7 @@ interface SystemStats {
   };
 }
 
-type AdminTab = 'jobs' | 'system-stats' | 'data-sources' | 'scraper';
+type AdminTab = 'jobs' | 'system-stats' | 'data-sources' | 'scraper' | 'profile-scrape';
 
 const Admin: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('jobs');
@@ -77,6 +108,21 @@ const Admin: React.FC = () => {
   const [cookieStatus, setCookieStatus] = useState<string | null>(null);
   const [scraping, setScraping] = useState(false);
   const [scrapeStatus, setScrapeStatus] = useState<string | null>(null);
+
+  // Profile scrape job state
+  const [profileScrapeStatus, setProfileScrapeStatus] = useState<ProfileScrapeJobStatus | null>(null);
+  const [profileScrapeConfigForm, setProfileScrapeConfigForm] = useState<ProfileScrapeConfig>({
+    intervalMinutes: 60,
+    maxProfilesPerRun: 50,
+    delayBetweenProfiles: 5000,
+    refreshDays: 7,
+    enabled: false,
+    prioritizeFollowing: true,
+  });
+  const [profileScrapeConfigCollapsed, setProfileScrapeConfigCollapsed] = useState(true);
+  const [manualScrapeUsername, setManualScrapeUsername] = useState('');
+  const [manualScraping, setManualScraping] = useState(false);
+  const [manualScrapeResult, setManualScrapeResult] = useState<string | null>(null);
 
   // Auto-refresh job status when on Jobs tab
   useEffect(() => {
@@ -101,12 +147,35 @@ const Admin: React.FC = () => {
     }
   }, [activeTab]);
 
+  // Auto-refresh profile scrape job status when on Profile Scrape tab
+  useEffect(() => {
+    if (activeTab === 'profile-scrape') {
+      setProfileScrapeFormInitialized(false); // Reset so form syncs fresh
+      fetchProfileScrapeStatus();
+      checkCookieStatus();
+      const interval = setInterval(fetchProfileScrapeStatus, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab]);
+
   // Update form when job status changes
   useEffect(() => {
     if (jobStatus) {
       setConfigForm(jobStatus.config);
     }
   }, [jobStatus]);
+
+  // Update profile scrape config form when status changes (only if not currently loading/updating)
+  const [profileScrapeFormInitialized, setProfileScrapeFormInitialized] = useState(false);
+  useEffect(() => {
+    if (profileScrapeStatus && !loading) {
+      // Only auto-sync on initial load, not during updates
+      if (!profileScrapeFormInitialized) {
+        setProfileScrapeConfigForm(profileScrapeStatus.config);
+        setProfileScrapeFormInitialized(true);
+      }
+    }
+  }, [profileScrapeStatus, loading, profileScrapeFormInitialized]);
 
   const fetchJobStatus = async () => {
     try {
@@ -173,6 +242,19 @@ const Admin: React.FC = () => {
       setHasCookies(data.hasCookies);
     } catch (err) {
       console.error('Error checking cookie status:', err);
+    }
+  };
+
+  const fetchProfileScrapeStatus = async () => {
+    try {
+      const response = await fetch('/api/job/profile-scrape/status');
+      if (!response.ok) {
+        throw new Error('Failed to fetch profile scrape status');
+      }
+      const data = await response.json();
+      setProfileScrapeStatus(data);
+    } catch (err) {
+      console.error('Error fetching profile scrape status:', err);
     }
   };
 
@@ -320,6 +402,108 @@ const Admin: React.FC = () => {
     }
   };
 
+  // Profile Scrape Job handlers
+  const handleProfileScrapeConfigChange = (field: keyof ProfileScrapeConfig, value: string | number | boolean) => {
+    // For number fields, if the value is NaN (empty input), keep the previous value
+    if (typeof value === 'number' && isNaN(value)) {
+      return;
+    }
+    setProfileScrapeConfigForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleUpdateProfileScrapeConfig = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch('/api/job/profile-scrape/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profileScrapeConfigForm),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update profile scrape configuration');
+      }
+      const data = await response.json();
+      setProfileScrapeStatus(data.status);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleProfileScrapeJobControl = async (action: 'start' | 'pause' | 'resume' | 'stop') => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/job/profile-scrape/${action}`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to ${action} profile scrape job`);
+      }
+      const data = await response.json();
+      setProfileScrapeStatus(data.status);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleProfileScrapeResetStats = async () => {
+    if (!window.confirm('Are you sure you want to reset profile scrape statistics?')) {
+      return;
+    }
+    try {
+      setLoading(true);
+      const response = await fetch('/api/job/profile-scrape/reset-stats', {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to reset profile scrape statistics');
+      }
+      const data = await response.json();
+      setProfileScrapeStatus(data.status);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleManualProfileScrape = async () => {
+    if (!manualScrapeUsername.trim()) {
+      setManualScrapeResult('Please enter a username');
+      setTimeout(() => setManualScrapeResult(null), 3000);
+      return;
+    }
+
+    try {
+      setManualScraping(true);
+      setManualScrapeResult(`Scraping ${manualScrapeUsername}...`);
+
+      const response = await fetch(`/api/job/profile-scrape/one/${manualScrapeUsername.trim()}`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        setManualScrapeResult(`Successfully scraped ${manualScrapeUsername}`);
+        setManualScrapeUsername('');
+      } else {
+        setManualScrapeResult(data.message || 'Failed to scrape profile');
+      }
+      setTimeout(() => setManualScrapeResult(null), 5000);
+    } catch (err) {
+      setManualScrapeResult('Error scraping profile');
+      setTimeout(() => setManualScrapeResult(null), 5000);
+    } finally {
+      setManualScraping(false);
+    }
+  };
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Never';
     return new Date(dateString).toLocaleString();
@@ -339,6 +523,20 @@ const Admin: React.FC = () => {
     if (jobStatus.isRunning && !jobStatus.isPaused) {
       return <span className={`${baseBadge} bg-mhc-success text-white`}>Running</span>;
     } else if (jobStatus.isPaused) {
+      return <span className={`${baseBadge} bg-mhc-warning text-white`}>Paused</span>;
+    } else {
+      return <span className={`${baseBadge} bg-gray-500 text-white`}>Stopped</span>;
+    }
+  };
+
+  const getProfileScrapeStatusBadge = () => {
+    if (!profileScrapeStatus) return null;
+    const baseBadge = "px-3 py-1 rounded-full text-sm font-semibold uppercase";
+    if (profileScrapeStatus.isProcessing) {
+      return <span className={`${baseBadge} bg-blue-500 text-white`}>Processing</span>;
+    } else if (profileScrapeStatus.isRunning && !profileScrapeStatus.isPaused) {
+      return <span className={`${baseBadge} bg-mhc-success text-white`}>Running</span>;
+    } else if (profileScrapeStatus.isPaused) {
       return <span className={`${baseBadge} bg-mhc-warning text-white`}>Paused</span>;
     } else {
       return <span className={`${baseBadge} bg-gray-500 text-white`}>Stopped</span>;
@@ -866,10 +1064,10 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
             </div>
             <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
               <div className="text-lg font-semibold text-white mb-2 flex items-center gap-3">
-                <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase bg-gray-500/20 text-gray-400 border border-gray-500/50">Planned</span>
+                <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase bg-green-500/20 text-green-400 border border-green-500/50">Active</span>
                 Profile Scraping
               </div>
-              <div className="text-sm text-white/60">Bio, social links, wishlist (manual per-user)</div>
+              <div className="text-sm text-white/60">Bio, photos, social links (background job + manual)</div>
             </div>
           </div>
         </div>
@@ -886,6 +1084,341 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
           </p>
         </div>
       </div>
+    </>
+  );
+
+  const renderProfileScrapeTab = () => (
+    <>
+      {/* Cookie Status */}
+      {!hasCookies && (
+        <div className="p-3 px-4 rounded-md mb-5 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
+          <strong className="font-bold mr-1">Note:</strong> No cookies imported. Profile scraping requires authenticated Chaturbate cookies.
+          Go to the <button className="underline font-semibold" onClick={() => setActiveTab('scraper')}>Scraper tab</button> to import cookies.
+        </div>
+      )}
+
+      {profileScrapeStatus && (
+        <>
+          {/* Status Section */}
+          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
+            <div className="p-5 border-b border-white/10 flex justify-between items-center">
+              <h2 className="m-0 text-2xl text-white">Profile Scrape Job Status</h2>
+              {getProfileScrapeStatusBadge()}
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                  <span className="font-semibold text-white/70">State:</span>
+                  <span className="text-white font-medium">
+                    {profileScrapeStatus.isProcessing
+                      ? 'Processing'
+                      : profileScrapeStatus.isRunning
+                        ? (profileScrapeStatus.isPaused ? 'Paused' : 'Running')
+                        : 'Stopped'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                  <span className="font-semibold text-white/70">Enabled:</span>
+                  <span className="text-white font-medium">{profileScrapeStatus.config.enabled ? 'Yes' : 'No'}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                  <span className="font-semibold text-white/70">Interval:</span>
+                  <span className="text-white font-medium">{profileScrapeStatus.config.intervalMinutes} min</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                  <span className="font-semibold text-white/70">Max Profiles/Run:</span>
+                  <span className="text-white font-medium">{profileScrapeStatus.config.maxProfilesPerRun}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                  <span className="font-semibold text-white/70">Delay Between:</span>
+                  <span className="text-white font-medium">{profileScrapeStatus.config.delayBetweenProfiles / 1000}s</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                  <span className="font-semibold text-white/70">Refresh After:</span>
+                  <span className="text-white font-medium">{profileScrapeStatus.config.refreshDays} days</span>
+                </div>
+              </div>
+
+              {/* Progress during processing */}
+              {profileScrapeStatus.isProcessing && profileScrapeStatus.stats.currentUsername && (
+                <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg mt-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-blue-300 font-medium">Currently scraping: {profileScrapeStatus.stats.currentUsername}</span>
+                    <span className="text-blue-300">{profileScrapeStatus.stats.progress} / {profileScrapeStatus.stats.total}</span>
+                  </div>
+                  <div className="w-full bg-blue-500/20 rounded-full h-2">
+                    <div
+                      className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${profileScrapeStatus.stats.total > 0 ? (profileScrapeStatus.stats.progress / profileScrapeStatus.stats.total) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Controls Section */}
+          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
+            <div className="p-5 border-b border-white/10 flex justify-between items-center">
+              <h2 className="m-0 text-2xl text-white">Job Controls</h2>
+            </div>
+            <div className="p-5">
+              <div className="flex flex-wrap gap-3">
+                {!profileScrapeStatus.isRunning && (
+                  <button
+                    onClick={() => handleProfileScrapeJobControl('start')}
+                    className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-success text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={loading || !profileScrapeStatus.config.enabled || !hasCookies}
+                  >
+                    Start Job
+                  </button>
+                )}
+                {profileScrapeStatus.isRunning && !profileScrapeStatus.isPaused && (
+                  <button
+                    onClick={() => handleProfileScrapeJobControl('pause')}
+                    className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-warning text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={loading}
+                  >
+                    Pause Job
+                  </button>
+                )}
+                {profileScrapeStatus.isRunning && profileScrapeStatus.isPaused && (
+                  <button
+                    onClick={() => handleProfileScrapeJobControl('resume')}
+                    className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-success text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={loading}
+                  >
+                    Resume Job
+                  </button>
+                )}
+                {profileScrapeStatus.isRunning && (
+                  <button
+                    onClick={() => handleProfileScrapeJobControl('stop')}
+                    className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-danger text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={loading}
+                  >
+                    Stop Job
+                  </button>
+                )}
+              </div>
+              {!profileScrapeStatus.config.enabled && (
+                <div className="p-3 px-4 rounded-md mt-5 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
+                  <strong className="font-bold mr-1">Note:</strong> Job is disabled. Enable it in the configuration section below to start it.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Manual Scrape Section */}
+          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
+            <div className="p-5 border-b border-white/10 flex justify-between items-center">
+              <h2 className="m-0 text-2xl text-white">Manual Profile Scrape</h2>
+            </div>
+            <div className="p-5">
+              <p className="text-white/60 text-base p-4 bg-white/5 rounded-lg mb-4">
+                Manually trigger a profile scrape for a specific username. This bypasses the scheduled job and runs immediately.
+              </p>
+              <div className="flex gap-3 items-center max-w-xl">
+                <input
+                  type="text"
+                  value={manualScrapeUsername}
+                  onChange={(e) => setManualScrapeUsername(e.target.value)}
+                  placeholder="Enter username..."
+                  className="flex-1 p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                  onKeyDown={(e) => e.key === 'Enter' && handleManualProfileScrape()}
+                />
+                <button
+                  onClick={handleManualProfileScrape}
+                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  disabled={manualScraping || !hasCookies}
+                >
+                  {manualScraping ? 'Scraping...' : 'Scrape Profile'}
+                </button>
+              </div>
+              {manualScrapeResult && (
+                <div className="p-3 px-4 rounded-md mt-4 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
+                  {manualScrapeResult}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Configuration Section */}
+          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
+            <div
+              className="p-5 border-b border-white/10 flex justify-between items-center cursor-pointer hover:bg-white/5 transition-colors"
+              onClick={() => setProfileScrapeConfigCollapsed(!profileScrapeConfigCollapsed)}
+            >
+              <h2 className="m-0 text-2xl text-white">Configuration {profileScrapeConfigCollapsed ? '▼' : '▲'}</h2>
+            </div>
+            {!profileScrapeConfigCollapsed && (
+            <div className="p-5">
+              <div className="max-w-xl">
+                <div className="mb-5">
+                  <label htmlFor="ps-enabled" className="flex items-center mb-2 font-semibold text-white/90 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="ps-enabled"
+                      checked={profileScrapeConfigForm.enabled}
+                      onChange={(e) => handleProfileScrapeConfigChange('enabled', e.target.checked)}
+                      className="mr-2 w-4 h-4 cursor-pointer accent-mhc-primary"
+                    />
+                    <span className="font-semibold text-white/90">Enable Job</span>
+                  </label>
+                  <small className="block mt-1 text-white/60 text-sm">Must be enabled for scheduled job to start</small>
+                </div>
+
+                <div className="mb-5">
+                  <label htmlFor="ps-prioritize" className="flex items-center mb-2 font-semibold text-white/90 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="ps-prioritize"
+                      checked={profileScrapeConfigForm.prioritizeFollowing}
+                      onChange={(e) => handleProfileScrapeConfigChange('prioritizeFollowing', e.target.checked)}
+                      className="mr-2 w-4 h-4 cursor-pointer accent-mhc-primary"
+                    />
+                    <span className="font-semibold text-white/90">Prioritize Following</span>
+                  </label>
+                  <small className="block mt-1 text-white/60 text-sm">Scrape profiles you follow first before other models</small>
+                </div>
+
+                <div className="mb-5">
+                  <label htmlFor="ps-interval" className="block mb-2 font-semibold text-white/90">Run Interval (minutes)</label>
+                  <input
+                    type="number"
+                    id="ps-interval"
+                    value={profileScrapeConfigForm.intervalMinutes}
+                    onChange={(e) => handleProfileScrapeConfigChange('intervalMinutes', parseInt(e.target.value))}
+                    min="15"
+                    max="1440"
+                    step="15"
+                    className="w-full p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                  />
+                  <small className="block mt-1 text-white/60 text-sm">How often to run scrape cycles (15-1440 minutes)</small>
+                </div>
+
+                <div className="mb-5">
+                  <label htmlFor="ps-max" className="block mb-2 font-semibold text-white/90">Max Profiles Per Run</label>
+                  <input
+                    type="number"
+                    id="ps-max"
+                    value={profileScrapeConfigForm.maxProfilesPerRun}
+                    onChange={(e) => handleProfileScrapeConfigChange('maxProfilesPerRun', parseInt(e.target.value))}
+                    min="5"
+                    max="200"
+                    step="5"
+                    className="w-full p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                  />
+                  <small className="block mt-1 text-white/60 text-sm">Limit profiles per cycle to avoid long-running jobs (5-200)</small>
+                </div>
+
+                <div className="mb-5">
+                  <label htmlFor="ps-delay" className="block mb-2 font-semibold text-white/90">Delay Between Profiles (ms)</label>
+                  <input
+                    type="number"
+                    id="ps-delay"
+                    value={profileScrapeConfigForm.delayBetweenProfiles}
+                    onChange={(e) => handleProfileScrapeConfigChange('delayBetweenProfiles', parseInt(e.target.value))}
+                    min="2000"
+                    max="30000"
+                    step="1000"
+                    className="w-full p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                  />
+                  <small className="block mt-1 text-white/60 text-sm">Wait time between profiles to avoid rate limiting (2000-30000ms)</small>
+                </div>
+
+                <div className="mb-5">
+                  <label htmlFor="ps-refresh" className="block mb-2 font-semibold text-white/90">Refresh Older Than (days)</label>
+                  <input
+                    type="number"
+                    id="ps-refresh"
+                    value={profileScrapeConfigForm.refreshDays}
+                    onChange={(e) => handleProfileScrapeConfigChange('refreshDays', parseInt(e.target.value))}
+                    min="1"
+                    max="30"
+                    step="1"
+                    className="w-full p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                  />
+                  <small className="block mt-1 text-white/60 text-sm">Re-scrape profiles older than this many days (1-30)</small>
+                </div>
+
+                <button
+                  onClick={handleUpdateProfileScrapeConfig}
+                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={loading}
+                >
+                  {loading ? 'Updating...' : 'Update Configuration'}
+                </button>
+              </div>
+            </div>
+            )}
+          </div>
+
+          {/* Statistics Section */}
+          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
+            <div className="p-5 border-b border-white/10 flex justify-between items-center">
+              <h2 className="m-0 text-2xl text-white">Statistics</h2>
+              <button
+                onClick={handleProfileScrapeResetStats}
+                className="px-3 py-1.5 rounded-md text-sm font-semibold transition-all bg-gray-500 text-white hover:bg-gray-600"
+              >
+                Reset Stats
+              </button>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-5">
+                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                  <div className="text-3xl font-bold mb-2">{profileScrapeStatus.stats.totalRuns}</div>
+                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Cycles</div>
+                </div>
+                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                  <div className="text-3xl font-bold mb-2">{profileScrapeStatus.stats.totalScraped}</div>
+                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Scraped</div>
+                </div>
+                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                  <div className="text-3xl font-bold mb-2">{profileScrapeStatus.stats.totalFailed}</div>
+                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Failed</div>
+                </div>
+                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                  <div className="text-3xl font-bold mb-2">{profileScrapeStatus.stats.totalSkipped}</div>
+                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Skipped</div>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10 mb-5">
+                <span className="font-semibold text-white/70">Last Run:</span>
+                <span className="text-white font-medium">{formatDate(profileScrapeStatus.stats.lastRun)}</span>
+              </div>
+
+              {profileScrapeStatus.stats.lastRun && (
+                <div className="mt-5 pt-5 border-t border-white/10">
+                  <h3 className="text-lg mb-4 text-white">Last Cycle Results:</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                      <span className="font-semibold text-white/70">Scraped:</span>
+                      <span className="text-white font-medium">{profileScrapeStatus.stats.lastRunScraped}</span>
+                    </div>
+                    <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                      <span className="font-semibold text-white/70">Failed:</span>
+                      <span className="text-white font-medium">{profileScrapeStatus.stats.lastRunFailed}</span>
+                    </div>
+                    <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                      <span className="font-semibold text-white/70">Skipped:</span>
+                      <span className="text-white font-medium">{profileScrapeStatus.stats.lastRunSkipped}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {!profileScrapeStatus && (
+        <div className="text-center p-10 text-white/60">
+          Loading profile scrape job status...
+        </div>
+      )}
     </>
   );
 
@@ -907,7 +1440,7 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
         {/* Tabs */}
         <div className="flex gap-2 border-b-2 border-white/10 mb-8">
           <button
-            className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all ${
+            className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all flex items-center gap-2 ${
               activeTab === 'jobs'
                 ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary border-b-mhc-primary font-semibold'
                 : 'bg-mhc-surface/60 text-white/90 hover:bg-mhc-primary/10 hover:text-mhc-primary-light hover:border-mhc-primary/40'
@@ -915,6 +1448,15 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
             onClick={() => setActiveTab('jobs')}
           >
             Jobs Management
+            {jobStatus && (
+              jobStatus.isRunning && !jobStatus.isPaused ? (
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-mhc-success text-white">Running</span>
+              ) : jobStatus.isPaused ? (
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-mhc-warning text-white">Paused</span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-gray-500 text-white">Stopped</span>
+              )
+            )}
           </button>
           <button
             className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all ${
@@ -946,6 +1488,27 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
           >
             Scraper
           </button>
+          <button
+            className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all flex items-center gap-2 ${
+              activeTab === 'profile-scrape'
+                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary border-b-mhc-primary font-semibold'
+                : 'bg-mhc-surface/60 text-white/90 hover:bg-mhc-primary/10 hover:text-mhc-primary-light hover:border-mhc-primary/40'
+            }`}
+            onClick={() => setActiveTab('profile-scrape')}
+          >
+            Profile Scraping
+            {profileScrapeStatus && (
+              profileScrapeStatus.isProcessing ? (
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-blue-500 text-white">Processing</span>
+              ) : profileScrapeStatus.isRunning && !profileScrapeStatus.isPaused ? (
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-mhc-success text-white">Running</span>
+              ) : profileScrapeStatus.isPaused ? (
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-mhc-warning text-white">Paused</span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-gray-500 text-white">Stopped</span>
+              )
+            )}
+          </button>
         </div>
       </div>
 
@@ -960,6 +1523,7 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
         {activeTab === 'system-stats' && renderSystemStatsTab()}
         {activeTab === 'data-sources' && renderDataSourcesTab()}
         {activeTab === 'scraper' && renderScraperTab()}
+        {activeTab === 'profile-scrape' && renderProfileScrapeTab()}
       </div>
     </div>
   );

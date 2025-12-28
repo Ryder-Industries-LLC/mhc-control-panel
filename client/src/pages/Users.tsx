@@ -16,11 +16,14 @@ interface PersonWithSource {
   source: string;
   interaction_count: number;
   snapshot_count: number;
+  image_count: number;
   image_url: string | null;
   current_show: string | null;
   session_observed_at: string | null;
   tags: string[] | null;
   age: number | null;
+  following: boolean;
+  follower: boolean;
 }
 
 interface FollowingUser extends PersonWithSource {
@@ -35,6 +38,32 @@ interface UnfollowedUser extends PersonWithSource {
   follower_since: string | null;
   unfollower_at: string | null;
   days_followed: number | null;
+}
+
+interface SubUser extends PersonWithSource {
+  active_sub: boolean;
+  first_service_date: string | null;
+  last_service_date: string | null;
+  notes: string | null;
+  friend_tier: number | null;
+  banned_me: boolean;
+}
+
+interface FriendUser extends PersonWithSource {
+  friend_tier: number;
+  notes: string | null;
+  active_sub: boolean;
+  first_service_date: string | null;
+  last_service_date: string | null;
+  banned_me: boolean;
+}
+
+interface BannedUser extends PersonWithSource {
+  banned_me: boolean;
+  banned_at: string | null;
+  notes: string | null;
+  friend_tier: number | null;
+  active_sub: boolean;
 }
 
 interface PriorityLookup {
@@ -57,7 +86,7 @@ interface FeedCacheStatus {
   totalCount: number;
 }
 
-type TabType = 'directory' | 'following' | 'followers' | 'unfollowed';
+type TabType = 'directory' | 'following' | 'followers' | 'unfollowed' | 'subs' | 'friends' | 'bans';
 type StatFilter = 'all' | 'live' | 'priority2' | 'priority1' | 'with_image' | 'models' | 'viewers';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
@@ -119,6 +148,20 @@ const Users: React.FC = () => {
   const [unfollowedLoading, setUnfollowedLoading] = useState(false);
   const [timeframeFilter, setTimeframeFilter] = useState<number>(30); // days
 
+  // Subs tab state
+  const [subUsers, setSubUsers] = useState<SubUser[]>([]);
+  const [subsLoading, setSubsLoading] = useState(false);
+  const [subsFilter, setSubsFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
+  // Friends tab state
+  const [friendUsers, setFriendUsers] = useState<FriendUser[]>([]);
+  const [friendsLoading, setFriendsLoading] = useState(false);
+  const [friendTierFilter, setFriendTierFilter] = useState<number | null>(null);
+
+  // Bans tab state
+  const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([]);
+  const [bansLoading, setBansLoading] = useState(false);
+
   // View mode state (list or grid)
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
     const saved = localStorage.getItem('mhc-view-mode');
@@ -139,8 +182,28 @@ const Users: React.FC = () => {
       loadFollowers();
     } else if (activeTab === 'unfollowed') {
       loadUnfollowed();
+    } else if (activeTab === 'subs') {
+      loadSubs();
+    } else if (activeTab === 'friends') {
+      loadFriends();
+    } else if (activeTab === 'bans') {
+      loadBans();
     }
   }, [activeTab]);
+
+  // Reload subs when filter changes
+  useEffect(() => {
+    if (activeTab === 'subs') {
+      loadSubs();
+    }
+  }, [subsFilter]);
+
+  // Reload friends when tier filter changes
+  useEffect(() => {
+    if (activeTab === 'friends') {
+      loadFriends();
+    }
+  }, [friendTierFilter]);
 
   // Handle username from URL query parameter (for lookup integration)
   useEffect(() => {
@@ -255,6 +318,54 @@ const Users: React.FC = () => {
       console.error(err);
     } finally {
       setUnfollowedLoading(false);
+    }
+  };
+
+  const loadSubs = async () => {
+    try {
+      setSubsLoading(true);
+      setError(null);
+      const response = await fetch(`http://localhost:3000/api/followers/subs?filter=${subsFilter}`);
+      const data = await response.json();
+      setSubUsers(data.subs || []);
+    } catch (err) {
+      setError('Failed to load subscribers');
+      console.error(err);
+    } finally {
+      setSubsLoading(false);
+    }
+  };
+
+  const loadFriends = async () => {
+    try {
+      setFriendsLoading(true);
+      setError(null);
+      const url = friendTierFilter
+        ? `http://localhost:3000/api/followers/friends?tier=${friendTierFilter}`
+        : 'http://localhost:3000/api/followers/friends';
+      const response = await fetch(url);
+      const data = await response.json();
+      setFriendUsers(data.friends || []);
+    } catch (err) {
+      setError('Failed to load friends');
+      console.error(err);
+    } finally {
+      setFriendsLoading(false);
+    }
+  };
+
+  const loadBans = async () => {
+    try {
+      setBansLoading(true);
+      setError(null);
+      const response = await fetch('http://localhost:3000/api/followers/bans');
+      const data = await response.json();
+      setBannedUsers(data.bans || []);
+    } catch (err) {
+      setError('Failed to load banned users');
+      console.error(err);
+    } finally {
+      setBansLoading(false);
     }
   };
 
@@ -460,7 +571,13 @@ const Users: React.FC = () => {
     if (bValue === null || bValue === undefined) return -1;
 
     let comparison = 0;
-    if (typeof aValue === 'string' && typeof bValue === 'string') {
+
+    // Handle date fields (ISO strings)
+    if (sortField === 'last_seen_at' || sortField === 'first_seen_at') {
+      const aDate = new Date(aValue as string).getTime();
+      const bDate = new Date(bValue as string).getTime();
+      comparison = aDate - bDate;
+    } else if (typeof aValue === 'string' && typeof bValue === 'string') {
       comparison = aValue.localeCompare(bValue);
     } else if (typeof aValue === 'number' && typeof bValue === 'number') {
       comparison = aValue - bValue;
@@ -512,6 +629,22 @@ const Users: React.FC = () => {
       return `${base} bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse`;
     }
     return base;
+  };
+
+  const getFriendTierBadge = (tier: number | null) => {
+    const base = "inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide";
+    switch (tier) {
+      case 1:
+        return { class: `${base} bg-yellow-500/20 text-yellow-400 border border-yellow-500/30`, label: 'Special' };
+      case 2:
+        return { class: `${base} bg-emerald-500/20 text-emerald-400 border border-emerald-500/30`, label: 'Tipper' };
+      case 3:
+        return { class: `${base} bg-blue-500/20 text-blue-400 border border-blue-500/30`, label: 'Regular' };
+      case 4:
+        return { class: `${base} bg-gray-500/20 text-gray-400 border border-gray-500/30`, label: 'Drive-by' };
+      default:
+        return null;
+    }
   };
 
   const formatCacheAge = (ageMs: number | null): string => {
@@ -573,13 +706,12 @@ const Users: React.FC = () => {
     const isLive = isPersonLive(person);
 
     return (
-      <Link
+      <div
         key={person.id}
-        to={`/profile/${person.username}`}
         className="group block bg-mhc-surface rounded-lg overflow-hidden border border-white/5 transition-all hover:border-mhc-primary/50 hover:-translate-y-1 hover:shadow-lg hover:shadow-mhc-primary/20"
       >
         {/* Image container with 4:3 aspect ratio */}
-        <div className="relative aspect-[4/3] bg-mhc-surface-light overflow-hidden">
+        <Link to={`/profile/${person.username}`} className="relative aspect-[4/3] bg-mhc-surface-light overflow-hidden block">
           {imageUrl ? (
             <img
               src={imageUrl}
@@ -607,35 +739,71 @@ const Users: React.FC = () => {
               P{getPriorityLookup(person.username)?.priority_level}
             </div>
           )}
-        </div>
+          {/* Following/Follower indicators */}
+          <div className="absolute bottom-2 left-2 flex gap-1">
+            {person.following && (
+              <div className="bg-emerald-500/90 text-white px-1.5 py-0.5 rounded text-[0.6rem] font-medium flex items-center gap-0.5" title="You follow this user">
+                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                  <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/>
+                </svg>
+              </div>
+            )}
+            {person.follower && (
+              <div className="bg-blue-500/90 text-white px-1.5 py-0.5 rounded text-[0.6rem] font-medium flex items-center gap-0.5" title="Follows you">
+                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
+                </svg>
+              </div>
+            )}
+          </div>
+        </Link>
         {/* Info section */}
         <div className="p-3">
-          <div className="font-semibold text-white truncate group-hover:text-mhc-primary transition-colors">
-            {person.username}
-          </div>
-          <div className="flex items-center gap-2 mt-1.5 text-xs">
-            <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.65rem]`}>
+          {/* Role badge - left aligned above username */}
+          <div className="mb-1">
+            <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem]`}>
               {person.role}
             </span>
-            <span className="text-white/40">•</span>
-            <span className="text-white/50 truncate">
+          </div>
+          {/* Username */}
+          <Link to={`/profile/${person.username}`} className="block font-semibold text-white truncate hover:text-mhc-primary transition-colors no-underline">
+            {person.username}
+          </Link>
+          {/* Last seen (left) + Image count (right) */}
+          <div className="flex items-center justify-between mt-1.5 text-xs">
+            <span className="text-white/50">
               {formatDate(person.last_seen_at, { relative: true })}
             </span>
+            {person.image_count > 1 && (
+              <Link
+                to={`/profile/${person.username}?tab=images`}
+                className="flex items-center gap-1 text-white/50 hover:text-mhc-primary transition-colors"
+                title="View all images"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
+                </svg>
+                {person.image_count}
+              </Link>
+            )}
           </div>
+          {/* Tags */}
           {person.tags && person.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
-              {person.tags.slice(0, 3).map((tag, idx) => (
+              {person.tags.slice(0, 5).map((tag, idx) => (
                 <span key={idx} className="text-[0.6rem] px-1.5 py-0.5 bg-purple-500/15 text-purple-400 rounded">
                   {tag}
                 </span>
               ))}
-              {person.tags.length > 3 && (
-                <span className="text-[0.6rem] text-white/30">+{person.tags.length - 3}</span>
+              {person.tags.length > 5 && (
+                <span className="text-[0.6rem] text-white/30">+{person.tags.length - 5}</span>
               )}
             </div>
           )}
         </div>
-      </Link>
+      </div>
     );
   };
 
@@ -874,9 +1042,33 @@ const Users: React.FC = () => {
         ))}
       </div>
 
-      {/* View Mode Toggle & Pagination Row */}
+      {/* View Mode Toggle, Sort & Pagination Row */}
       <div className="flex items-center justify-between mt-4 flex-wrap gap-4">
-        {renderViewModeToggle()}
+        <div className="flex items-center gap-4">
+          {renderViewModeToggle()}
+          {/* Sort dropdown */}
+          <div className="flex items-center gap-2">
+            <span className="text-white/50 text-sm">Sort:</span>
+            <select
+              value={`${sortField}-${sortDirection}`}
+              onChange={(e) => {
+                const [field, dir] = e.target.value.split('-') as [keyof PersonWithSource, 'asc' | 'desc'];
+                setSortField(field);
+                setSortDirection(dir);
+              }}
+              className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white text-sm cursor-pointer focus:outline-none focus:border-mhc-primary"
+            >
+              <option value="last_seen_at-desc" className="bg-mhc-surface">Last Seen (Newest)</option>
+              <option value="last_seen_at-asc" className="bg-mhc-surface">Last Seen (Oldest)</option>
+              <option value="username-asc" className="bg-mhc-surface">Username (A-Z)</option>
+              <option value="username-desc" className="bg-mhc-surface">Username (Z-A)</option>
+              <option value="interaction_count-desc" className="bg-mhc-surface">Most Interactions</option>
+              <option value="image_count-desc" className="bg-mhc-surface">Most Images</option>
+              <option value="first_seen_at-desc" className="bg-mhc-surface">First Seen (Newest)</option>
+              <option value="first_seen_at-asc" className="bg-mhc-surface">First Seen (Oldest)</option>
+            </select>
+          </div>
+        </div>
         <div className="flex-1">{renderPagination()}</div>
       </div>
 
@@ -1589,6 +1781,356 @@ const Users: React.FC = () => {
     );
   };
 
+  const renderSubsTab = () => {
+    return (
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Subscribers ({subUsers.length})</h2>
+          <div className="flex gap-2">
+            <button
+              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                subsFilter === 'all'
+                  ? 'bg-gradient-primary text-white border-transparent'
+                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
+              onClick={() => setSubsFilter('all')}
+            >
+              All
+            </button>
+            <button
+              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                subsFilter === 'active'
+                  ? 'bg-gradient-primary text-white border-transparent'
+                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
+              onClick={() => setSubsFilter('active')}
+            >
+              Active
+            </button>
+            <button
+              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                subsFilter === 'inactive'
+                  ? 'bg-gradient-primary text-white border-transparent'
+                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
+              onClick={() => setSubsFilter('inactive')}
+            >
+              Past
+            </button>
+          </div>
+        </div>
+
+        {subsLoading ? (
+          <div className="p-12 text-center text-white/50">Loading subscribers...</div>
+        ) : (
+          <>
+            {/* View Mode Toggle */}
+            <div className="flex items-center justify-between mt-4 mb-4">
+              {renderViewModeToggle()}
+              <span className="text-white/50 text-sm">{subUsers.length} subscribers</span>
+            </div>
+
+            {viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {subUsers.map(person => renderUserGridCard(person))}
+              </div>
+            ) : (
+              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Status</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">First Service</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Service</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Friend Tier</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {subUsers.map((person) => {
+                      const tierBadge = getFriendTierBadge(person.friend_tier);
+                      return (
+                        <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-2">
+                              <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
+                              <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
+                            </div>
+                          </td>
+                          <td className="px-2 py-2">
+                            {person.image_url && (
+                              <img
+                                src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                                alt={person.username}
+                                className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
+                              />
+                            )}
+                          </td>
+                          <td className="px-4 py-4">
+                            {person.active_sub ? (
+                              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Active</span>
+                            ) : (
+                              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-gray-500/20 text-gray-400 border border-gray-500/30">Past</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-4 text-white/80">{person.first_service_date ? formatDate(person.first_service_date, { includeTime: false }) : '—'}</td>
+                          <td className="px-4 py-4 text-white/80">{person.last_service_date ? formatDate(person.last_service_date, { includeTime: false }) : '—'}</td>
+                          <td className="px-4 py-4">
+                            {tierBadge ? (
+                              <span className={tierBadge.class}>Tier {person.friend_tier} - {tierBadge.label}</span>
+                            ) : '—'}
+                          </td>
+                          <td className="px-4 py-4 text-white/70 max-w-[200px] truncate" title={person.notes || ''}>
+                            {person.notes || '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {subUsers.length === 0 && (
+                  <div className="p-12 text-center text-white/50">
+                    <p>No subscribers found.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
+  const renderFriendsTab = () => {
+    return (
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Friends ({friendUsers.length})</h2>
+          <div className="flex gap-2">
+            <button
+              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                friendTierFilter === null
+                  ? 'bg-gradient-primary text-white border-transparent'
+                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
+              onClick={() => setFriendTierFilter(null)}
+            >
+              All
+            </button>
+            <button
+              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                friendTierFilter === 1
+                  ? 'bg-yellow-500/30 text-yellow-300 border-yellow-500/50'
+                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
+              onClick={() => setFriendTierFilter(1)}
+            >
+              Tier 1 - Special
+            </button>
+            <button
+              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                friendTierFilter === 2
+                  ? 'bg-emerald-500/30 text-emerald-300 border-emerald-500/50'
+                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
+              onClick={() => setFriendTierFilter(2)}
+            >
+              Tier 2 - Tipper
+            </button>
+            <button
+              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                friendTierFilter === 3
+                  ? 'bg-blue-500/30 text-blue-300 border-blue-500/50'
+                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
+              onClick={() => setFriendTierFilter(3)}
+            >
+              Tier 3 - Regular
+            </button>
+            <button
+              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                friendTierFilter === 4
+                  ? 'bg-gray-500/30 text-gray-300 border-gray-500/50'
+                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+              }`}
+              onClick={() => setFriendTierFilter(4)}
+            >
+              Tier 4 - Drive-by
+            </button>
+          </div>
+        </div>
+
+        {friendsLoading ? (
+          <div className="p-12 text-center text-white/50">Loading friends...</div>
+        ) : (
+          <>
+            {/* View Mode Toggle */}
+            <div className="flex items-center justify-between mt-4 mb-4">
+              {renderViewModeToggle()}
+              <span className="text-white/50 text-sm">{friendUsers.length} friends</span>
+            </div>
+
+            {viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {friendUsers.map(person => renderUserGridCard(person))}
+              </div>
+            ) : (
+              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Friend Tier</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Active Sub</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Seen</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {friendUsers.map((person) => {
+                      const tierBadge = getFriendTierBadge(person.friend_tier);
+                      return (
+                        <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-2">
+                              <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
+                              <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
+                            </div>
+                          </td>
+                          <td className="px-2 py-2">
+                            {person.image_url && (
+                              <img
+                                src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                                alt={person.username}
+                                className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
+                              />
+                            )}
+                          </td>
+                          <td className="px-4 py-4">
+                            {tierBadge && (
+                              <span className={tierBadge.class}>Tier {person.friend_tier} - {tierBadge.label}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-4">
+                            {person.active_sub ? (
+                              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Yes</span>
+                            ) : '—'}
+                          </td>
+                          <td className="px-4 py-4 text-white/80">{formatDate(person.last_seen_at, { relative: true })}</td>
+                          <td className="px-4 py-4 text-white/70 max-w-[200px] truncate" title={person.notes || ''}>
+                            {person.notes || '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {friendUsers.length === 0 && (
+                  <div className="p-12 text-center text-white/50">
+                    <p>No friends found. Add friend tiers on user profiles.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
+  const renderBansTab = () => {
+    return (
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Bans ({bannedUsers.length})</h2>
+        </div>
+
+        {bansLoading ? (
+          <div className="p-12 text-center text-white/50">Loading banned users...</div>
+        ) : (
+          <>
+            {/* View Mode Toggle */}
+            <div className="flex items-center justify-between mt-4 mb-4">
+              {renderViewModeToggle()}
+              <span className="text-white/50 text-sm">{bannedUsers.length} users who banned you</span>
+            </div>
+
+            {viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {bannedUsers.map(person => renderUserGridCard(person))}
+              </div>
+            ) : (
+              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Banned At</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Friend Tier</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Was Sub</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bannedUsers.map((person) => {
+                      const tierBadge = getFriendTierBadge(person.friend_tier);
+                      return (
+                        <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-2">
+                              <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
+                              <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
+                              <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">🚫 Banned</span>
+                            </div>
+                          </td>
+                          <td className="px-2 py-2">
+                            {person.image_url && (
+                              <img
+                                src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                                alt={person.username}
+                                className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
+                              />
+                            )}
+                          </td>
+                          <td className="px-4 py-4 text-white/80">{person.banned_at ? formatDate(person.banned_at, { includeTime: false }) : '—'}</td>
+                          <td className="px-4 py-4">
+                            {tierBadge ? (
+                              <span className={tierBadge.class}>Tier {person.friend_tier} - {tierBadge.label}</span>
+                            ) : '—'}
+                          </td>
+                          <td className="px-4 py-4">
+                            {person.active_sub ? (
+                              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Yes</span>
+                            ) : '—'}
+                          </td>
+                          <td className="px-4 py-4 text-white/70 max-w-[200px] truncate" title={person.notes || ''}>
+                            {person.notes || '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {bannedUsers.length === 0 && (
+                  <div className="p-12 text-center text-white/50">
+                    <p>No users have banned you.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
   if (loading && activeTab === 'directory') {
     return (
       <div className="max-w-[1600px] mx-auto p-8">
@@ -1656,6 +2198,36 @@ const Users: React.FC = () => {
           >
             Unfollowed
           </button>
+          <button
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'subs'
+                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500 font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
+            onClick={() => setActiveTab('subs')}
+          >
+            Subs
+          </button>
+          <button
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'friends'
+                ? 'bg-yellow-500/15 text-yellow-400 border-yellow-500 font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
+            onClick={() => setActiveTab('friends')}
+          >
+            Friends
+          </button>
+          <button
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'bans'
+                ? 'bg-red-500/15 text-red-400 border-red-500 font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
+            onClick={() => setActiveTab('bans')}
+          >
+            Bans
+          </button>
         </div>
       </div>
 
@@ -1664,6 +2236,9 @@ const Users: React.FC = () => {
       {activeTab === 'following' && renderFollowingTab()}
       {activeTab === 'followers' && renderFollowersTab()}
       {activeTab === 'unfollowed' && renderUnfollowedTab()}
+      {activeTab === 'subs' && renderSubsTab()}
+      {activeTab === 'friends' && renderFriendsTab()}
+      {activeTab === 'bans' && renderBansTab()}
 
       {/* Add to Priority Modal */}
       {showPriorityModal && (

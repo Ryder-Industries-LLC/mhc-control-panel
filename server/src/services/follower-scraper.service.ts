@@ -229,10 +229,16 @@ export class FollowerScraperService {
       `SELECT
         p.*,
         pr.following_checked_at,
+        pr.following,
+        pr.follower,
+        pr.following_since,
+        pr.follower_since,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
-        (SELECT COALESCE(image_path_360x270, image_url_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as image_url,
+        (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL) as image_count,
+        (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,
         (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
         (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
@@ -250,10 +256,16 @@ export class FollowerScraperService {
       `SELECT
         p.*,
         pr.follower_checked_at,
+        pr.following,
+        pr.follower,
+        pr.following_since,
+        pr.follower_since,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
-        (SELECT COALESCE(image_path_360x270, image_url_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as image_url,
+        (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL) as image_count,
+        (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,
         (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
         (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
@@ -272,11 +284,16 @@ export class FollowerScraperService {
         p.*,
         pr.follower_since,
         pr.unfollower_at,
+        pr.following,
+        pr.follower,
+        pr.following_since,
         EXTRACT(EPOCH FROM (pr.unfollower_at - pr.follower_since))/86400 as days_followed,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
-        (SELECT COALESCE(image_path_360x270, image_url_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as image_url,
+        (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL) as image_count,
+        (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,
         (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
         (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
@@ -299,5 +316,102 @@ export class FollowerScraperService {
        WHERE following = TRUE`
     );
     return result.rowCount || 0;
+  }
+
+  /**
+   * Get all subscribers (current or past)
+   * Filter: 'all' | 'active' | 'inactive'
+   */
+  static async getSubs(filter: string = 'all'): Promise<any[]> {
+    let whereClause = '(pr.active_sub = TRUE OR pr.first_service_date IS NOT NULL)';
+    if (filter === 'active') {
+      whereClause = 'pr.active_sub = TRUE';
+    } else if (filter === 'inactive') {
+      whereClause = 'pr.active_sub = FALSE AND pr.first_service_date IS NOT NULL';
+    }
+
+    const result = await query(
+      `SELECT
+        p.*,
+        pr.active_sub,
+        pr.first_service_date,
+        pr.last_service_date,
+        pr.notes,
+        pr.friend_tier,
+        pr.following,
+        pr.follower,
+        pr.banned_me,
+        (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
+        (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL) as image_count,
+        (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,
+        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+       FROM persons p
+       INNER JOIN profiles pr ON pr.person_id = p.id
+       WHERE ${whereClause}
+       ORDER BY pr.first_service_date DESC NULLS LAST, p.last_seen_at DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get all friends with tier assigned
+   * Optional tier filter (1-4)
+   */
+  static async getFriends(tier?: number): Promise<any[]> {
+    const tierFilter = tier ? `AND pr.friend_tier = ${tier}` : '';
+
+    const result = await query(
+      `SELECT
+        p.*,
+        pr.friend_tier,
+        pr.notes,
+        pr.active_sub,
+        pr.first_service_date,
+        pr.last_service_date,
+        pr.following,
+        pr.follower,
+        pr.banned_me,
+        (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
+        (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL) as image_count,
+        (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,
+        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+       FROM persons p
+       INNER JOIN profiles pr ON pr.person_id = p.id
+       WHERE pr.friend_tier IS NOT NULL ${tierFilter}
+       ORDER BY pr.friend_tier ASC, p.last_seen_at DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get all users who have banned me
+   */
+  static async getBans(): Promise<any[]> {
+    const result = await query(
+      `SELECT
+        p.*,
+        pr.banned_me,
+        pr.banned_at,
+        pr.notes,
+        pr.friend_tier,
+        pr.active_sub,
+        pr.following,
+        pr.follower,
+        (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
+        (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL) as image_count,
+        (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,
+        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+       FROM persons p
+       INNER JOIN profiles pr ON pr.person_id = p.id
+       WHERE pr.banned_me = TRUE
+       ORDER BY pr.banned_at DESC NULLS LAST, p.last_seen_at DESC`
+    );
+    return result.rows;
   }
 }

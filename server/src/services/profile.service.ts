@@ -1,6 +1,7 @@
 import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
 import type { ChaturbateProfile } from './profile-scraper.service.js';
+import type { ScrapedProfileData } from './chaturbate-scraper.service.js';
 
 export interface Profile {
   id: number;
@@ -194,18 +195,20 @@ export class ProfileService {
 
   /**
    * Check if profile needs refresh (older than N days)
+   * Uses browser_scraped_at to track Puppeteer-based scraping separately
    */
   static async needsRefresh(personId: string, maxAgeDays = 7): Promise<boolean> {
     const sql = `
-      SELECT scraped_at
+      SELECT browser_scraped_at
       FROM profiles
       WHERE person_id = $1
-        AND scraped_at > NOW() - INTERVAL '${maxAgeDays} days'
+        AND browser_scraped_at IS NOT NULL
+        AND browser_scraped_at > NOW() - INTERVAL '${maxAgeDays} days'
     `;
 
     try {
       const result = await query(sql, [personId]);
-      return result.rows.length === 0; // True if no recent profile found
+      return result.rows.length === 0; // True if no recent browser scrape found
     } catch (error) {
       logger.error('Error checking profile freshness', { error, personId });
       return true; // Default to refresh on error
@@ -251,5 +254,125 @@ export class ProfileService {
       data_source: row.data_source,
       last_seen_online: row.last_seen_online,
     };
+  }
+
+  /**
+   * Merge scraped profile data with existing profile
+   * Scraped data takes priority (source of truth), but fills in blanks from existing
+   * Photos are merged: new photos are added, background images marked appropriately
+   */
+  static async mergeScrapedProfile(personId: string, scrapedData: ScrapedProfileData): Promise<Profile> {
+    // Get existing profile if any
+    const existingProfile = await this.getByPersonId(personId);
+
+    // Build photos array - filter out backgrounds for primary use, keep all for storage
+    const profilePhotos = scrapedData.photos
+      .filter(p => !p.isLocked)
+      .map(p => ({
+        url: p.url,
+        localPath: p.localPath,
+        isPrimary: p.isPrimary && !p.isBackground,
+        isBackground: p.isBackground,
+      }));
+
+    // If we have existing photos, merge them (add new ones, keep unique)
+    let mergedPhotos: any[] = profilePhotos;
+    if (existingProfile?.photos && existingProfile.photos.length > 0) {
+      const existingUrls = new Set(existingProfile.photos.map((p: any) => p.url));
+      const newPhotos = profilePhotos.filter(p => !existingUrls.has(p.url));
+      mergedPhotos = [...existingProfile.photos, ...newPhotos];
+    }
+
+    // Build merged social links
+    let mergedSocialLinks = scrapedData.socialLinks;
+    if (existingProfile?.social_links && existingProfile.social_links.length > 0) {
+      const existingPlatforms = new Set(existingProfile.social_links.map((s: any) => s.platform));
+      const newLinks = scrapedData.socialLinks.filter(s => !existingPlatforms.has(s.platform));
+      mergedSocialLinks = [...existingProfile.social_links, ...newLinks];
+    }
+
+    // Build merged tags
+    let mergedTags = scrapedData.tags;
+    if (existingProfile?.tags && existingProfile.tags.length > 0 && scrapedData.tags.length === 0) {
+      mergedTags = existingProfile.tags;
+    }
+
+    // SQL for upsert with scraped data priority (COALESCE for fallback to existing)
+    // Also set browser_scraped_at to track when Puppeteer scraping last occurred
+    const sql = `
+      INSERT INTO profiles (
+        person_id, display_name, bio, location, age,
+        gender, interested_in, body_type, ethnicity, height,
+        spoken_languages, tags, photos, tip_menu,
+        social_links, fanclub_price,
+        scraped_at, browser_scraped_at, data_source
+      ) VALUES (
+        $1, $2, $3, $4, $5,
+        $6, $7, $8, $9, $10,
+        $11, $12, $13, $14,
+        $15, $16,
+        $17, $18, $19
+      )
+      ON CONFLICT (person_id) DO UPDATE SET
+        display_name = COALESCE(EXCLUDED.display_name, profiles.display_name),
+        bio = COALESCE(EXCLUDED.bio, profiles.bio),
+        location = COALESCE(EXCLUDED.location, profiles.location),
+        age = COALESCE(EXCLUDED.age, profiles.age),
+        gender = COALESCE(EXCLUDED.gender, profiles.gender),
+        interested_in = COALESCE(EXCLUDED.interested_in, profiles.interested_in),
+        body_type = COALESCE(EXCLUDED.body_type, profiles.body_type),
+        ethnicity = COALESCE(EXCLUDED.ethnicity, profiles.ethnicity),
+        height = COALESCE(EXCLUDED.height, profiles.height),
+        spoken_languages = COALESCE(EXCLUDED.spoken_languages, profiles.spoken_languages),
+        tags = CASE WHEN array_length(EXCLUDED.tags, 1) > 0 THEN EXCLUDED.tags ELSE profiles.tags END,
+        photos = EXCLUDED.photos,
+        tip_menu = CASE WHEN jsonb_array_length(EXCLUDED.tip_menu) > 0 THEN EXCLUDED.tip_menu ELSE profiles.tip_menu END,
+        social_links = EXCLUDED.social_links,
+        fanclub_price = COALESCE(EXCLUDED.fanclub_price, profiles.fanclub_price),
+        scraped_at = EXCLUDED.scraped_at,
+        browser_scraped_at = EXCLUDED.browser_scraped_at,
+        data_source = EXCLUDED.data_source,
+        updated_at = NOW()
+      RETURNING *
+    `;
+
+    const values = [
+      personId,
+      scrapedData.displayName,
+      scrapedData.bio,
+      scrapedData.location,
+      scrapedData.age,
+      scrapedData.gender,
+      scrapedData.interestedIn,
+      scrapedData.bodyType,
+      scrapedData.ethnicity,
+      scrapedData.height,
+      scrapedData.languages.join(', ') || null,
+      mergedTags,
+      JSON.stringify(mergedPhotos),
+      JSON.stringify(scrapedData.tipMenu || []),
+      JSON.stringify(mergedSocialLinks),
+      scrapedData.fanclubPrice,
+      scrapedData.scrapedAt,
+      scrapedData.scrapedAt, // browser_scraped_at - same as scrapedAt for browser scrapes
+      'chaturbate_profile_scrape',
+    ];
+
+    try {
+      const result = await query(sql, values);
+      const row = result.rows[0];
+
+      logger.info('Profile merged from scrape', {
+        personId,
+        username: scrapedData.username,
+        photoCount: mergedPhotos.length,
+        hasBio: !!scrapedData.bio,
+      });
+
+      return this.mapRowToProfile(row);
+    } catch (error) {
+      logger.error('Error merging scraped profile', { error, personId });
+      throw error;
+    }
   }
 }

@@ -8,6 +8,19 @@ export class ImageStorageService {
   private static readonly STORAGE_DIR = path.join(process.cwd(), 'data', 'images');
   private static readonly THUMBNAIL_DIR = path.join(ImageStorageService.STORAGE_DIR, 'thumbnails');
 
+  // Known placeholder image patterns - these are generic "no image" placeholders
+  private static readonly PLACEHOLDER_PATTERNS = [
+    'no_image',
+    'noimage',
+    'placeholder',
+    'default_avatar',
+  ];
+
+  // Chaturbate placeholder image is exactly 5045 bytes
+  // We use 5100 as threshold to catch it while allowing real small thumbnails
+  private static readonly PLACEHOLDER_SIZE = 5045;
+  private static readonly PLACEHOLDER_SIZE_TOLERANCE = 100;
+
   /**
    * Initialize storage directories
    */
@@ -26,8 +39,26 @@ export class ImageStorageService {
   }
 
   /**
+   * Check if a URL points to a known placeholder image
+   */
+  static isPlaceholderUrl(imageUrl: string): boolean {
+    const lowerUrl = imageUrl.toLowerCase();
+    return this.PLACEHOLDER_PATTERNS.some(pattern => lowerUrl.includes(pattern));
+  }
+
+  /**
+   * Check if image data is a placeholder based on file size
+   * Chaturbate placeholder image is exactly 5045 bytes
+   */
+  static isPlaceholderBySize(data: Buffer): boolean {
+    const size = data.length;
+    return Math.abs(size - this.PLACEHOLDER_SIZE) <= this.PLACEHOLDER_SIZE_TOLERANCE;
+  }
+
+  /**
    * Download and save an image from a URL
    * Returns the local file path relative to the storage directory
+   * Returns null if the image is detected as a placeholder
    */
   static async downloadAndSave(
     imageUrl: string,
@@ -35,6 +66,12 @@ export class ImageStorageService {
     type: 'thumbnail' | 'full' = 'full'
   ): Promise<string | null> {
     try {
+      // Check if URL is a known placeholder pattern
+      if (this.isPlaceholderUrl(imageUrl)) {
+        logger.debug('Skipping placeholder image URL', { username, imageUrl });
+        return null;
+      }
+
       // Generate a unique filename based on username and timestamp
       const timestamp = Date.now();
       const hash = crypto.createHash('md5').update(imageUrl).digest('hex').substring(0, 8);
@@ -51,6 +88,16 @@ export class ImageStorageService {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         },
       });
+
+      // Check if downloaded image is a placeholder by size
+      if (this.isPlaceholderBySize(response.data)) {
+        logger.debug('Skipping placeholder image (detected by size)', {
+          username,
+          imageUrl,
+          size: response.data.length,
+        });
+        return null;
+      }
 
       // Save to disk
       await fs.writeFile(filePath, response.data);
@@ -113,6 +160,30 @@ export class ImageStorageService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Clean up placeholder images from storage
+   * Returns list of deleted filenames for database cleanup
+   */
+  static async cleanupPlaceholderImages(): Promise<string[]> {
+    const deletedFiles: string[] = [];
+    try {
+      const imageFiles = await fs.readdir(this.STORAGE_DIR);
+      for (const file of imageFiles) {
+        if (file === 'thumbnails' || !file.endsWith('.jpg')) continue;
+        const filePath = path.join(this.STORAGE_DIR, file);
+        const stats = await fs.stat(filePath);
+        if (stats.isFile() && Math.abs(stats.size - this.PLACEHOLDER_SIZE) <= this.PLACEHOLDER_SIZE_TOLERANCE) {
+          await fs.unlink(filePath);
+          deletedFiles.push(file);
+        }
+      }
+      logger.info('Cleaned up placeholder images', { count: deletedFiles.length });
+    } catch (error) {
+      logger.error('Failed to cleanup placeholder images', { error });
+    }
+    return deletedFiles;
   }
 
   /**

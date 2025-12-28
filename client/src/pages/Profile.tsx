@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import { formatDuration, formatGender } from '../utils/formatting';
 // Profile.css removed - fully migrated to Tailwind CSS
 
 interface ProfilePageProps {}
 
-type TabType = 'snapshot' | 'sessions' | 'profile' | 'interactions';
+type TabType = 'snapshot' | 'sessions' | 'profile' | 'interactions' | 'images';
 
 // Check if a session is currently live (observed within the last 30 minutes)
 const isSessionLive = (session: any): boolean => {
@@ -37,18 +37,46 @@ const getSessionImageUrl = (session: any, isLive: boolean): string | null => {
   return session.image_url_360x270 || null;
 };
 
+interface ImageHistoryItem {
+  image_url: string;
+  observed_at: string;
+  session_start: string;
+  current_show: string;
+  num_users: number;
+  room_subject: string;
+}
+
 const Profile: React.FC<ProfilePageProps> = () => {
   const { username: urlUsername } = useParams<{ username: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Parse tab from query params
+  const queryParams = new URLSearchParams(location.search);
+  const tabFromUrl = queryParams.get('tab') as TabType | null;
 
   const [username, setUsername] = useState(urlUsername || '');
   const [lookupCollapsed, setLookupCollapsed] = useState(!!urlUsername);
-  const [activeTab, setActiveTab] = useState<TabType>('snapshot');
+  const [activeTab, setActiveTab] = useState<TabType>(tabFromUrl || 'snapshot');
   const [loading, setLoading] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [usernameSuggestions, setUsernameSuggestions] = useState<string[]>([]);
   const [showRawData, setShowRawData] = useState(false);
+
+  // Image history state
+  const [imageHistory, setImageHistory] = useState<ImageHistoryItem[]>([]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  // Notes and status state
+  const [notes, setNotes] = useState('');
+  const [bannedMe, setBannedMe] = useState(false);
+  const [activeSub, setActiveSub] = useState(false);
+  const [firstServiceDate, setFirstServiceDate] = useState('');
+  const [lastServiceDate, setLastServiceDate] = useState('');
+  const [friendTier, setFriendTier] = useState<number | null>(null);
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesMessage, setNotesMessage] = useState<string | null>(null);
 
   // Auto-load profile if username in URL
   useEffect(() => {
@@ -97,6 +125,34 @@ const Profile: React.FC<ProfilePageProps> = () => {
     return () => clearTimeout(timer);
   }, [username]);
 
+  // Sync notes and status state from profile data
+  useEffect(() => {
+    if (profileData?.profile) {
+      setNotes(profileData.profile.notes || '');
+      setBannedMe(profileData.profile.banned_me || false);
+      setActiveSub(profileData.profile.active_sub || false);
+      setFirstServiceDate(profileData.profile.first_service_date ? profileData.profile.first_service_date.split('T')[0] : '');
+      setLastServiceDate(profileData.profile.last_service_date ? profileData.profile.last_service_date.split('T')[0] : '');
+      setFriendTier(profileData.profile.friend_tier || null);
+    }
+  }, [profileData?.profile]);
+
+  // Fetch image history when profile loads
+  useEffect(() => {
+    if (profileData?.person?.id) {
+      fetch(`http://localhost:3000/api/person/${profileData.person.id}/images?limit=10`)
+        .then(response => response.json())
+        .then(data => {
+          setImageHistory(data.images || []);
+          setCurrentImageIndex(0);
+        })
+        .catch(err => {
+          console.error('Failed to fetch image history', err);
+          setImageHistory([]);
+        });
+    }
+  }, [profileData?.person?.id]);
+
   const handleLookup = async (lookupUsername?: string) => {
     const usernameToLookup = lookupUsername || username;
     if (!usernameToLookup) {
@@ -132,6 +188,98 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       handleLookup();
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    if (!profileData?.person?.username) return;
+
+    setNotesSaving(true);
+    setNotesMessage(null);
+
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notes,
+          banned_me: bannedMe,
+          active_sub: activeSub,
+          first_service_date: firstServiceDate || null,
+          last_service_date: lastServiceDate || null,
+          friend_tier: friendTier,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save');
+      }
+
+      setNotesMessage('Saved!');
+      setTimeout(() => setNotesMessage(null), 3000);
+    } catch (err) {
+      setNotesMessage('Error saving');
+      setTimeout(() => setNotesMessage(null), 3000);
+    } finally {
+      setNotesSaving(false);
+    }
+  };
+
+  const handleBannedToggle = async () => {
+    if (!profileData?.person?.username) return;
+
+    const newValue = !bannedMe;
+    setBannedMe(newValue);
+
+    try {
+      await fetch(`/api/profile/${profileData.person.username}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ banned_me: newValue }),
+      });
+    } catch (err) {
+      // Revert on error
+      setBannedMe(!newValue);
+    }
+  };
+
+  const handleActiveSubToggle = async () => {
+    if (!profileData?.person?.username) return;
+
+    const newValue = !activeSub;
+    const today = new Date().toISOString().split('T')[0];
+
+    // Auto-fill dates based on toggle
+    let newFirstServiceDate = firstServiceDate;
+    let newLastServiceDate = lastServiceDate;
+
+    if (newValue && !firstServiceDate) {
+      // Checking Active Sub: auto-fill first_service_date if empty
+      newFirstServiceDate = today;
+      setFirstServiceDate(today);
+    } else if (!newValue && !lastServiceDate) {
+      // Unchecking Active Sub: auto-fill last_service_date if empty
+      newLastServiceDate = today;
+      setLastServiceDate(today);
+    }
+
+    setActiveSub(newValue);
+
+    try {
+      await fetch(`/api/profile/${profileData.person.username}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          active_sub: newValue,
+          first_service_date: newFirstServiceDate || null,
+          last_service_date: newLastServiceDate || null,
+        }),
+      });
+    } catch (err) {
+      // Revert on error
+      setActiveSub(!newValue);
+      setFirstServiceDate(firstServiceDate);
+      setLastServiceDate(lastServiceDate);
     }
   };
 
@@ -191,28 +339,100 @@ const Profile: React.FC<ProfilePageProps> = () => {
           {/* Profile Header */}
           <div className="bg-gradient-primary text-white rounded-lg p-8 mb-5 shadow-lg">
             <div className="flex gap-5 items-center flex-wrap md:flex-nowrap">
-              {(getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile?.photos && profileData.profile.photos.length > 0)) && (
+              {(imageHistory.length > 0 || getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile?.photos && profileData.profile.photos.length > 0)) && (
                 <div className="flex-shrink-0 flex flex-col items-center gap-3">
                   {isSessionLive(profileData.latestSession) && (
                     <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-5 py-2 rounded-full font-bold text-sm uppercase tracking-wider shadow-lg animate-pulse border-2 border-white/50">
                       ● LIVE
                     </div>
                   )}
-                  <img
-                    src={getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url)}
-                    alt={profileData.person.username}
-                    className="w-[200px] h-[150px] rounded-lg object-cover border-4 border-white/30 shadow-lg"
-                    width="360"
-                    height="270"
-                  />
+                  {/* Image with navigation arrows */}
+                  <div className="relative group">
+                    <img
+                      src={
+                        imageHistory.length > 0
+                          ? `http://localhost:3000/images/${imageHistory[currentImageIndex]?.image_url}`
+                          : getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url)
+                      }
+                      alt={profileData.person.username}
+                      className="w-[200px] h-[150px] rounded-lg object-cover border-4 border-white/30 shadow-lg"
+                      width="360"
+                      height="270"
+                    />
+                    {/* Navigation arrows - only show if multiple images */}
+                    {imageHistory.length > 1 && (
+                      <>
+                        <button
+                          onClick={() => setCurrentImageIndex(prev => (prev > 0 ? prev - 1 : imageHistory.length - 1))}
+                          className="absolute left-1 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-7 h-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Previous image"
+                        >
+                          ‹
+                        </button>
+                        <button
+                          onClick={() => setCurrentImageIndex(prev => (prev < imageHistory.length - 1 ? prev + 1 : 0))}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-7 h-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Next image"
+                        >
+                          ›
+                        </button>
+                        {/* Image counter */}
+                        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                          {currentImageIndex + 1} / {imageHistory.length}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {/* Image timestamp */}
+                  {imageHistory.length > 0 && imageHistory[currentImageIndex] && (
+                    <div className="text-xs text-white/70 text-center">
+                      {new Date(imageHistory[currentImageIndex].observed_at).toLocaleString('en-US', {
+                        dateStyle: 'short',
+                        timeStyle: 'short'
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
               <div className="flex-1">
-                <div className="mb-2">
+                <div className="mb-2 flex items-center gap-2 flex-wrap">
                   <span className="inline-block px-3 py-1 rounded-full text-sm font-semibold bg-white/20">{profileData.person.role}</span>
+                  {profileData.profile?.following && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50" title="You follow this user">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                        <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/>
+                      </svg>
+                      Following
+                    </span>
+                  )}
+                  {profileData.profile?.follower && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-blue-500/30 border border-blue-500/50" title="Follows you">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
+                      </svg>
+                      Follows You
+                    </span>
+                  )}
                   {profileData.latestSession?.is_hd && (
                     <span className="text-xl ml-2 inline-block align-middle" title="HD Stream">🎥</span>
+                  )}
+                  {activeSub && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50" title="Active Subscriber">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+                      </svg>
+                      Active Sub
+                    </span>
+                  )}
+                  {bannedMe && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-red-500/30 border border-red-500/50" title="This user has banned you">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clipRule="evenodd"/>
+                      </svg>
+                      Banned Me
+                    </span>
                   )}
                 </div>
                 <h2 className="m-0 mb-4 text-3xl font-bold">
@@ -306,6 +526,103 @@ const Profile: React.FC<ProfilePageProps> = () => {
             </div>
           </div>
 
+          {/* Notes & Status Section */}
+          <div className="bg-mhc-surface rounded-lg shadow-lg mb-5 p-5">
+            <div className="flex flex-col gap-4">
+              {/* Row 1: Active Sub and Service Dates */}
+              <div className="flex flex-wrap items-center gap-6">
+                {/* Active Sub Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={activeSub}
+                    onChange={handleActiveSubToggle}
+                    className="w-5 h-5 rounded border-2 border-emerald-500/50 bg-mhc-surface-light text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <span className="text-mhc-text font-medium">Active Sub</span>
+                </label>
+
+                {/* First Service Date */}
+                <div className="flex items-center gap-2">
+                  <label className="text-mhc-text font-medium whitespace-nowrap">First Service:</label>
+                  <input
+                    type="date"
+                    value={firstServiceDate}
+                    onChange={(e) => setFirstServiceDate(e.target.value)}
+                    className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                  />
+                </div>
+
+                {/* Last Service Date */}
+                <div className="flex items-center gap-2">
+                  <label className="text-mhc-text font-medium whitespace-nowrap">Last Service:</label>
+                  <input
+                    type="date"
+                    value={lastServiceDate}
+                    onChange={(e) => setLastServiceDate(e.target.value)}
+                    className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                  />
+                </div>
+              </div>
+
+              {/* Row 2: Friend Tier and Banned Me */}
+              <div className="flex flex-wrap items-center gap-6">
+                {/* Friend Tier Dropdown */}
+                <div className="flex items-center gap-2">
+                  <label className="text-mhc-text font-medium whitespace-nowrap">Friend Tier:</label>
+                  <select
+                    value={friendTier || ''}
+                    onChange={(e) => setFriendTier(e.target.value ? parseInt(e.target.value, 10) : null)}
+                    className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20 min-w-[150px]"
+                  >
+                    <option value="">None</option>
+                    <option value="1">Tier 1 - Special</option>
+                    <option value="2">Tier 2 - Tipper</option>
+                    <option value="3">Tier 3 - Regular</option>
+                    <option value="4">Tier 4 - Drive-by</option>
+                  </select>
+                </div>
+
+                {/* Banned Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={bannedMe}
+                    onChange={handleBannedToggle}
+                    className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
+                  />
+                  <span className="text-mhc-text font-medium">Banned Me</span>
+                </label>
+              </div>
+
+              {/* Row 3: Notes */}
+              <div className="flex-1">
+                <label className="block text-mhc-text-muted text-sm font-semibold mb-2">Notes</label>
+                <div className="flex gap-3">
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Add personal notes about this user..."
+                    rows={2}
+                    className="flex-1 px-4 py-2.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                  />
+                  <button
+                    onClick={handleSaveNotes}
+                    disabled={notesSaving}
+                    className="px-5 py-2 bg-mhc-primary text-white border-none rounded-md text-sm font-semibold cursor-pointer transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed self-start"
+                  >
+                    {notesSaving ? 'Saving...' : 'Save'}
+                  </button>
+                </div>
+                {notesMessage && (
+                  <span className={`text-sm mt-1 block ${notesMessage === 'Saved!' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {notesMessage}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Tabs */}
           <div className="flex gap-1 bg-mhc-surface rounded-t-lg pt-2.5 px-2.5 shadow-lg flex-wrap">
             <button
@@ -347,6 +664,16 @@ const Profile: React.FC<ProfilePageProps> = () => {
               onClick={() => setActiveTab('interactions')}
             >
               Recent Interactions
+            </button>
+            <button
+              className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
+                activeTab === 'images'
+                  ? 'bg-mhc-primary text-white'
+                  : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
+              }`}
+              onClick={() => setActiveTab('images')}
+            >
+              Images {imageHistory.length > 0 && `(${imageHistory.length})`}
             </button>
           </div>
 
@@ -647,6 +974,65 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   </div>
                 ) : (
                   <p className="text-mhc-text-muted">No recent interactions found.</p>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'images' && (
+              <div>
+                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Image History</h3>
+                {imageHistory.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {imageHistory.map((image, index) => (
+                      <div
+                        key={image.image_url}
+                        className={`group relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer hover:border-mhc-primary hover:-translate-y-1 hover:shadow-lg ${
+                          currentImageIndex === index ? 'border-mhc-primary ring-2 ring-mhc-primary/50' : 'border-white/10'
+                        }`}
+                        onClick={() => setCurrentImageIndex(index)}
+                      >
+                        <div className="aspect-[4/3]">
+                          <img
+                            src={`http://localhost:3000/images/${image.image_url}`}
+                            alt={`${profileData.person.username} - ${new Date(image.observed_at).toLocaleDateString()}`}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        </div>
+                        {/* Overlay with info */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="absolute bottom-0 left-0 right-0 p-2 text-white text-xs">
+                            <div className="font-semibold">
+                              {new Date(image.observed_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </div>
+                            <div className="text-white/70">
+                              {new Date(image.observed_at).toLocaleTimeString('en-US', {
+                                hour: 'numeric',
+                                minute: '2-digit'
+                              })}
+                            </div>
+                            {image.num_users > 0 && (
+                              <div className="text-white/70 mt-1">
+                                {image.num_users.toLocaleString()} viewers
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        {/* Current indicator */}
+                        {currentImageIndex === index && (
+                          <div className="absolute top-1 right-1 bg-mhc-primary text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                            Current
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-mhc-text-muted">No images saved yet. Images are captured when the user broadcasts.</p>
                 )}
               </div>
             )}

@@ -118,3 +118,55 @@ A: Correct! Use `./scripts/dev.sh` for daily work. The `./scripts/deploy.sh` is 
 
 **Q: If they are read-only mounts how would that provide hot-reload?**
 A: Read-only means the *container* can't write to *your host*, but it **can** see your changes. The confusion was the `/app/dist` anonymous volume hiding compiled code. Now we use `tsx watch` which compiles on-the-fly from your mounted source code directly - no dist folder needed in dev mode!
+
+---
+
+## Feature Roadmap
+
+### Phase 1: User Categorization and Tracking (Completed - Dec 2024)
+
+Added manual tracking for Subs, Friends (4-tier), and Bans with new tabs on the Users page and reorganized Profile page.
+
+**Database Changes (Migration 020):**
+- `friend_tier` column (1-4 with CHECK constraint)
+- Renamed `in_service_date` to `first_service_date`
+- Added `last_service_date` column
+- Added `banned_at` timestamp column
+
+**New API Endpoints:**
+- `GET /api/followers/subs?filter=all|active|inactive` - Get subscribers
+- `GET /api/followers/friends?tier=1-4` - Get friends by tier
+- `GET /api/followers/bans` - Get users who banned me
+
+**Profile Page Updates:**
+- Row 1: Active Sub checkbox + First Service date + Last Service date
+- Row 2: Friend Tier dropdown (4 tiers) + Banned Me checkbox
+- Row 3: Notes textarea + Save button
+- Auto-fill logic for dates when toggling Active Sub
+
+**Users Page Updates:**
+- Subs tab: Filter by All/Active/Past, shows service dates, notes
+- Friends tab: Filter by tier (color-coded: gold/green/blue/gray), tier labels (Special, Tipper, Regular, Drive-by)
+- Bans tab: Shows users who banned you with banned_at date
+
+### Phase 2: Follower Count Tracking (Planned)
+
+Track follower increases over time by capturing follower counts with timestamps.
+
+**Planned Changes:**
+- New `follower_history` table: `id`, `person_id`, `follower_count`, `captured_at`, `net_change`
+- Capture follower counts on each affiliate API poll
+- Calculate and store net change from previous capture
+- Add follower trend charts to Profile page
+- Add follower growth analytics to Users page
+
+### Phase 3: Tipping History Integration (Planned)
+
+Authenticate with Chaturbate and pull tipping history.
+
+**Planned Changes:**
+- Use authenticated session to access tipping history page
+- Parse and store tipping records
+- Link tips to persons in database
+- Add tipping history tab to Profile page
+- Add tipping analytics/totals

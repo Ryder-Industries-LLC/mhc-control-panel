@@ -73,6 +73,23 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/person/:id/images
+ * Get image history for a person (most recent first)
+ */
+router.get('/:id/images', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { limit = '10' } = req.query;
+
+    const images = await PersonService.getImageHistory(id, parseInt(limit as string, 10));
+    res.json({ images });
+  } catch (error) {
+    logger.error('Get image history error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /api/person/:id/snapshots
  * Get snapshot timeline for a person
  */

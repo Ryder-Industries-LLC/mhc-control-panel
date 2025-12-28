@@ -28,6 +28,7 @@ export interface PersonWithSource extends Person {
   source: string;
   interaction_count: number;
   snapshot_count: number;
+  image_count: number;
   image_url: string | null;
   current_show: string | null;
   session_observed_at: string | null;

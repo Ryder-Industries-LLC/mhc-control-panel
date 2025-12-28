@@ -118,6 +118,54 @@ router.get('/unfollowed', async (_req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/followers/subs
+ * Get list of all subscribers (current or past)
+ * Query param: filter = 'all' | 'active' | 'inactive'
+ */
+router.get('/subs', async (req: Request, res: Response) => {
+  try {
+    const { filter = 'all' } = req.query;
+    const subs = await FollowerScraperService.getSubs(filter as string);
+    res.json({ subs, total: subs.length });
+  } catch (error) {
+    logger.error('Error getting subs list', { error });
+    res.status(500).json({ error: 'Failed to get subs list' });
+  }
+});
+
+/**
+ * GET /api/followers/friends
+ * Get list of users with friend tier assigned
+ * Query param: tier = 1 | 2 | 3 | 4 (optional)
+ */
+router.get('/friends', async (req: Request, res: Response) => {
+  try {
+    const { tier } = req.query;
+    const friends = await FollowerScraperService.getFriends(
+      tier ? parseInt(tier as string, 10) : undefined
+    );
+    res.json({ friends, total: friends.length });
+  } catch (error) {
+    logger.error('Error getting friends list', { error });
+    res.status(500).json({ error: 'Failed to get friends list' });
+  }
+});
+
+/**
+ * GET /api/followers/bans
+ * Get list of users who have banned me
+ */
+router.get('/bans', async (_req: Request, res: Response) => {
+  try {
+    const bans = await FollowerScraperService.getBans();
+    res.json({ bans, total: bans.length });
+  } catch (error) {
+    logger.error('Error getting bans list', { error });
+    res.status(500).json({ error: 'Failed to get bans list' });
+  }
+});
+
+/**
  * DELETE /api/followers/clear-following
  * Clear all following records (for debugging/reset)
  */

@@ -1,8 +1,10 @@
+// @ts-nocheck - Browser context code uses DOM APIs in page.evaluate
 import puppeteer, { Browser, Page } from 'puppeteer';
 import puppeteerExtra from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { logger } from '../config/logger.js';
 import { FollowerScraperService } from './follower-scraper.service.js';
+import { ImageStorageService } from './image-storage.service.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -18,6 +20,42 @@ export interface ScrapeResult {
   success: boolean;
   usernames: string[];
   error?: string;
+}
+
+export interface ScrapedProfileData {
+  username: string;
+  displayName: string | null;
+  bio: string | null;
+  age: number | null;
+  location: string | null;
+  gender: string | null;
+  interestedIn: string | null;
+  bodyType: string | null;
+  ethnicity: string | null;
+  hairColor: string | null;
+  eyeColor: string | null;
+  height: string | null;
+  weight: string | null;
+  languages: string[];
+  tags: string[];
+  photos: {
+    url: string;
+    localPath: string | null;
+    isPrimary: boolean;
+    isBackground: boolean;
+    isLocked: boolean;
+  }[];
+  tipMenu: {
+    item: string;
+    tokens: number;
+  }[];
+  socialLinks: {
+    platform: string;
+    url: string;
+  }[];
+  fanclubPrice: number | null;
+  isOnline: boolean;
+  scrapedAt: Date;
 }
 
 export class ChaturbateScraperService {
@@ -489,5 +527,327 @@ export class ChaturbateScraperService {
         await page.close();
       }
     }
+  }
+
+  /**
+   * Scrape a user's profile page with authentication
+   * Extracts bio, photos, and profile information from the profile page
+   */
+  static async scrapeProfile(username: string): Promise<ScrapedProfileData | null> {
+    let page: Page | null = null;
+
+    try {
+      const browser = await this.getBrowser();
+      page = await browser.newPage();
+
+      // Set user agent
+      await page.setUserAgent(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      );
+
+      // First navigate to homepage to set up the domain for cookies
+      logger.info('Navigating to homepage first to establish session...');
+      await page.goto('https://chaturbate.com/', { waitUntil: 'networkidle2', timeout: 30000 });
+
+      // Apply cookies for authenticated access
+      const appliedCookies = await this.applyCookiesToPage(page);
+
+      if (appliedCookies) {
+        logger.info('Reloading page to activate cookies...');
+        await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+      }
+
+      // Navigate to the user's profile
+      const profileUrl = `https://chaturbate.com/${username}/`;
+      logger.info(`Navigating to profile page: ${profileUrl}`);
+
+      await page.goto(profileUrl, {
+        waitUntil: 'networkidle2',
+        timeout: 30000,
+      });
+
+      // Wait for content to load
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // Check if profile exists
+      const currentUrl = page.url();
+      const pageTitle = await page.title();
+
+      if (currentUrl.includes('/auth/login') || pageTitle.includes('Page Not Found')) {
+        logger.warn(`Profile not accessible or not found: ${username}`);
+        return null;
+      }
+
+      // Determine if user is online (has video player) or offline
+      const isOnline = await page.evaluate(() => {
+        return !!document.querySelector('#defchat') || !!document.querySelector('.video_overlay');
+      });
+
+      logger.info(`Profile type for ${username}: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+
+      // Extract profile data from the page
+      // Note: The function passed to evaluate runs in browser context where document/window are available
+      const profileData = await page.evaluate((username: string) => {
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        const data: any = {
+          username,
+          displayName: null,
+          bio: null,
+          age: null,
+          location: null,
+          gender: null,
+          interestedIn: null,
+          bodyType: null,
+          ethnicity: null,
+          hairColor: null,
+          eyeColor: null,
+          height: null,
+          weight: null,
+          languages: [],
+          tags: [],
+          photos: [],
+          tipMenu: [],
+          socialLinks: [],
+          fanclubPrice: null,
+        };
+
+        // Helper to get text content safely
+        const getText = (selector: string): string | null => {
+          const el = document.querySelector(selector);
+          return el?.textContent?.trim() || null;
+        };
+
+        // Extract bio from #roomTabs section (both online and offline)
+        const bioContainer = document.querySelector('#roomTabs .bio, #profile .bio, .bio_wrap, #bio');
+        if (bioContainer) {
+          data.bio = bioContainer.textContent?.trim() || null;
+        }
+
+        // Extract bio from about_me section if not found
+        if (!data.bio) {
+          const aboutMe = document.querySelector('.about_me_text, .about-me, [data-about]');
+          if (aboutMe) {
+            data.bio = aboutMe.textContent?.trim() || null;
+          }
+        }
+
+        // Extract display name
+        const displayNameEl = document.querySelector('.username, .broadcaster-name, h1');
+        if (displayNameEl) {
+          data.displayName = displayNameEl.textContent?.trim() || null;
+        }
+
+        // Extract profile details from details section
+        const detailsSection = document.querySelector('.details, #profile-details, .profile_section');
+        if (detailsSection) {
+          const detailItems = detailsSection.querySelectorAll('tr, .detail-row, .info-row');
+          detailItems.forEach((item: any) => {
+            const labelEl = item.querySelector('th, .label, td:first-child');
+            const valueEl = item.querySelector('td:last-child, .value');
+            const label = labelEl?.textContent?.trim().toLowerCase() || '';
+            const value = valueEl?.textContent?.trim() || '';
+
+            if (label.includes('location')) data.location = value;
+            if (label.includes('age')) data.age = parseInt(value, 10) || null;
+            if (label.includes('gender') || label.includes('sex')) data.gender = value;
+            if (label.includes('interested')) data.interestedIn = value;
+            if (label.includes('body')) data.bodyType = value;
+            if (label.includes('ethnicity')) data.ethnicity = value;
+            if (label.includes('hair')) data.hairColor = value;
+            if (label.includes('eye')) data.eyeColor = value;
+            if (label.includes('height')) data.height = value;
+            if (label.includes('weight')) data.weight = value;
+            if (label.includes('language')) {
+              data.languages = value.split(',').map((l: string) => l.trim()).filter(Boolean);
+            }
+          });
+        }
+
+        // Extract tags from room
+        const tagElements = document.querySelectorAll('.tag, .room-tag, [data-tag], .roomtag a');
+        data.tags = Array.from(tagElements)
+          .map((el: any) => el.textContent?.trim().replace('#', '') || '')
+          .filter(Boolean);
+
+        // Extract photos from profile
+        // Look for photo gallery images - skip locked ones
+        const photoElements = document.querySelectorAll('.photoset img, .photo-gallery img, .profile_photo img, .photo_holder img');
+        const photoUrls: { url: string; isPrimary: boolean; isBackground: boolean; isLocked: boolean }[] = [];
+
+        photoElements.forEach((img: any, idx: number) => {
+          const src = img.getAttribute('src') || '';
+          const dataSrc = img.getAttribute('data-src') || '';
+          const url = src || dataSrc;
+
+          // Skip if no URL or if it's a placeholder
+          if (!url || url.includes('placeholder') || url.includes('no_image')) return;
+
+          // Check if image is locked (usually has a lock icon overlay or specific class)
+          const parent = img.closest('.photo_holder, .photo-item, .photoset-item');
+          const isLocked = parent?.querySelector('.locked, .lock-icon, .private-icon') !== null ||
+                          img.classList.contains('locked') ||
+                          url.includes('locked');
+
+          if (!isLocked) {
+            photoUrls.push({
+              url: url.startsWith('http') ? url : `https:${url}`,
+              isPrimary: idx === 0,
+              isBackground: false,
+              isLocked: false,
+            });
+          }
+        });
+
+        data.photos = photoUrls;
+
+        // Extract background image (from CSS or specific element)
+        const bioSection = document.querySelector('#roomTabs, #profile, .bio_wrap');
+        if (bioSection) {
+          const bgStyle = window.getComputedStyle(bioSection).backgroundImage;
+          if (bgStyle && bgStyle !== 'none') {
+            const bgUrlMatch = bgStyle.match(/url\(["']?([^"')]+)["']?\)/);
+            if (bgUrlMatch && bgUrlMatch[1]) {
+              data.photos.push({
+                url: bgUrlMatch[1].startsWith('http') ? bgUrlMatch[1] : `https:${bgUrlMatch[1]}`,
+                isPrimary: false,
+                isBackground: true,
+                isLocked: false,
+              });
+            }
+          }
+        }
+
+        // Extract tip menu
+        const tipMenuItems = document.querySelectorAll('.tip-menu-item, .tip_menu_item, [data-tip-item]');
+        tipMenuItems.forEach((item: any) => {
+          const itemText = item.querySelector('.item, .tip-item-label, td:first-child')?.textContent?.trim() || '';
+          const tokensText = item.querySelector('.tokens, .tip-amount, td:last-child')?.textContent?.trim() || '0';
+          const tokens = parseInt(tokensText.replace(/[^\d]/g, ''), 10) || 0;
+          if (itemText && tokens > 0) {
+            data.tipMenu.push({ item: itemText, tokens });
+          }
+        });
+
+        // Extract social links
+        const socialPatterns = ['twitter', 'instagram', 'onlyfans', 'fansly', 'snapchat', 'tiktok', 'amazon', 'wishlist'];
+        const allLinks = document.querySelectorAll('a[href]');
+        allLinks.forEach((link: any) => {
+          const href = link.getAttribute('href') || '';
+          const hrefLower = href.toLowerCase();
+
+          for (const pattern of socialPatterns) {
+            if (hrefLower.includes(pattern)) {
+              data.socialLinks.push({
+                platform: pattern,
+                url: href,
+              });
+              break;
+            }
+          }
+        });
+
+        // Extract fanclub price
+        const fanclubEl = document.querySelector('.fan-club-price, .fanclub_price, [data-fanclub-price]');
+        if (fanclubEl) {
+          const priceText = fanclubEl.textContent?.trim() || '';
+          data.fanclubPrice = parseInt(priceText.replace(/[^\d]/g, ''), 10) || null;
+        }
+
+        return data;
+      }, username);
+
+      // Add metadata
+      profileData.isOnline = isOnline;
+      profileData.scrapedAt = new Date();
+
+      // Download photos (skip locked ones, mark backgrounds)
+      const downloadedPhotos: ScrapedProfileData['photos'] = [];
+
+      for (const photo of profileData.photos) {
+        if (photo.isLocked) {
+          downloadedPhotos.push({ ...photo, localPath: null });
+          continue;
+        }
+
+        try {
+          const localPath = await ImageStorageService.downloadAndSave(
+            photo.url,
+            username,
+            photo.isBackground ? 'full' : 'thumbnail'
+          );
+
+          downloadedPhotos.push({
+            ...photo,
+            localPath,
+          });
+
+          logger.debug(`Downloaded photo for ${username}`, {
+            url: photo.url,
+            localPath,
+            isBackground: photo.isBackground
+          });
+        } catch (error) {
+          logger.error(`Failed to download photo for ${username}`, { error, url: photo.url });
+          downloadedPhotos.push({ ...photo, localPath: null });
+        }
+      }
+
+      profileData.photos = downloadedPhotos;
+
+      logger.info(`Successfully scraped profile for ${username}`, {
+        isOnline,
+        hasBio: !!profileData.bio,
+        photoCount: profileData.photos.length,
+        tagCount: profileData.tags.length,
+        socialLinkCount: profileData.socialLinks.length,
+      });
+
+      return profileData;
+    } catch (error) {
+      logger.error('Error scraping profile', { error, username });
+      return null;
+    } finally {
+      if (page) {
+        await page.close();
+      }
+    }
+  }
+
+  /**
+   * Scrape multiple profiles with rate limiting
+   */
+  static async scrapeProfiles(
+    usernames: string[],
+    options?: {
+      delayMs?: number;
+      onProgress?: (completed: number, total: number, username: string) => void;
+    }
+  ): Promise<Map<string, ScrapedProfileData | null>> {
+    const { delayMs = 3000, onProgress } = options || {};
+    const results = new Map<string, ScrapedProfileData | null>();
+
+    for (let i = 0; i < usernames.length; i++) {
+      const username = usernames[i];
+
+      try {
+        const profile = await this.scrapeProfile(username);
+        results.set(username, profile);
+
+        if (onProgress) {
+          onProgress(i + 1, usernames.length, username);
+        }
+      } catch (error) {
+        logger.error(`Failed to scrape profile for ${username}`, { error });
+        results.set(username, null);
+      }
+
+      // Delay between requests to avoid rate limiting
+      if (i < usernames.length - 1) {
+        const randomDelay = delayMs + Math.random() * 2000;
+        await new Promise(resolve => setTimeout(resolve, randomDelay));
+      }
+    }
+
+    return results;
   }
 }
