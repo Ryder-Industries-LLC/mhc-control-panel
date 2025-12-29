@@ -75,6 +75,18 @@ export class ChaturbateEventsClient {
       return;
     }
 
+    // Try to recover existing session on startup
+    // This handles the case where the app restarts while streaming
+    try {
+      const existingSession = await SessionService.getCurrentSession(this.username);
+      if (existingSession) {
+        this.currentSessionId = existingSession.id;
+        logger.info(`Recovered existing session on startup: ${existingSession.id}`);
+      }
+    } catch (error) {
+      logger.warn('Failed to check for existing session on startup', { error });
+    }
+
     this.isRunning = true;
     logger.info('Starting Chaturbate Events API listener');
 
@@ -264,7 +276,10 @@ export class ChaturbateEventsClient {
       content: message,
       source: 'cb_events',
       streamSessionId: this.currentSessionId,
-      metadata: event.object.user,
+      metadata: {
+        ...event.object.user,
+        broadcaster: this.username,
+      },
     });
   }
 
@@ -288,6 +303,7 @@ export class ChaturbateEventsClient {
         ...event.object.user,
         fromUser,
         toUser,
+        broadcaster: this.username,
       },
     });
   }
@@ -311,6 +327,7 @@ export class ChaturbateEventsClient {
         tokens,
         isAnon: event.object.tip?.isAnon,
         ...event.object.user,
+        broadcaster: this.username,
       },
     });
   }
@@ -327,7 +344,10 @@ export class ChaturbateEventsClient {
       content: 'Followed',
       source: 'cb_events',
       streamSessionId: this.currentSessionId,
-      metadata: event.object.user,
+      metadata: {
+        ...event.object.user,
+        broadcaster: this.username,
+      },
     });
   }
 
@@ -343,7 +363,10 @@ export class ChaturbateEventsClient {
       content: 'Unfollowed',
       source: 'cb_events',
       streamSessionId: this.currentSessionId,
-      metadata: event.object.user,
+      metadata: {
+        ...event.object.user,
+        broadcaster: this.username,
+      },
     });
   }
 
@@ -359,7 +382,10 @@ export class ChaturbateEventsClient {
       content: 'Entered room',
       source: 'cb_events',
       streamSessionId: this.currentSessionId,
-      metadata: event.object.user,
+      metadata: {
+        ...event.object.user,
+        broadcaster: this.username,
+      },
     });
   }
 
@@ -375,7 +401,10 @@ export class ChaturbateEventsClient {
       content: 'Left room',
       source: 'cb_events',
       streamSessionId: this.currentSessionId,
-      metadata: event.object.user,
+      metadata: {
+        ...event.object.user,
+        broadcaster: this.username,
+      },
     });
   }
 
@@ -391,7 +420,10 @@ export class ChaturbateEventsClient {
       content: 'Joined fanclub',
       source: 'cb_events',
       streamSessionId: this.currentSessionId,
-      metadata: event.object.user,
+      metadata: {
+        ...event.object.user,
+        broadcaster: this.username,
+      },
     });
   }
 
@@ -407,7 +439,10 @@ export class ChaturbateEventsClient {
       content: 'Purchased media',
       source: 'cb_events',
       streamSessionId: this.currentSessionId,
-      metadata: event.object,
+      metadata: {
+        ...event.object,
+        broadcaster: this.username,
+      },
     });
   }
 }

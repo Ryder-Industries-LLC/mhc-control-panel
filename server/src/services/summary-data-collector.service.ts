@@ -12,12 +12,12 @@ import {
   ParsedTranscript,
   VisitorCategories,
 } from './transcript-parser.service.js';
-import { HudsonBroadcastService, HudsonBroadcast } from './hudson-broadcast.service.js';
+import { MyBroadcastService, MyBroadcast } from './my-broadcast.service.js';
 import fs from 'fs/promises';
 import path from 'path';
 
 export interface SummaryData {
-  // From hudson_broadcasts
+  // From my_broadcasts
   broadcastId: string;
   startedAt: Date;
   endedAt: Date | null;
@@ -86,7 +86,7 @@ class SummaryDataCollectorService {
     logger.info('Collecting summary data', { broadcastId });
 
     // Get broadcast info
-    const broadcast = await HudsonBroadcastService.getById(broadcastId);
+    const broadcast = await MyBroadcastService.getById(broadcastId);
     if (!broadcast) {
       throw new Error(`Broadcast not found: ${broadcastId}`);
     }
@@ -183,7 +183,7 @@ class SummaryDataCollectorService {
   /**
    * Calculate duration from broadcast start/end times
    */
-  private calculateDuration(broadcast: HudsonBroadcast): number {
+  private calculateDuration(broadcast: MyBroadcast): number {
     if (!broadcast.ended_at) {
       return 0;
     }
@@ -195,7 +195,7 @@ class SummaryDataCollectorService {
   /**
    * Get max viewers from affiliate API snapshots during broadcast window
    */
-  private async getMaxViewers(broadcast: HudsonBroadcast): Promise<number> {
+  private async getMaxViewers(broadcast: MyBroadcast): Promise<number> {
     if (!broadcast.ended_at) {
       return broadcast.peak_viewers || 0;
     }

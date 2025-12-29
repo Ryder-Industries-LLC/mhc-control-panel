@@ -303,7 +303,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 /**
  * PATCH /api/profile/:username
- * Update profile fields (notes, banned_me, active_sub, first_service_date, last_service_date, friend_tier, stream_summary, etc.)
+ * Update profile fields (notes, banned_me, active_sub, first_service_date, last_service_date, friend_tier, stream_summary, watch_list, etc.)
  */
 router.patch('/:username', async (req: Request, res: Response) => {
   try {
@@ -316,6 +316,7 @@ router.patch('/:username', async (req: Request, res: Response) => {
       last_service_date,
       friend_tier,
       stream_summary,
+      watch_list,
     } = req.body;
 
     if (!username) {
@@ -350,8 +351,8 @@ router.patch('/:username', async (req: Request, res: Response) => {
     if (active_sub !== undefined) {
       updates.push(`active_sub = $${paramIndex++}`);
       values.push(active_sub);
-      // Auto-set last_service_date when unchecking active_sub
-      if (active_sub === false) {
+      // Auto-set last_service_date when unchecking active_sub (only if not explicitly provided)
+      if (active_sub === false && last_service_date === undefined) {
         updates.push(`last_service_date = COALESCE(last_service_date, CURRENT_DATE)`);
       }
     }
@@ -376,6 +377,11 @@ router.patch('/:username', async (req: Request, res: Response) => {
       values.push(stream_summary);
     }
 
+    if (watch_list !== undefined) {
+      updates.push(`watch_list = $${paramIndex++}`);
+      values.push(watch_list);
+    }
+
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
@@ -387,8 +393,8 @@ router.patch('/:username', async (req: Request, res: Response) => {
     if (existingProfile.rows.length === 0) {
       // Create minimal profile if it doesn't exist
       await query(
-        `INSERT INTO profiles (person_id, notes, banned_me, active_sub, first_service_date, last_service_date, friend_tier, stream_summary)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        `INSERT INTO profiles (person_id, notes, banned_me, active_sub, first_service_date, last_service_date, friend_tier, stream_summary, watch_list)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           person.id,
           notes !== undefined ? notes : null,
@@ -398,6 +404,7 @@ router.patch('/:username', async (req: Request, res: Response) => {
           last_service_date !== undefined ? last_service_date : null,
           friend_tier !== undefined ? friend_tier : null,
           stream_summary !== undefined ? stream_summary : null,
+          watch_list !== undefined ? watch_list : false,
         ]
       );
 
@@ -491,7 +498,29 @@ router.get('/:username/member-info', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Member not found in Statbate' });
     }
 
-    res.json(memberInfo);
+    // Fetch recent tips to get the last tip recipient
+    let last_tip_to: string | null = null;
+    try {
+      const tipsResponse = await statbateClient.getMemberTips('chaturbate', username, {
+        perPage: 1,
+      });
+      if (tipsResponse.data && tipsResponse.data.length > 0) {
+        // API returns model_name for member tips
+        const tip = tipsResponse.data[0] as any;
+        last_tip_to = tip.model_name || tip.model || null;
+      }
+    } catch (tipError) {
+      logger.warn('Failed to fetch member tips for last_tip_to', { username, error: tipError });
+    }
+
+    // Add last_tip_to to the response
+    res.json({
+      ...memberInfo,
+      data: {
+        ...memberInfo.data,
+        last_tip_to,
+      },
+    });
   } catch (error) {
     logger.error('Error fetching member info from Statbate', { error, username: req.params.username });
     res.status(500).json({ error: 'Failed to fetch member info from Statbate' });

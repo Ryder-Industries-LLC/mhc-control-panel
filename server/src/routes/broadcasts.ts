@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { HudsonBroadcastService } from '../services/hudson-broadcast.service.js';
+import { MyBroadcastService } from '../services/my-broadcast.service.js';
 import { aiSummaryService } from '../services/ai-summary.service.js';
 import { summaryDataCollectorService } from '../services/summary-data-collector.service.js';
 import { logger } from '../config/logger.js';
@@ -13,7 +13,7 @@ const router = Router();
 router.get('/', async (req: Request, res: Response) => {
   try {
     const { limit = '50', offset = '0' } = req.query;
-    const broadcasts = await HudsonBroadcastService.getAll({
+    const broadcasts = await MyBroadcastService.getAll({
       limit: parseInt(limit as string, 10),
       offset: parseInt(offset as string, 10),
     });
@@ -31,7 +31,7 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/stats', async (req: Request, res: Response) => {
   try {
     const { days = '30' } = req.query;
-    const stats = await HudsonBroadcastService.getStats(parseInt(days as string, 10));
+    const stats = await MyBroadcastService.getStats(parseInt(days as string, 10));
     res.json(stats);
   } catch (error) {
     logger.error('Error fetching broadcast stats', { error });
@@ -45,7 +45,7 @@ router.get('/stats', async (req: Request, res: Response) => {
  */
 router.get('/current', async (_req: Request, res: Response) => {
   try {
-    const broadcast = await HudsonBroadcastService.getCurrentBroadcast();
+    const broadcast = await MyBroadcastService.getCurrentBroadcast();
     res.json(broadcast);
   } catch (error) {
     logger.error('Error fetching current broadcast', { error });
@@ -59,7 +59,7 @@ router.get('/current', async (_req: Request, res: Response) => {
  */
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const broadcast = await HudsonBroadcastService.getById(req.params.id);
+    const broadcast = await MyBroadcastService.getById(req.params.id);
     if (!broadcast) {
       return res.status(404).json({ error: 'Broadcast not found' });
     }
@@ -91,7 +91,7 @@ router.post('/', async (req: Request, res: Response) => {
       source = 'manual',
     } = req.body;
 
-    const broadcast = await HudsonBroadcastService.create({
+    const broadcast = await MyBroadcastService.create({
       started_at: started_at ? new Date(started_at) : new Date(),
       ended_at: ended_at ? new Date(ended_at) : undefined,
       duration_minutes,
@@ -132,7 +132,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       room_subject,
     } = req.body;
 
-    const broadcast = await HudsonBroadcastService.update(req.params.id, {
+    const broadcast = await MyBroadcastService.update(req.params.id, {
       started_at: started_at ? new Date(started_at) : undefined,
       ended_at: ended_at ? new Date(ended_at) : undefined,
       duration_minutes,
@@ -164,7 +164,7 @@ router.post('/:id/end', async (req: Request, res: Response) => {
   try {
     const { peak_viewers, total_tokens, followers_gained } = req.body;
 
-    const broadcast = await HudsonBroadcastService.endBroadcast(req.params.id, {
+    const broadcast = await MyBroadcastService.endBroadcast(req.params.id, {
       peak_viewers,
       total_tokens,
       followers_gained,
@@ -193,7 +193,7 @@ router.post('/merge', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Both id1 and id2 are required' });
     }
 
-    const merged = await HudsonBroadcastService.mergeBroadcasts(id1, id2);
+    const merged = await MyBroadcastService.mergeBroadcasts(id1, id2);
 
     if (!merged) {
       return res.status(404).json({ error: 'One or both broadcasts not found' });
@@ -212,7 +212,7 @@ router.post('/merge', async (req: Request, res: Response) => {
  */
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const deleted = await HudsonBroadcastService.delete(req.params.id);
+    const deleted = await MyBroadcastService.delete(req.params.id);
 
     if (!deleted) {
       return res.status(404).json({ error: 'Broadcast not found' });
@@ -299,7 +299,7 @@ router.post('/:id/summary/generate', async (req: Request, res: Response) => {
     }
 
     // Verify broadcast exists
-    const broadcast = await HudsonBroadcastService.getById(req.params.id);
+    const broadcast = await MyBroadcastService.getById(req.params.id);
     if (!broadcast) {
       return res.status(404).json({ error: 'Broadcast not found' });
     }

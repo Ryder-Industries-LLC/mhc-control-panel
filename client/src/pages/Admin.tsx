@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import CollapsibleSection from '../components/CollapsibleSection';
 // Admin.css removed - fully migrated to Tailwind CSS
 
 interface JobConfig {
@@ -859,6 +861,52 @@ const Admin: React.FC = () => {
     <>
       {systemStats && (
         <>
+          {/* User Segments Card - Moved to TOP */}
+          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
+            <div className="p-5 border-b border-white/10 flex justify-between items-center">
+              <h2 className="m-0 text-2xl text-white">User Segments</h2>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                <Link
+                  to="/?tab=following"
+                  className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
+                >
+                  <div className="text-2xl font-bold mb-1">{systemStats.following.followingCount}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">Following</div>
+                </Link>
+                <Link
+                  to="/?tab=followers"
+                  className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
+                >
+                  <div className="text-2xl font-bold mb-1">{systemStats.following.followerCount}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">Followers</div>
+                </Link>
+                <Link
+                  to="/?tab=subs"
+                  className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
+                >
+                  <div className="text-2xl font-bold mb-1">{systemStats.following.subsCount}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">Active Subs</div>
+                </Link>
+                <Link
+                  to="/?tab=friends"
+                  className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
+                >
+                  <div className="text-2xl font-bold mb-1">{systemStats.following.friendsCount}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">Friends</div>
+                </Link>
+                <Link
+                  to="/?tab=bans"
+                  className="text-center p-4 bg-gradient-to-br from-red-600 to-red-800 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
+                >
+                  <div className="text-2xl font-bold mb-1">{systemStats.following.bannedCount}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">Banned</div>
+                </Link>
+              </div>
+            </div>
+          </div>
+
           {/* Database & Storage Card */}
           <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
             <div className="p-5 border-b border-white/10 flex justify-between items-center">
@@ -870,74 +918,57 @@ const Admin: React.FC = () => {
                   <div className="text-3xl font-bold mb-2">{formatBytes(systemStats.database.sizeBytes)}</div>
                   <div className="text-sm opacity-90 uppercase tracking-wide">Database Size</div>
                 </div>
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <Link
+                  to="/"
+                  className="text-center p-5 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity block no-underline"
+                >
                   <div className="text-3xl font-bold mb-2">{systemStats.database.totalPersons.toLocaleString()}</div>
                   <div className="text-sm opacity-90 uppercase tracking-wide">Total Persons</div>
-                </div>
+                </Link>
                 <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
                   <div className="text-3xl font-bold mb-2">{systemStats.database.imagesStored.toLocaleString()}</div>
                   <div className="text-sm opacity-90 uppercase tracking-wide">Images Stored</div>
                 </div>
               </div>
 
-              {/* Role breakdown */}
-              <div className="mt-5 pt-5 border-t border-white/10">
-                <h3 className="text-lg mb-4 text-white">By Role</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {Object.entries(systemStats.database.byRole).map(([role, count]) => (
-                    <div key={role} className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                      <span className="font-semibold text-white/70">{role}:</span>
-                      <span className="text-white font-medium">{count.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Source breakdown */}
-              {Object.keys(systemStats.database.bySource).length > 0 && (
-                <div className="mt-5 pt-5 border-t border-white/10">
-                  <h3 className="text-lg mb-4 text-white">Snapshots by Source</h3>
+              {/* Role & Source breakdown - Collapsible */}
+              <CollapsibleSection
+                title="Role & Source Breakdown"
+                defaultCollapsed={true}
+                className="mt-5"
+              >
+                {/* Role breakdown */}
+                <div className="mb-5">
+                  <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">By Role</h4>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {Object.entries(systemStats.database.bySource).map(([source, count]) => (
-                      <div key={source} className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                        <span className="font-semibold text-white/70">{source}:</span>
+                    {Object.entries(systemStats.database.byRole).map(([role, count]) => (
+                      <Link
+                        key={role}
+                        to={`/?role=${role}`}
+                        className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10 hover:border-mhc-primary/50 transition-colors no-underline"
+                      >
+                        <span className="font-semibold text-white/70">{role}:</span>
                         <span className="text-white font-medium">{count.toLocaleString()}</span>
-                      </div>
+                      </Link>
                     ))}
                   </div>
                 </div>
-              )}
-            </div>
-          </div>
 
-          {/* Following & Social Card */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Following & Categorization</h2>
-            </div>
-            <div className="p-5">
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-2xl font-bold mb-1">{systemStats.following.followingCount}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">Following</div>
-                </div>
-                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-2xl font-bold mb-1">{systemStats.following.followerCount}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">Followers</div>
-                </div>
-                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-2xl font-bold mb-1">{systemStats.following.subsCount}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">Active Subs</div>
-                </div>
-                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-2xl font-bold mb-1">{systemStats.following.friendsCount}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">Friends</div>
-                </div>
-                <div className="text-center p-4 bg-gradient-to-br from-red-600 to-red-800 rounded-lg text-white">
-                  <div className="text-2xl font-bold mb-1">{systemStats.following.bannedCount}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">Banned</div>
-                </div>
-              </div>
+                {/* Source breakdown */}
+                {Object.keys(systemStats.database.bySource).length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Snapshots by Source</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {Object.entries(systemStats.database.bySource).map(([source, count]) => (
+                        <div key={source} className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                          <span className="font-semibold text-white/70">{source}:</span>
+                          <span className="text-white font-medium">{count.toLocaleString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CollapsibleSection>
             </div>
           </div>
 
@@ -997,66 +1028,7 @@ const Admin: React.FC = () => {
             </div>
           </div>
 
-          {/* Background Jobs Summary Card */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Background Jobs Summary</h2>
-            </div>
-            <div className="p-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Affiliate Job */}
-                <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="font-semibold text-white">Affiliate API</span>
-                    {getJobStatusBadge(systemStats.jobs.affiliate.isRunning, systemStats.jobs.affiliate.isPaused)}
-                  </div>
-                  <div className="text-sm text-white/60 space-y-1">
-                    <div>Runs: {systemStats.jobs.affiliate.totalRuns}</div>
-                    <div>Enriched: {systemStats.jobs.affiliate.totalEnriched.toLocaleString()}</div>
-                    <div>Last: {systemStats.jobs.affiliate.lastRun ? formatDate(systemStats.jobs.affiliate.lastRun) : 'Never'}</div>
-                  </div>
-                </div>
-
-                {/* Profile Scrape Job */}
-                <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="font-semibold text-white">Profile Scraper</span>
-                    {getJobStatusBadge(systemStats.jobs.profileScrape.isRunning, systemStats.jobs.profileScrape.isPaused)}
-                  </div>
-                  <div className="text-sm text-white/60 space-y-1">
-                    <div>Runs: {systemStats.jobs.profileScrape.totalRuns}</div>
-                    <div>Scraped: {systemStats.jobs.profileScrape.totalScraped.toLocaleString()}</div>
-                    <div>Last: {systemStats.jobs.profileScrape.lastRun ? formatDate(systemStats.jobs.profileScrape.lastRun) : 'Never'}</div>
-                  </div>
-                </div>
-
-                {/* CBHours Job */}
-                <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="font-semibold text-white">CBHours</span>
-                    {getJobStatusBadge(systemStats.jobs.cbhours.isRunning, systemStats.jobs.cbhours.isPaused)}
-                  </div>
-                  <div className="text-sm text-white/60 space-y-1">
-                    <div>Runs: {systemStats.jobs.cbhours.totalRuns}</div>
-                    <div>Recorded: {systemStats.jobs.cbhours.totalRecorded.toLocaleString()}</div>
-                    <div>Last: {systemStats.jobs.cbhours.lastRun ? formatDate(systemStats.jobs.cbhours.lastRun) : 'Never'}</div>
-                  </div>
-                </div>
-
-                {/* Statbate Job */}
-                <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="font-semibold text-white">Statbate</span>
-                    {getJobStatusBadge(systemStats.jobs.statbate.isRunning, systemStats.jobs.statbate.isPaused)}
-                  </div>
-                  <div className="text-sm text-white/60 space-y-1">
-                    <div>Status: {systemStats.jobs.statbate.isRunning ? (systemStats.jobs.statbate.isPaused ? 'Paused' : 'Running') : 'Stopped'}</div>
-                    <div className="text-xs mt-2">See Jobs page for details</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* Background Jobs Summary removed - see Jobs Management tab instead */}
         </>
       )}
 

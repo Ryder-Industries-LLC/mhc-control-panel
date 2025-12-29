@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 // App.css removed - fully migrated to Tailwind CSS
-import Hudson from './pages/Hudson';
+import BroadcasterDashboard from './pages/BroadcasterDashboard';
 import Users from './pages/Users';
 import EventsFeed from './pages/EventsFeed';
 import Admin from './pages/Admin';
@@ -37,11 +37,11 @@ function App() {
               <Link to="/profile" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Profile
               </Link>
-              <Link to="/hudson" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
-                Hudson
+              <Link to="/dashboard" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
+                Dashboard
               </Link>
               <Link to="/broadcasts" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
-                Broadcasts
+                My Broadcasts
               </Link>
               <Link to="/events" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Events
@@ -70,7 +70,8 @@ function App() {
             <Route path="/" element={<Users />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/profile/:username" element={<Profile />} />
-            <Route path="/hudson" element={<Hudson />} />
+            <Route path="/dashboard" element={<BroadcasterDashboard />} />
+            <Route path="/hudson" element={<BroadcasterDashboard />} /> {/* Alias for backwards compatibility */}
             <Route path="/broadcasts" element={<MyBroadcasts />} />
             <Route path="/events" element={<EventsFeed />} />
             <Route path="/admin" element={<Admin />} />

@@ -344,6 +344,7 @@ export class FollowerScraperService {
         pr.following,
         pr.follower,
         pr.banned_me,
+        pr.watch_list,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL) as image_count,
         (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,
@@ -361,6 +362,7 @@ export class FollowerScraperService {
   /**
    * Get all friends with tier assigned
    * Optional tier filter (1-4)
+   * Excludes active subs - they appear in the Subs tab instead
    */
   static async getFriends(tier?: number): Promise<any[]> {
     const tierFilter = tier ? `AND pr.friend_tier = ${tier}` : '';
@@ -376,6 +378,7 @@ export class FollowerScraperService {
         pr.following,
         pr.follower,
         pr.banned_me,
+        pr.watch_list,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL) as image_count,
         (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,
@@ -384,7 +387,9 @@ export class FollowerScraperService {
         (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
-       WHERE pr.friend_tier IS NOT NULL ${tierFilter}
+       WHERE pr.friend_tier IS NOT NULL
+         AND (pr.active_sub IS NULL OR pr.active_sub = FALSE)
+         ${tierFilter}
        ORDER BY pr.friend_tier ASC, p.last_seen_at DESC`
     );
     return result.rows;
@@ -404,6 +409,7 @@ export class FollowerScraperService {
         pr.active_sub,
         pr.following,
         pr.follower,
+        pr.watch_list,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL) as image_count,
         (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,

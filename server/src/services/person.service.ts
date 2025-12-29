@@ -219,10 +219,17 @@ export class PersonService {
 
   /**
    * Get all persons with source information
+   * @param limit - Maximum number of results
+   * @param offset - Offset for pagination
+   * @param ownerUsername - Username to deprioritize (push to bottom of results)
    */
-  static async findAllWithSource(limit = 100, offset = 0): Promise<any[]> {
-    const result = await query(
-      `SELECT
+  static async findAllWithSource(limit = 100, offset = 0, ownerUsername?: string): Promise<any[]> {
+    // Build ORDER BY clause to deprioritize own profile
+    const orderByClause = ownerUsername
+      ? `ORDER BY CASE WHEN LOWER(p.username) = LOWER($3) THEN 1 ELSE 0 END, last_seen_at DESC`
+      : `ORDER BY last_seen_at DESC`;
+
+    const queryText = `SELECT
         p.*,
         COALESCE(
           (SELECT source FROM snapshots WHERE person_id = p.id ORDER BY created_at ASC LIMIT 1),
@@ -246,10 +253,11 @@ export class PersonService {
         (SELECT banned_me FROM profiles WHERE person_id = p.id LIMIT 1) as banned_me
        FROM persons p
        WHERE is_excluded = false
-       ORDER BY last_seen_at DESC
-       LIMIT $1 OFFSET $2`,
-      [limit, offset]
-    );
+       ${orderByClause}
+       LIMIT $1 OFFSET $2`;
+
+    const params = ownerUsername ? [limit, offset, ownerUsername] : [limit, offset];
+    const result = await query(queryText, params);
     return result.rows;
   }
 

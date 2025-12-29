@@ -1,7 +1,7 @@
 import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
 
-export interface HudsonBroadcast {
+export interface MyBroadcast {
   id: string;
   started_at: Date;
   ended_at: Date | null;
@@ -18,6 +18,9 @@ export interface HudsonBroadcast {
   created_at: Date;
   updated_at: Date;
 }
+
+// Backwards compatibility alias
+export type HudsonBroadcast = MyBroadcast;
 
 export interface CreateBroadcastInput {
   started_at: Date;
@@ -47,11 +50,11 @@ export interface UpdateBroadcastInput {
   room_subject?: string;
 }
 
-export class HudsonBroadcastService {
+export class MyBroadcastService {
   /**
    * Create a new broadcast record
    */
-  static async create(input: CreateBroadcastInput): Promise<HudsonBroadcast> {
+  static async create(input: CreateBroadcastInput): Promise<MyBroadcast> {
     const {
       started_at,
       ended_at,
@@ -74,7 +77,7 @@ export class HudsonBroadcastService {
     }
 
     const result = await query(
-      `INSERT INTO hudson_broadcasts (
+      `INSERT INTO my_broadcasts (
         started_at, ended_at, duration_minutes,
         peak_viewers, total_tokens, followers_gained,
         summary, notes, tags, room_subject,
@@ -98,20 +101,20 @@ export class HudsonBroadcastService {
       ]
     );
 
-    logger.info('Hudson broadcast created', {
+    logger.info('Broadcast created', {
       id: result.rows[0].id,
       started_at,
       auto_detected,
       source,
     });
 
-    return result.rows[0] as HudsonBroadcast;
+    return result.rows[0] as MyBroadcast;
   }
 
   /**
    * Update an existing broadcast
    */
-  static async update(id: string, input: UpdateBroadcastInput): Promise<HudsonBroadcast | null> {
+  static async update(id: string, input: UpdateBroadcastInput): Promise<MyBroadcast | null> {
     const fields: string[] = [];
     const values: any[] = [];
     let paramIndex = 1;
@@ -164,7 +167,7 @@ export class HudsonBroadcastService {
     values.push(id);
 
     const result = await query(
-      `UPDATE hudson_broadcasts SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      `UPDATE my_broadcasts SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
       values
     );
 
@@ -172,14 +175,14 @@ export class HudsonBroadcastService {
       return null;
     }
 
-    logger.info('Hudson broadcast updated', { id });
-    return result.rows[0] as HudsonBroadcast;
+    logger.info('Broadcast updated', { id });
+    return result.rows[0] as MyBroadcast;
   }
 
   /**
    * End a broadcast (set ended_at and calculate duration)
    */
-  static async endBroadcast(id: string, stats?: { peak_viewers?: number; total_tokens?: number; followers_gained?: number }): Promise<HudsonBroadcast | null> {
+  static async endBroadcast(id: string, stats?: { peak_viewers?: number; total_tokens?: number; followers_gained?: number }): Promise<MyBroadcast | null> {
     const broadcast = await this.getById(id);
     if (!broadcast) {
       return null;
@@ -189,7 +192,7 @@ export class HudsonBroadcastService {
     const duration_minutes = Math.round((ended_at.getTime() - broadcast.started_at.getTime()) / (1000 * 60));
 
     const result = await query(
-      `UPDATE hudson_broadcasts SET
+      `UPDATE my_broadcasts SET
         ended_at = $2,
         duration_minutes = $3,
         peak_viewers = COALESCE($4, peak_viewers),
@@ -207,62 +210,145 @@ export class HudsonBroadcastService {
       ]
     );
 
-    logger.info('Hudson broadcast ended', { id, duration_minutes });
-    return result.rows[0] as HudsonBroadcast;
+    logger.info('Broadcast ended', { id, duration_minutes });
+    return result.rows[0] as MyBroadcast;
   }
 
   /**
    * Get a broadcast by ID
+   * Checks both my_broadcasts and stream_sessions tables
    */
-  static async getById(id: string): Promise<HudsonBroadcast | null> {
-    const result = await query(
-      'SELECT * FROM hudson_broadcasts WHERE id = $1',
+  static async getById(id: string): Promise<MyBroadcast | null> {
+    // First check my_broadcasts table
+    const myBroadcastResult = await query(
+      'SELECT * FROM my_broadcasts WHERE id = $1',
       [id]
     );
-    return result.rows[0] as HudsonBroadcast || null;
+
+    if (myBroadcastResult.rows.length > 0) {
+      return myBroadcastResult.rows[0] as MyBroadcast;
+    }
+
+    // Fall back to stream_sessions table
+    const sessionResult = await query(
+      `SELECT
+        id,
+        started_at,
+        ended_at,
+        CASE WHEN ended_at IS NOT NULL
+          THEN EXTRACT(EPOCH FROM (ended_at - started_at)) / 60
+          ELSE NULL
+        END::integer as duration_minutes,
+        0 as peak_viewers,
+        0 as total_tokens,
+        0 as followers_gained,
+        NULL as summary,
+        NULL as notes,
+        ARRAY[]::text[] as tags,
+        NULL as room_subject,
+        true as auto_detected,
+        'events_api' as source,
+        started_at as created_at,
+        COALESCE(ended_at, started_at) as updated_at
+      FROM stream_sessions
+      WHERE id = $1`,
+      [id]
+    );
+
+    return sessionResult.rows[0] as MyBroadcast || null;
   }
 
   /**
    * Get all broadcasts with pagination
+   * Combines my_broadcasts table with stream_sessions for the broadcaster
    */
-  static async getAll(options?: { limit?: number; offset?: number }): Promise<HudsonBroadcast[]> {
-    const { limit = 50, offset = 0 } = options || {};
+  static async getAll(options?: { limit?: number; offset?: number; broadcaster?: string }): Promise<MyBroadcast[]> {
+    const { limit = 50, offset = 0, broadcaster = 'hudson_cage' } = options || {};
 
+    // Query combines my_broadcasts with stream_sessions (for the broadcaster)
+    // Uses UNION to merge both sources, then deduplicates by overlapping time ranges
     const result = await query(
-      `SELECT * FROM hudson_broadcasts
-       ORDER BY started_at DESC
-       LIMIT $1 OFFSET $2`,
-      [limit, offset]
+      `WITH all_broadcasts AS (
+        -- From my_broadcasts table
+        SELECT
+          id,
+          started_at,
+          ended_at,
+          duration_minutes,
+          peak_viewers,
+          total_tokens,
+          followers_gained,
+          summary,
+          notes,
+          tags,
+          room_subject,
+          auto_detected,
+          source,
+          created_at,
+          updated_at
+        FROM my_broadcasts
+
+        UNION ALL
+
+        -- From stream_sessions table (sessions belonging to the broadcaster)
+        SELECT
+          id,
+          started_at,
+          ended_at,
+          CASE WHEN ended_at IS NOT NULL
+            THEN EXTRACT(EPOCH FROM (ended_at - started_at)) / 60
+            ELSE NULL
+          END::integer as duration_minutes,
+          0 as peak_viewers,
+          0 as total_tokens,
+          0 as followers_gained,
+          NULL as summary,
+          NULL as notes,
+          ARRAY[]::text[] as tags,
+          NULL as room_subject,
+          true as auto_detected,
+          'events_api' as source,
+          started_at as created_at,
+          COALESCE(ended_at, started_at) as updated_at
+        FROM stream_sessions
+        WHERE LOWER(broadcaster) = LOWER($3)
+      )
+      SELECT DISTINCT ON (DATE_TRUNC('hour', started_at))
+        *
+      FROM all_broadcasts
+      ORDER BY DATE_TRUNC('hour', started_at) DESC, source = 'manual' DESC
+      LIMIT $1 OFFSET $2`,
+      [limit, offset, broadcaster]
     );
 
-    return result.rows as HudsonBroadcast[];
+    return result.rows as MyBroadcast[];
   }
 
   /**
    * Get broadcasts within a date range
    */
-  static async getByDateRange(startDate: Date, endDate: Date): Promise<HudsonBroadcast[]> {
+  static async getByDateRange(startDate: Date, endDate: Date): Promise<MyBroadcast[]> {
     const result = await query(
-      `SELECT * FROM hudson_broadcasts
+      `SELECT * FROM my_broadcasts
        WHERE started_at >= $1 AND started_at <= $2
        ORDER BY started_at DESC`,
       [startDate, endDate]
     );
 
-    return result.rows as HudsonBroadcast[];
+    return result.rows as MyBroadcast[];
   }
 
   /**
    * Get the current active broadcast (no ended_at)
    */
-  static async getCurrentBroadcast(): Promise<HudsonBroadcast | null> {
+  static async getCurrentBroadcast(): Promise<MyBroadcast | null> {
     const result = await query(
-      `SELECT * FROM hudson_broadcasts
+      `SELECT * FROM my_broadcasts
        WHERE ended_at IS NULL
        ORDER BY started_at DESC
        LIMIT 1`
     );
-    return result.rows[0] as HudsonBroadcast || null;
+    return result.rows[0] as MyBroadcast || null;
   }
 
   /**
@@ -270,11 +356,11 @@ export class HudsonBroadcastService {
    */
   static async delete(id: string): Promise<boolean> {
     const result = await query(
-      'DELETE FROM hudson_broadcasts WHERE id = $1 RETURNING id',
+      'DELETE FROM my_broadcasts WHERE id = $1 RETURNING id',
       [id]
     );
     if (result.rows.length > 0) {
-      logger.info('Hudson broadcast deleted', { id });
+      logger.info('Broadcast deleted', { id });
       return true;
     }
     return false;
@@ -301,7 +387,7 @@ export class HudsonBroadcastService {
         COALESCE(AVG(peak_viewers), 0) as avg_viewers,
         COALESCE(MAX(peak_viewers), 0) as peak_viewers,
         COALESCE(SUM(followers_gained), 0) as total_followers_gained
-       FROM hudson_broadcasts
+       FROM my_broadcasts
        WHERE started_at >= NOW() - INTERVAL '1 day' * $1`,
       [days]
     );
@@ -321,7 +407,7 @@ export class HudsonBroadcastService {
   /**
    * Merge two broadcasts (combine stats, keep earlier start time)
    */
-  static async mergeBroadcasts(id1: string, id2: string): Promise<HudsonBroadcast | null> {
+  static async mergeBroadcasts(id1: string, id2: string): Promise<MyBroadcast | null> {
     const [b1, b2] = await Promise.all([
       this.getById(id1),
       this.getById(id2),
@@ -349,7 +435,10 @@ export class HudsonBroadcastService {
     // Delete the later one
     await this.delete(later.id);
 
-    logger.info('Hudson broadcasts merged', { kept: earlier.id, deleted: later.id });
+    logger.info('Broadcasts merged', { kept: earlier.id, deleted: later.id });
     return merged;
   }
 }
+
+// Backwards compatibility - export HudsonBroadcastService as alias
+export const HudsonBroadcastService = MyBroadcastService;

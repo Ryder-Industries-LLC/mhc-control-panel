@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { formatFullDate, formatMilitaryTime, formatTimeRange, formatDuration } from '../utils/formatting';
+import { TimeRangeSelect, TimeRange, getDateRangeForTimeRange } from '../components/TimeRangeSelect';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 
-interface HudsonBroadcast {
+interface MyBroadcast {
   id: string;
   started_at: string;
   ended_at: string | null;
@@ -71,9 +74,9 @@ interface PreviewResult {
 }
 
 const MyBroadcasts: React.FC = () => {
-  const [broadcasts, setBroadcasts] = useState<HudsonBroadcast[]>([]);
+  const [broadcasts, setBroadcasts] = useState<MyBroadcast[]>([]);
   const [stats, setStats] = useState<BroadcastStats | null>(null);
-  const [currentBroadcast, setCurrentBroadcast] = useState<HudsonBroadcast | null>(null);
+  const [currentBroadcast, setCurrentBroadcast] = useState<MyBroadcast | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -93,7 +96,11 @@ const MyBroadcasts: React.FC = () => {
     followers_gained: '',
   });
   const [showNewBroadcastForm, setShowNewBroadcastForm] = useState(false);
-  const [statsDays, setStatsDays] = useState(30);
+  const [timeRange, setTimeRange] = useState<TimeRange>('this_month');
+
+  // Delete confirmation state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteBroadcastId, setDeleteBroadcastId] = useState<string | null>(null);
 
   // AI Summary state
   const [aiStatus, setAIStatus] = useState<AIStatus | null>(null);
@@ -113,11 +120,17 @@ const MyBroadcasts: React.FC = () => {
   useEffect(() => {
     fetchData();
     fetchAIStatus();
-  }, [statsDays]);
+  }, [timeRange]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
+      // Calculate the number of days for stats based on time range
+      const dateRange = getDateRangeForTimeRange(timeRange);
+      const statsDays = timeRange === 'all_time'
+        ? 365 // Default to 1 year for all time
+        : Math.ceil((new Date().getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24));
+
       const [broadcastsRes, statsRes, currentRes] = await Promise.all([
         fetch('/api/broadcasts'),
         fetch(`/api/broadcasts/stats?days=${statsDays}`),
@@ -202,7 +215,7 @@ const MyBroadcasts: React.FC = () => {
     }
   };
 
-  const startEditing = (broadcast: HudsonBroadcast) => {
+  const startEditing = (broadcast: MyBroadcast) => {
     setEditingId(broadcast.id);
     setEditForm({
       summary: broadcast.summary || '',
@@ -239,20 +252,33 @@ const MyBroadcasts: React.FC = () => {
     }
   };
 
-  const deleteBroadcast = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this broadcast?')) return;
+  const openDeleteConfirm = (id: string) => {
+    setDeleteBroadcastId(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteBroadcastId) return;
 
     try {
-      const res = await fetch(`/api/broadcasts/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/broadcasts/${deleteBroadcastId}`, { method: 'DELETE' });
       if (res.ok) {
         fetchData();
       }
     } catch (err) {
       setError('Failed to delete broadcast');
+    } finally {
+      setDeleteConfirmOpen(false);
+      setDeleteBroadcastId(null);
     }
   };
 
-  const openSummaryPanel = async (broadcast: HudsonBroadcast) => {
+  const handleDeleteCancel = () => {
+    setDeleteConfirmOpen(false);
+    setDeleteBroadcastId(null);
+  };
+
+  const openSummaryPanel = async (broadcast: MyBroadcast) => {
     setSummaryBroadcastId(broadcast.id);
     setTranscript('');
     setSummaryError(null);
@@ -362,26 +388,22 @@ const MyBroadcasts: React.FC = () => {
     setPreviewError(null);
   };
 
-  const formatDuration = (minutes: number | null) => {
+  // Helper to format duration for stats display
+  const formatDurationMinutes = (minutes: number | null) => {
     if (!minutes) return '-';
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    if (hours > 0) {
-      return `${hours}h ${mins}m`;
-    }
-    return `${mins}m`;
+    return formatDuration(minutes);
   };
 
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
+  // Filter broadcasts by selected time range
+  const filteredBroadcasts = React.useMemo(() => {
+    if (timeRange === 'all_time') return broadcasts;
+
+    const dateRange = getDateRangeForTimeRange(timeRange);
+    return broadcasts.filter(b => {
+      const startedAt = new Date(b.started_at);
+      return startedAt >= dateRange.start && startedAt <= dateRange.end;
     });
-  };
+  }, [broadcasts, timeRange]);
 
   if (loading && broadcasts.length === 0) {
     return (
@@ -416,7 +438,7 @@ const MyBroadcasts: React.FC = () => {
                 <span className="text-emerald-400 font-semibold text-lg">LIVE NOW</span>
               </div>
               <p className="text-white/80">
-                Started {formatDate(currentBroadcast.started_at)}
+                Started {formatMilitaryTime(currentBroadcast.started_at)}
                 {currentBroadcast.room_subject && ` - ${currentBroadcast.room_subject}`}
               </p>
             </div>
@@ -435,21 +457,7 @@ const MyBroadcasts: React.FC = () => {
         <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
           <div className="p-5 border-b border-white/10 flex justify-between items-center">
             <h2 className="text-xl font-semibold text-white">Statistics</h2>
-            <div className="flex gap-2">
-              {[7, 30, 90].map(days => (
-                <button
-                  key={days}
-                  onClick={() => setStatsDays(days)}
-                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                    statsDays === days
-                      ? 'bg-mhc-primary text-white'
-                      : 'bg-white/10 text-white/70 hover:bg-white/20'
-                  }`}
-                >
-                  {days}d
-                </button>
-              ))}
-            </div>
+            <TimeRangeSelect value={timeRange} onChange={setTimeRange} />
           </div>
           <div className="p-5 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
             <div className="text-center p-3 bg-white/5 rounded-lg">
@@ -457,11 +465,11 @@ const MyBroadcasts: React.FC = () => {
               <div className="text-xs text-white/60 uppercase">Broadcasts</div>
             </div>
             <div className="text-center p-3 bg-white/5 rounded-lg">
-              <div className="text-2xl font-bold text-mhc-primary">{formatDuration(stats.totalMinutes)}</div>
+              <div className="text-2xl font-bold text-mhc-primary">{formatDurationMinutes(stats.totalMinutes)}</div>
               <div className="text-xs text-white/60 uppercase">Total Time</div>
             </div>
             <div className="text-center p-3 bg-white/5 rounded-lg">
-              <div className="text-2xl font-bold text-mhc-primary">{formatDuration(Math.round(stats.avgDuration))}</div>
+              <div className="text-2xl font-bold text-mhc-primary">{formatDurationMinutes(Math.round(stats.avgDuration))}</div>
               <div className="text-xs text-white/60 uppercase">Avg Duration</div>
             </div>
             <div className="text-center p-3 bg-white/5 rounded-lg">
@@ -877,27 +885,44 @@ const MyBroadcasts: React.FC = () => {
         </div>
       )}
 
+      {/* Delete Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={deleteConfirmOpen}
+        title="Delete Broadcast"
+        message="This will permanently delete this broadcast and its summary. This action cannot be undone."
+        confirmText="Delete"
+        confirmVariant="danger"
+        requireTypedConfirmation="DELETE"
+        onConfirm={handleDeleteConfirm}
+        onCancel={handleDeleteCancel}
+      />
+
       {/* Broadcasts List */}
       <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg">
-        <div className="p-5 border-b border-white/10">
+        <div className="p-5 border-b border-white/10 flex justify-between items-center">
           <h2 className="text-xl font-semibold text-white">Past Broadcasts</h2>
+          <span className="text-sm text-white/50">{filteredBroadcasts.length} broadcasts</span>
         </div>
         <div className="divide-y divide-white/10">
-          {broadcasts.length === 0 ? (
+          {filteredBroadcasts.length === 0 ? (
             <div className="p-10 text-center text-white/60">
-              No broadcasts recorded yet. Start your first broadcast to begin tracking!
+              {broadcasts.length === 0
+                ? 'No broadcasts recorded yet. Start your first broadcast to begin tracking!'
+                : 'No broadcasts in this time period.'}
             </div>
           ) : (
-            broadcasts.map(broadcast => (
+            filteredBroadcasts.map(broadcast => (
               <div key={broadcast.id} className="p-5">
                 {editingId === broadcast.id ? (
                   // Edit Mode
                   <div className="space-y-4">
                     <div className="flex justify-between items-start">
                       <div>
-                        <span className="text-white font-medium">{formatDate(broadcast.started_at)}</span>
-                        <span className="text-white/40 mx-2">-</span>
-                        <span className="text-white/60">{formatDuration(broadcast.duration_minutes)}</span>
+                        <span className="text-white font-medium">{formatFullDate(broadcast.started_at)}</span>
+                        <span className="text-white/40 mx-2">|</span>
+                        <span className="text-white/60">{formatTimeRange(broadcast.started_at, broadcast.ended_at)}</span>
+                        <span className="text-white/40 mx-2">|</span>
+                        <span className="text-mhc-primary">{formatDurationMinutes(broadcast.duration_minutes)}</span>
                       </div>
                       <div className="flex gap-2">
                         <button
@@ -983,10 +1008,16 @@ const MyBroadcasts: React.FC = () => {
                   <div>
                     <div className="flex justify-between items-start mb-3">
                       <div>
-                        <div className="flex items-center gap-3 mb-1">
-                          <span className="text-white font-medium">{formatDate(broadcast.started_at)}</span>
-                          <span className="text-white/40">-</span>
-                          <span className="text-mhc-primary font-medium">{formatDuration(broadcast.duration_minutes)}</span>
+                        <div className="text-white font-medium mb-1">
+                          {formatFullDate(broadcast.started_at)}
+                        </div>
+                        <div className="flex items-center gap-3 text-sm">
+                          <span className="text-white/70">
+                            {formatTimeRange(broadcast.started_at, broadcast.ended_at)}
+                          </span>
+                          <span className="text-mhc-primary font-medium">
+                            ({formatDurationMinutes(broadcast.duration_minutes)})
+                          </span>
                           {broadcast.auto_detected && (
                             <span className="px-2 py-0.5 rounded text-xs bg-blue-500/20 text-blue-400 border border-blue-500/30">
                               Auto-detected
@@ -994,10 +1025,10 @@ const MyBroadcasts: React.FC = () => {
                           )}
                         </div>
                         {broadcast.room_subject && (
-                          <p className="text-white/60 text-sm">{broadcast.room_subject}</p>
+                          <p className="text-white/60 text-sm mt-1">{broadcast.room_subject}</p>
                         )}
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 items-center">
                         {aiStatus?.available && broadcast.ended_at && (
                           <button
                             onClick={() => openSummaryPanel(broadcast)}
@@ -1012,12 +1043,24 @@ const MyBroadcasts: React.FC = () => {
                         >
                           Edit
                         </button>
-                        <button
-                          onClick={() => deleteBroadcast(broadcast.id)}
-                          className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-sm font-medium rounded-md transition-colors"
-                        >
-                          Delete
-                        </button>
+                        {/* Overflow menu for Delete */}
+                        <div className="relative group">
+                          <button className="p-2 hover:bg-white/10 rounded-md transition-colors text-white/60 hover:text-white">
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 16 16">
+                              <circle cx="8" cy="3" r="1.5" />
+                              <circle cx="8" cy="8" r="1.5" />
+                              <circle cx="8" cy="13" r="1.5" />
+                            </svg>
+                          </button>
+                          <div className="absolute right-0 top-full mt-1 bg-mhc-surface border border-white/20 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 min-w-[120px]">
+                            <button
+                              onClick={() => openDeleteConfirm(broadcast.id)}
+                              className="w-full px-4 py-2 text-left text-red-400 hover:bg-red-500/10 transition-colors text-sm"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
 

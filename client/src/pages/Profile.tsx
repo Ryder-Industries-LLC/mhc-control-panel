@@ -16,6 +16,7 @@ interface MemberInfo {
   first_tip_date: string | null;
   last_tip_date: string | null;
   last_tip_amount: number;
+  last_tip_to: string | null;
   models_messaged_2weeks: number;
   models_messaged_2weeks_list: string[];
   models_tipped_2weeks: number;
@@ -1172,6 +1173,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
                         <span className="block text-yellow-400 text-base font-semibold">
                           {memberInfo.last_tip_amount > 0 ? `${memberInfo.last_tip_amount.toLocaleString()} tokens` : 'N/A'}
                         </span>
+                        {memberInfo.last_tip_to && (
+                          <a
+                            href={`/profile/${memberInfo.last_tip_to}`}
+                            className="block text-mhc-primary text-sm mt-1 hover:underline"
+                          >
+                            to {memberInfo.last_tip_to}
+                          </a>
+                        )}
                       </div>
                       <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-emerald-500">
                         <span className="block font-semibold text-mhc-text-muted text-sm mb-1">All-Time Tokens</span>

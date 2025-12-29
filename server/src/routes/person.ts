@@ -3,6 +3,7 @@ import { PersonService } from '../services/person.service.js';
 import { SnapshotService } from '../services/snapshot.service.js';
 import { InteractionService } from '../services/interaction.service.js';
 import { logger } from '../config/logger.js';
+import { env } from '../config/env.js';
 
 const router = Router();
 
@@ -33,14 +34,19 @@ router.get('/search', async (req: Request, res: Response) => {
 /**
  * GET /api/person/all
  * Get all non-excluded persons with basic stats and source information
+ * Own profile is deprioritized (pushed to bottom) unless explicitly searched
  */
 router.get('/all', async (req: Request, res: Response) => {
   try {
     const { limit = '500', offset = '0' } = req.query;
 
+    // Get owner username from environment to deprioritize own profile
+    const ownerUsername = env.CHATURBATE_USERNAME;
+
     const persons = await PersonService.findAllWithSource(
       parseInt(limit as string, 10),
-      parseInt(offset as string, 10)
+      parseInt(offset as string, 10),
+      ownerUsername
     );
 
     res.json({ persons, total: persons.length });

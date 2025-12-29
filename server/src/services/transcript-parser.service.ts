@@ -58,8 +58,8 @@ const PATTERNS = {
   userJoin: /^User (\S+) has joined the room/,
   // User X has left the room.
   userLeave: /^User (\S+) has left the room/,
-  // username tipped X tokens
-  tip: /^(\S+) tipped (\d+) tokens?$/,
+  // username tipped X tokens [-- optional note]
+  tip: /^(\S+) tipped (\d+) tokens?(?:\s+--\s+(.+))?$/,
   // Notice: username tipped for » tip menu item
   tipNote: /^Notice: (\S+) tipped for » (.+)$/,
   // room subject changed to "..."
@@ -155,8 +155,9 @@ class TranscriptParserService {
       if (tipMatch) {
         const username = tipMatch[1];
         const tokens = parseInt(tipMatch[2], 10);
+        const tipNote = tipMatch[3]; // Optional note after "--"
         if (!this.isExcluded(username)) {
-          result.tips.push({ username, tokens });
+          result.tips.push({ username, tokens, note: tipNote });
           result.totalTokens += tokens;
           // Include tip lines for GPT context
           result.filteredChatLines.push(trimmedLine);

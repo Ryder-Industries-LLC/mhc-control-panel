@@ -25,6 +25,9 @@ interface PersonWithSource {
   following: boolean;
   follower: boolean;
   banned_me?: boolean;
+  active_sub?: boolean;
+  friend_tier?: number | null;
+  watch_list?: boolean;
 }
 
 interface FollowingUser extends PersonWithSource {
@@ -206,12 +209,27 @@ const Users: React.FC = () => {
     }
   }, [friendTierFilter]);
 
-  // Handle username from URL query parameter (for lookup integration)
+  // Handle URL query parameters (username, tab, role)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const usernameParam = params.get('username');
+    const tabParam = params.get('tab') as TabType | null;
+    const roleParam = params.get('role');
+
+    // Handle username lookup
     if (usernameParam && lookupUsername !== usernameParam) {
       setLookupUsername(usernameParam);
+      setActiveTab('directory');
+    }
+
+    // Handle tab navigation from System Stats
+    if (tabParam && ['directory', 'following', 'followers', 'unfollowed', 'subs', 'friends', 'bans'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+
+    // Handle role filter from System Stats
+    if (roleParam && ['MODEL', 'VIEWER', 'UNKNOWN'].includes(roleParam)) {
+      setRoleFilter(roleParam);
       setActiveTab('directory');
     }
   }, [location.search]);
@@ -761,11 +779,21 @@ const Users: React.FC = () => {
         </Link>
         {/* Info section */}
         <div className="p-3">
-          {/* Role badge and Banned badge - left aligned above username */}
+          {/* Role badge, Active Sub badge, and Banned badge - left aligned above username */}
           <div className="mb-1 flex items-center gap-1 flex-wrap">
             <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem]`}>
               {person.role}
             </span>
+            {person.active_sub && (
+              <span className="inline-block px-1.5 py-0.5 rounded text-[0.6rem] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold">
+                SUB
+              </span>
+            )}
+            {person.watch_list && (
+              <span className="inline-block px-1.5 py-0.5 rounded text-[0.6rem] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 font-semibold">
+                WATCH
+              </span>
+            )}
             {person.banned_me && (
               <span className="inline-block px-1.5 py-0.5 rounded text-[0.6rem] bg-red-500/20 text-red-400 border border-red-500/30">
                 Banned

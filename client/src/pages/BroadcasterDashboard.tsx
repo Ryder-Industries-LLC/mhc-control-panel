@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { api, HudsonResponse, Session } from '../api/client';
-import { formatDate, formatNumber } from '../utils/formatting';
+import { api, HudsonResponse, Session, Interaction } from '../api/client';
+import { formatDate, formatNumber, formatFullDate, formatMilitaryTime } from '../utils/formatting';
+import Badge from '../components/Badge';
 // Hudson.css removed - fully migrated to Tailwind CSS
 
-const Hudson: React.FC = () => {
+const BroadcasterDashboard: React.FC = () => {
   const [data, setData] = useState<HudsonResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showRawData, setShowRawData] = useState(false);
+  const [expandedSession, setExpandedSession] = useState<string | null>(null);
 
   const fetchData = async () => {
     try {
@@ -69,6 +71,68 @@ const Hudson: React.FC = () => {
     }
   };
 
+  // Separate broadcast activity (in MY room) from activity elsewhere
+  const getBroadcastActivity = (interactions: Interaction[]) => {
+    return interactions.filter(i => {
+      const broadcaster = i.metadata?.broadcaster as string | undefined;
+      // Activity in my room - where I am the broadcaster
+      return broadcaster === 'hudson_cage';
+    });
+  };
+
+  const getActivityElsewhere = (interactions: Interaction[]) => {
+    return interactions.filter(i => {
+      const username = i.metadata?.username as string | undefined;
+      const broadcaster = i.metadata?.broadcaster as string | undefined;
+      // My activity in other rooms
+      return username === 'hudson_cage' && broadcaster !== 'hudson_cage';
+    });
+  };
+
+  // Get activity for a specific session
+  // Uses stream_session_id if available, falls back to timestamp filtering
+  const getSessionActivity = (session: Session, interactions: Interaction[]) => {
+    // First try to find interactions linked directly to this session via stream_session_id
+    const linkedInteractions = interactions.filter(i =>
+      i.stream_session_id === session.id
+    );
+
+    if (linkedInteractions.length > 0) {
+      return linkedInteractions;
+    }
+
+    // Fallback to timestamp-based filtering for the session time range
+    const sessionStart = new Date(session.started_at).getTime();
+    const sessionEnd = session.ended_at ? new Date(session.ended_at).getTime() : Date.now();
+
+    // Filter interactions that occurred during this session
+    // For my room's activity, check if broadcaster is me OR if there's no broadcaster field
+    // (older interactions may not have broadcaster stored)
+    return interactions.filter(i => {
+      const timestamp = new Date(i.timestamp).getTime();
+      const broadcaster = i.metadata?.broadcaster as string | undefined;
+
+      // Must be within the session time range
+      if (timestamp < sessionStart || timestamp > sessionEnd) {
+        return false;
+      }
+
+      // Include if broadcaster is hudson_cage OR if there's no broadcaster field
+      // (assume my room if no broadcaster specified and it's in my session timeframe)
+      return !broadcaster || broadcaster === 'hudson_cage';
+    });
+  };
+
+  // Format duration in hours and minutes
+  const formatSessionDuration = (startedAt: string, endedAt: string | null) => {
+    const start = new Date(startedAt).getTime();
+    const end = endedAt ? new Date(endedAt).getTime() : Date.now();
+    const durationMs = end - start;
+    const hours = Math.floor(durationMs / (1000 * 60 * 60));
+    const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours}h ${minutes}m`;
+  };
+
   if (loading) {
     return (
       <div className="max-w-6xl mx-auto p-5">
@@ -96,7 +160,7 @@ const Hudson: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto p-5">
       <div className="flex justify-between items-center mb-10 py-8 border-b-2 border-mhc-primary">
-        <h1 className="text-mhc-primary text-4xl font-bold m-0">Hudson Cage Dashboard</h1>
+        <h1 className="text-mhc-primary text-4xl font-bold m-0">Broadcaster Dashboard</h1>
         <div className="flex gap-4 items-center">
           <label className="flex items-center text-mhc-text-muted cursor-pointer">
             <input
@@ -216,38 +280,156 @@ const Hudson: React.FC = () => {
         </div>
       )}
 
-      {/* Recent Sessions */}
+      {/* Recent Sessions with Expandable Activity */}
       {data.recentSessions && data.recentSessions.length > 0 && (
         <div className="bg-mhc-surface p-6 rounded-xl mb-6 shadow-lg">
-          <h2 className="text-mhc-text mt-0 mb-5 text-xl font-semibold border-b-2 border-mhc-primary pb-2">Recent Sessions</h2>
+          <h2 className="text-mhc-text mt-0 mb-5 text-xl font-semibold border-b-2 border-mhc-primary pb-2">My Broadcasts</h2>
           <div className="flex flex-col gap-3">
-            {data.recentSessions.slice(0, 5).map((session: Session) => (
-              <div key={session.id} className="bg-mhc-surface-light p-4 rounded-md border-l-4 border-mhc-primary">
-                <div className="flex justify-between mb-2">
-                  <span className="text-mhc-text font-medium">{formatDate(session.started_at)}</span>
-                  <span className="text-mhc-primary-light font-semibold">
-                    {formatDuration(session.started_at, session.ended_at)}
-                  </span>
-                </div>
-                {session.ended_at && (
-                  <div className="text-mhc-text text-sm">
-                    Ended: {formatDate(session.ended_at)}
+            {data.recentSessions.slice(0, 5).map((session: Session) => {
+              const sessionActivity = data.recentInteractions ? getSessionActivity(session, data.recentInteractions) : [];
+              const isExpanded = expandedSession === session.id;
+
+              return (
+                <div key={session.id} className="bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary overflow-hidden">
+                  <div
+                    className="p-4 cursor-pointer hover:bg-mhc-surface-lighter transition-colors"
+                    onClick={() => setExpandedSession(isExpanded ? null : session.id)}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <div className="text-mhc-text font-medium">{formatFullDate(session.started_at)}</div>
+                        <div className="text-mhc-text-muted text-sm">
+                          {formatMilitaryTime(session.started_at)}
+                          {session.ended_at && ` - ${formatMilitaryTime(session.ended_at)}`}
+                          <span className="text-mhc-primary-light ml-2">
+                            ({formatSessionDuration(session.started_at, session.ended_at)})
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {sessionActivity.length > 0 && (
+                          <span className="text-mhc-text-muted text-xs bg-mhc-surface px-2 py-1 rounded">
+                            {sessionActivity.length} events
+                          </span>
+                        )}
+                        <span className="text-mhc-text-muted text-sm">
+                          {isExpanded ? '▲' : '▼'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  {/* Expandable Activity Section */}
+                  {isExpanded && sessionActivity.length > 0 && (
+                    <div className="border-t border-mhc-surface p-4 bg-mhc-bg/50 max-h-[400px] overflow-y-auto">
+                      <h4 className="text-mhc-text-muted text-sm font-semibold mb-3">Broadcast Activity</h4>
+                      <div className="flex flex-col gap-2">
+                        {sessionActivity.slice(0, 20).map((interaction) => {
+                          const username = interaction.metadata?.username as string | undefined;
+                          const fromUser = interaction.metadata?.fromUser as string | undefined;
+                          const toUser = interaction.metadata?.toUser as string | undefined;
+                          const isHudsonMessage = username === 'hudson_cage' &&
+                            (interaction.type === 'CHAT_MESSAGE' || interaction.type === 'PRIVATE_MESSAGE');
+                          const styles = getInteractionStyles(interaction.type, isHudsonMessage);
+
+                          return (
+                            <div
+                              key={interaction.id}
+                              className={`bg-mhc-surface p-3 rounded-md border-l-4 ${styles.border} ${styles.opacity || ''}`}
+                            >
+                              <div className="flex justify-between items-center mb-1">
+                                <div className="flex items-center gap-2">
+                                  <Badge type={interaction.type} variant="interaction" size="sm" />
+                                  {interaction.type === 'PRIVATE_MESSAGE' && fromUser && toUser ? (
+                                    <span className="text-mhc-text text-sm">
+                                      <Link to={`/?username=${fromUser}`} className="font-semibold hover:underline">{fromUser}</Link>
+                                      <span className="text-mhc-text-muted mx-1">→</span>
+                                      <Link to={`/?username=${toUser}`} className="font-semibold hover:underline">{toUser}</Link>
+                                    </span>
+                                  ) : username && username !== 'hudson_cage' ? (
+                                    <Link to={`/?username=${username}`} className="text-mhc-text text-sm font-semibold hover:underline">
+                                      {username}
+                                    </Link>
+                                  ) : (
+                                    <span className="text-mhc-text-dim text-sm">{username || 'Unknown'}</span>
+                                  )}
+                                </div>
+                                <span className="text-mhc-text-dim text-xs">{formatMilitaryTime(interaction.timestamp)}</span>
+                              </div>
+                              {interaction.content && (
+                                <div className="text-gray-300 text-sm leading-relaxed mt-1 pl-2 border-l border-mhc-surface-light">
+                                  {interaction.content}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                        {sessionActivity.length > 20 && (
+                          <div className="text-mhc-text-muted text-sm text-center py-2">
+                            +{sessionActivity.length - 20} more events
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {isExpanded && sessionActivity.length === 0 && (
+                    <div className="border-t border-mhc-surface p-4 bg-mhc-bg/50">
+                      <p className="text-mhc-text-muted text-sm text-center">No activity recorded for this session</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Recent Interactions */}
-      {data.recentInteractions && data.recentInteractions.length > 0 && (
+      {/* My Activity Elsewhere */}
+      {data.recentInteractions && getActivityElsewhere(data.recentInteractions).length > 0 && (
+        <div className="bg-mhc-surface p-6 rounded-xl mb-6 shadow-lg">
+          <h3 className="text-mhc-text mt-0 mb-5 text-xl font-semibold border-b-2 border-purple-500 pb-2">
+            My Activity Elsewhere ({getActivityElsewhere(data.recentInteractions).length})
+          </h3>
+          <div className="flex flex-col gap-3 max-h-[400px] overflow-y-auto">
+            {getActivityElsewhere(data.recentInteractions).slice(0, 10).map((interaction) => {
+              const broadcaster = interaction.metadata?.broadcaster as string | undefined;
+
+              return (
+                <div
+                  key={interaction.id}
+                  className={`bg-mhc-surface-light p-4 rounded-md border-l-4 border-purple-500`}
+                >
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center gap-2">
+                      <Badge type={interaction.type} variant="interaction" size="sm" />
+                      <span className="text-mhc-text-muted text-sm">
+                        in{' '}
+                        <Link to={`/?username=${broadcaster}`} className="text-purple-400 font-semibold hover:underline">
+                          {broadcaster}'s room
+                        </Link>
+                      </span>
+                    </div>
+                    <span className="text-mhc-text-dim text-xs">{formatMilitaryTime(interaction.timestamp)}</span>
+                  </div>
+                  {interaction.content && (
+                    <div className="text-gray-300 leading-relaxed text-sm">{interaction.content}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Recent Broadcast Activity */}
+      {data.recentInteractions && getBroadcastActivity(data.recentInteractions).length > 0 && (
         <div className="bg-mhc-surface p-6 rounded-xl mb-6 shadow-lg">
           <h3 className="text-mhc-text mt-0 mb-5 text-xl font-semibold border-b-2 border-mhc-primary pb-2">
-            Recent Activity ({data.recentInteractions.length})
+            Recent Broadcast Activity ({getBroadcastActivity(data.recentInteractions).length})
           </h3>
           <div className="flex flex-col gap-3 max-h-[600px] overflow-y-auto">
-            {data.recentInteractions.slice(0, 10).map((interaction) => {
+            {getBroadcastActivity(data.recentInteractions).slice(0, 10).map((interaction) => {
               const username = interaction.metadata?.username as string | undefined;
               const fromUser = interaction.metadata?.fromUser as string | undefined;
               const toUser = interaction.metadata?.toUser as string | undefined;
@@ -258,44 +440,32 @@ const Hudson: React.FC = () => {
 
               const styles = getInteractionStyles(interaction.type, isHudsonMessage);
 
-              // Render username with link (except for hudson_cage)
-              const renderUsername = (user: string | undefined) => {
-                if (!user || user === 'hudson_cage') {
-                  return <span>{user || 'Unknown'}</span>;
-                }
-                return <Link to={`/?username=${user}`} className="hover:opacity-80 hover:underline transition-opacity">{user}</Link>;
-              };
-
-              // For PRIVATE_MESSAGE, render direction with links
-              let displayContent;
-              if (interaction.type === 'PRIVATE_MESSAGE' && fromUser && toUser) {
-                displayContent = (
-                  <>
-                    {renderUsername(fromUser)} to {renderUsername(toUser)}
-                  </>
-                );
-              } else if (interaction.type === 'PRIVATE_MESSAGE') {
-                displayContent = <span>Private Message</span>;
-              } else {
-                displayContent = renderUsername(username);
-              }
-
               return (
                 <div
                   key={interaction.id}
                   className={`bg-mhc-surface-light p-4 rounded-md border-l-4 ${styles.border} ${styles.opacity || ''}`}
                 >
-                  <div className="flex justify-between mb-2">
-                    <span className={`font-semibold text-sm ${styles.text}`}>
-                      {displayContent}
-                      {interaction.type !== 'PRIVATE_MESSAGE' && (
-                        <span className="text-mhc-text-muted font-medium uppercase text-xs ml-2">- {interaction.type}</span>
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center gap-2">
+                      <Badge type={interaction.type} variant="interaction" size="sm" />
+                      {interaction.type === 'PRIVATE_MESSAGE' && fromUser && toUser ? (
+                        <span className="text-mhc-text text-sm">
+                          <Link to={`/?username=${fromUser}`} className="font-semibold hover:underline">{fromUser}</Link>
+                          <span className="text-mhc-text-muted mx-1">→</span>
+                          <Link to={`/?username=${toUser}`} className="font-semibold hover:underline">{toUser}</Link>
+                        </span>
+                      ) : username && username !== 'hudson_cage' ? (
+                        <Link to={`/?username=${username}`} className="text-mhc-text text-sm font-semibold hover:underline">
+                          {username}
+                        </Link>
+                      ) : (
+                        <span className="text-mhc-text-dim text-sm">{username || 'Unknown'}</span>
                       )}
-                    </span>
-                    <span className="text-mhc-text text-xs">{formatDate(interaction.timestamp)}</span>
+                    </div>
+                    <span className="text-mhc-text-dim text-xs">{formatMilitaryTime(interaction.timestamp)}</span>
                   </div>
                   {interaction.content && (
-                    <div className="text-gray-300 leading-relaxed">{interaction.content}</div>
+                    <div className="text-gray-300 leading-relaxed text-sm">{interaction.content}</div>
                   )}
                 </div>
               );
@@ -325,4 +495,4 @@ const Hudson: React.FC = () => {
   );
 };
 
-export default Hudson;
+export default BroadcasterDashboard;

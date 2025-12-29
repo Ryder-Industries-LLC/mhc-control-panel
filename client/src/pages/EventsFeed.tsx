@@ -1,6 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { formatDate } from '../utils/formatting';
+import { Link } from 'react-router-dom';
+import { formatMilitaryTime } from '../utils/formatting';
+import Badge from '../components/Badge';
 // EventsFeed.css removed - fully migrated to Tailwind CSS
+
+interface EventMessage {
+  message?: string;
+  fromUser?: string;
+  toUser?: string;
+  isFollower?: boolean;
+  amount?: number;
+  tokens?: number;
+}
 
 interface EventLog {
   id: string;
@@ -8,13 +19,44 @@ interface EventLog {
   method: string;
   broadcaster: string;
   username: string;
-  rawEvent: Record<string, unknown>;
+  rawEvent: {
+    // Direct structure - no "object" wrapper
+    message?: EventMessage;
+    user?: {
+      isFollower?: boolean;
+      username?: string;
+    };
+    tip?: {
+      amount?: number;
+      tokens?: number;
+      message?: string;
+    };
+    broadcaster?: string;
+    [key: string]: unknown;
+  };
 }
+
+// Tab configuration for event filtering
+interface EventTab {
+  id: string;
+  label: string;
+  methods?: string[];
+}
+
+const EVENT_TABS: EventTab[] = [
+  { id: 'all', label: 'All Events' },
+  { id: 'chat', label: 'Chat', methods: ['chatmessage'] },
+  { id: 'private', label: 'Private Messages', methods: ['privatemessage'] },
+  { id: 'tips', label: 'Tips', methods: ['tip'] },
+  { id: 'presence', label: 'User Enter/Leave', methods: ['userenter', 'userleave'] },
+  { id: 'follows', label: 'Follows', methods: ['follow'] },
+  { id: 'broadcasts', label: 'Broadcasts', methods: ['broadcaststart', 'broadcaststop'] },
+];
 
 const EventsFeed: React.FC = () => {
   const [events, setEvents] = useState<EventLog[]>([]);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [filter, setFilter] = useState<string>('all');
+  const [activeTab, setActiveTab] = useState<string>('all');
 
   const fetchEvents = async () => {
     try {
@@ -40,11 +82,28 @@ const EventsFeed: React.FC = () => {
     return () => clearInterval(interval);
   }, [autoRefresh]);
 
-  const filteredEvents = filter === 'all'
-    ? events
-    : events.filter(e => e.method === filter);
+  // Filter events based on active tab
+  const filteredEvents = React.useMemo(() => {
+    if (activeTab === 'all') return events;
 
-  const eventTypes = Array.from(new Set(events.map(e => e.method)));
+    const tab = EVENT_TABS.find(t => t.id === activeTab);
+    if (!tab || !tab.methods) return events;
+
+    return events.filter(e => tab.methods!.includes(e.method.toLowerCase()));
+  }, [events, activeTab]);
+
+  // Get counts per tab for badges
+  const tabCounts = React.useMemo(() => {
+    const counts: Record<string, number> = { all: events.length };
+    EVENT_TABS.forEach(tab => {
+      if (tab.methods) {
+        counts[tab.id] = events.filter(e =>
+          tab.methods!.includes(e.method.toLowerCase())
+        ).length;
+      }
+    });
+    return counts;
+  }, [events]);
 
   // Get event-specific border and text colors
   const getEventStyles = (method: string) => {
@@ -73,21 +132,71 @@ const EventsFeed: React.FC = () => {
     }
   };
 
+  // Extract message content and metadata from event
+  const getEventContent = (event: EventLog) => {
+    const rawEvent = event.rawEvent;
+    if (!rawEvent) return null;
+
+    const method = event.method.toLowerCase();
+
+    // For chat and private messages
+    if (method === 'chatmessage' || method === 'privatemessage') {
+      const msg = rawEvent.message;
+      const user = rawEvent.user;
+      return {
+        message: msg?.message || null,
+        // For private messages: prefer message.fromUser, fallback to user.username, then event.username
+        fromUser: msg?.fromUser || user?.username || event.username,
+        // For private messages: prefer message.toUser, fallback to broadcaster for PM, 'Public' for chat
+        toUser: msg?.toUser || (method === 'chatmessage' ? 'Public' : event.broadcaster),
+        isFollower: user?.isFollower || msg?.isFollower || false,
+      };
+    }
+
+    // For tips
+    if (method === 'tip') {
+      const tip = rawEvent.tip;
+      return {
+        message: tip?.message || null,
+        amount: tip?.tokens || tip?.amount || 0,
+        fromUser: event.username,
+        toUser: event.broadcaster,
+        isFollower: rawEvent.user?.isFollower || false,
+      };
+    }
+
+    // For follows
+    if (method === 'follow') {
+      return {
+        fromUser: event.username,
+        toUser: event.broadcaster,
+        isFollower: true,
+      };
+    }
+
+    // For user enter/leave
+    if (method === 'userenter' || method === 'userleave') {
+      return {
+        fromUser: event.username,
+        isFollower: rawEvent.user?.isFollower || false,
+      };
+    }
+
+    return null;
+  };
+
+  // Format room display name
+  const formatRoomName = (broadcaster: string) => {
+    // Capitalize first letter of broadcaster name
+    const formatted = broadcaster.charAt(0).toUpperCase() + broadcaster.slice(1).replace(/_/g, ' ');
+    return `${formatted}'s Room`;
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-5">
       <div className="flex justify-between items-center mb-5 py-8 border-b-2 border-mhc-primary">
         <h1 className="text-mhc-primary text-4xl font-bold m-0">Events API Feed</h1>
         <div className="flex gap-4 items-center">
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="bg-mhc-surface-light text-mhc-text-muted border border-gray-600 px-4 py-2 rounded-md text-sm cursor-pointer hover:border-mhc-primary transition-colors"
-          >
-            <option value="all">All Events</option>
-            {eventTypes.map(type => (
-              <option key={type} value={type}>{type}</option>
-            ))}
-          </select>
           <label className="flex items-center text-mhc-text-muted cursor-pointer">
             <input
               type="checkbox"
@@ -106,34 +215,108 @@ const EventsFeed: React.FC = () => {
         </div>
       </div>
 
+      {/* Event Type Tabs */}
+      <div className="flex flex-wrap gap-2 mb-4 border-b border-gray-700 pb-4">
+        {EVENT_TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-2 rounded-t-lg text-sm font-medium transition-all ${
+              activeTab === tab.id
+                ? 'bg-mhc-primary text-white'
+                : 'bg-mhc-surface-light text-mhc-text-muted hover:bg-mhc-surface hover:text-white'
+            }`}
+          >
+            {tab.label}
+            <span className={`ml-2 px-1.5 py-0.5 rounded-full text-xs ${
+              activeTab === tab.id
+                ? 'bg-white/20'
+                : 'bg-gray-600'
+            }`}>
+              {tabCounts[tab.id] || 0}
+            </span>
+          </button>
+        ))}
+      </div>
+
       <div className="text-mhc-text-muted text-sm mb-4 p-3 bg-mhc-surface-light rounded-md">
         Showing {filteredEvents.length} of {events.length} events
       </div>
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-4">
         {filteredEvents.map((event) => {
           const styles = getEventStyles(event.method);
+          const content = getEventContent(event);
+          const method = event.method.toLowerCase();
+
           return (
             <div
               key={event.id}
               className={`bg-mhc-surface p-5 rounded-lg border-l-4 ${styles.border} ${styles.opacity || ''}`}
             >
-              <div className="flex justify-between items-center mb-4">
-                <span className={`text-lg font-bold uppercase tracking-wide ${styles.text}`}>
-                  {event.method}
+              {/* Header with event type, room, and timestamp */}
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <Badge type={event.method.toUpperCase()} variant="interaction" size="md" />
+                  <span className="text-mhc-text-muted text-sm">
+                    {formatRoomName(event.broadcaster)}
+                  </span>
+                  {content?.isFollower && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-500/20 text-orange-400">
+                      Follower
+                    </span>
+                  )}
+                </div>
+                <span className="text-mhc-text-dim text-sm whitespace-nowrap">
+                  {formatMilitaryTime(event.timestamp)}
                 </span>
-                <span className="text-mhc-text-dim text-sm">{formatDate(event.timestamp)}</span>
               </div>
+
+              {/* From/To display */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
                 <div className="flex gap-3 p-2.5 bg-mhc-surface-light rounded-md">
-                  <span className="text-mhc-text-dim font-semibold min-w-[100px]">Broadcaster:</span>
-                  <span className="text-mhc-text font-medium">{event.broadcaster}</span>
+                  <span className="text-mhc-text-dim font-semibold min-w-[60px]">From:</span>
+                  <Link
+                    to={`/?username=${content?.fromUser || event.username}`}
+                    className="text-mhc-primary font-medium hover:underline"
+                  >
+                    {content?.fromUser || event.username}
+                  </Link>
                 </div>
-                <div className="flex gap-3 p-2.5 bg-mhc-surface-light rounded-md">
-                  <span className="text-mhc-text-dim font-semibold min-w-[100px]">User:</span>
-                  <span className="text-mhc-text font-medium">{event.username}</span>
-                </div>
+                {(method === 'chatmessage' || method === 'privatemessage' || method === 'tip' || method === 'follow') && (
+                  <div className="flex gap-3 p-2.5 bg-mhc-surface-light rounded-md">
+                    <span className="text-mhc-text-dim font-semibold min-w-[60px]">To:</span>
+                    {content?.toUser === 'Public' ? (
+                      <span className="text-mhc-text font-medium">Public</span>
+                    ) : (
+                      <Link
+                        to={`/?username=${content?.toUser || event.broadcaster}`}
+                        className="text-mhc-primary font-medium hover:underline"
+                      >
+                        {content?.toUser || event.broadcaster}
+                      </Link>
+                    )}
+                  </div>
+                )}
               </div>
+
+              {/* Tip amount display */}
+              {method === 'tip' && content?.amount && (
+                <div className="mb-4 p-3 bg-yellow-500/10 rounded-md border border-yellow-500/20">
+                  <span className="text-yellow-400 font-bold text-lg">
+                    {content.amount} tokens
+                  </span>
+                </div>
+              )}
+
+              {/* Message content inline */}
+              {content?.message && (
+                <div className="mb-4 p-3 bg-mhc-surface-light rounded-md">
+                  <p className="text-white/80 leading-relaxed m-0">"{content.message}"</p>
+                </div>
+              )}
+
+              {/* Raw data toggle */}
               <details className="mt-3">
                 <summary className="text-mhc-text-muted cursor-pointer p-2 bg-mhc-surface-light rounded-md text-sm font-semibold select-none hover:bg-gray-600 transition-colors">
                   Raw Event Data

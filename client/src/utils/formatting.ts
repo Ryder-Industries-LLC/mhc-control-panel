@@ -272,3 +272,132 @@ export const truncate = (text: string, maxLength: number = 50): string => {
   }
   return text.substring(0, maxLength - 3) + '...';
 };
+
+/**
+ * Format a date as "Friday, December 26, 2025" (full day name, full month name)
+ * Uses the user's local timezone
+ * @param dateString ISO date string or Date object
+ * @returns Formatted full date string
+ */
+export const formatFullDate = (dateString: string | Date): string => {
+  const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+
+  if (isNaN(date.getTime())) {
+    return 'Invalid Date';
+  }
+
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+};
+
+/**
+ * Format a time as "14:30" (24-hour military time)
+ * Uses the user's local timezone
+ * @param dateString ISO date string or Date object
+ * @returns Formatted military time string (HH:MM)
+ */
+export const formatMilitaryTime = (dateString: string | Date): string => {
+  const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+
+  if (isNaN(date.getTime())) {
+    return '--:--';
+  }
+
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+
+  return `${hours}:${minutes}`;
+};
+
+/**
+ * Format a date and time as "Friday, December 26, 2025 at 14:30"
+ * Uses the user's local timezone
+ * @param dateString ISO date string or Date object
+ * @returns Formatted full date and time string
+ */
+export const formatFullDateTime = (dateString: string | Date): string => {
+  const fullDate = formatFullDate(dateString);
+  const time = formatMilitaryTime(dateString);
+
+  if (fullDate === 'Invalid Date') {
+    return 'Invalid Date';
+  }
+
+  return `${fullDate} at ${time}`;
+};
+
+/**
+ * Format event type with spaces for readability
+ * Converts "PRIVATEMESSAGE" to "PRIVATE MESSAGE", "USERENTER" to "USER ENTER", etc.
+ * @param eventType Raw event type string (e.g., "PRIVATEMESSAGE", "CHATMESSAGE")
+ * @returns Formatted event type with spaces
+ */
+export const formatEventType = (eventType: string): string => {
+  if (!eventType) {
+    return 'UNKNOWN';
+  }
+
+  // Map of known event types to their formatted versions
+  const eventTypeMap: Record<string, string> = {
+    'PRIVATEMESSAGE': 'PRIVATE MESSAGE',
+    'CHATMESSAGE': 'CHAT MESSAGE',
+    'USERENTER': 'USER ENTER',
+    'USERLEAVE': 'USER LEAVE',
+    'BROADCASTSTART': 'BROADCAST START',
+    'BROADCASTSTOP': 'BROADCAST STOP',
+    'MEDIAPURCHASE': 'MEDIA PURCHASE',
+    'FANCLUBJOINED': 'FAN CLUB JOINED',
+    'FOLLOW': 'FOLLOW',
+    'UNFOLLOW': 'UNFOLLOW',
+    'TIP': 'TIP',
+    // Handle underscore versions too
+    'PRIVATE_MESSAGE': 'PRIVATE MESSAGE',
+    'CHAT_MESSAGE': 'CHAT MESSAGE',
+    'USER_ENTER': 'USER ENTER',
+    'USER_LEAVE': 'USER LEAVE',
+    'BROADCAST_START': 'BROADCAST START',
+    'BROADCAST_STOP': 'BROADCAST STOP',
+    'MEDIA_PURCHASE': 'MEDIA PURCHASE',
+    'FAN_CLUB_JOINED': 'FAN CLUB JOINED',
+  };
+
+  const upperType = eventType.toUpperCase();
+
+  // Check if we have a direct mapping
+  if (eventTypeMap[upperType]) {
+    return eventTypeMap[upperType];
+  }
+
+  // For unknown types, try to add spaces before capital letters
+  // This handles cases like "SomeNewEventType" -> "SOME NEW EVENT TYPE"
+  return upperType
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/_/g, ' ')
+    .toUpperCase();
+};
+
+/**
+ * Format a broadcast time range as "14:30 - 18:45"
+ * Uses the user's local timezone
+ * @param startDate Start date/time
+ * @param endDate End date/time (optional)
+ * @returns Formatted time range string
+ */
+export const formatTimeRange = (
+  startDate: string | Date,
+  endDate?: string | Date | null
+): string => {
+  const startTime = formatMilitaryTime(startDate);
+
+  if (!endDate) {
+    return `${startTime} - Ongoing`;
+  }
+
+  const endTime = formatMilitaryTime(endDate);
+  return `${startTime} - ${endTime}`;
+};
