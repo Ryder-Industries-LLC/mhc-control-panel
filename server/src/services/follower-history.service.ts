@@ -267,8 +267,13 @@ export class FollowerHistoryService {
 
   /**
    * Get dashboard summary of follower changes
+   * @param days Number of days to look back (supports 7, 14, 30, 60, 180, 365)
+   * @param limit Number of results for top movers (default 10)
    */
-  static async getDashboardSummary(days: number = 7): Promise<{
+  static async getDashboardSummary(
+    days: number = 7,
+    limit: number = 10
+  ): Promise<{
     topGainers: Array<{ username: string; person_id: string; total_change: number; current_count: number }>;
     topLosers: Array<{ username: string; person_id: string; total_change: number; current_count: number }>;
     recentChanges: FollowerHistoryWithUsername[];
@@ -276,9 +281,9 @@ export class FollowerHistoryService {
     totalWithChanges: number;
   }> {
     const [topGainers, topLosers, recentChanges, statsResult] = await Promise.all([
-      this.getTopMovers(days, 5, 'gainers'),
-      this.getTopMovers(days, 5, 'losers'),
-      this.getRecentChanges(50, 10),
+      this.getTopMovers(days, limit, 'gainers'),
+      this.getTopMovers(days, limit, 'losers'),
+      this.getRecentChanges(50, 20),
       query(
         `SELECT
            COUNT(DISTINCT person_id) as total_tracked,
@@ -295,6 +300,48 @@ export class FollowerHistoryService {
       recentChanges,
       totalTracked: parseInt(statsResult.rows[0]?.total_tracked || '0'),
       totalWithChanges: parseInt(statsResult.rows[0]?.with_changes || '0'),
+    };
+  }
+
+  /**
+   * Get recent changes with pagination and sorting
+   * @param minDelta Minimum absolute delta to include
+   * @param limit Number of results per page
+   * @param offset Pagination offset
+   * @param sortBy Sort column: 'date' or 'change'
+   * @param sortOrder Sort direction: 'asc' or 'desc'
+   */
+  static async getRecentChangesPaginated(
+    minDelta: number = 100,
+    limit: number = 20,
+    offset: number = 0,
+    sortBy: 'date' | 'change' = 'date',
+    sortOrder: 'asc' | 'desc' = 'desc'
+  ): Promise<{ changes: FollowerHistoryWithUsername[]; total: number }> {
+    const orderColumn = sortBy === 'change' ? 'ABS(fh.delta)' : 'fh.recorded_at';
+    const order = sortOrder.toUpperCase();
+
+    const [changesResult, countResult] = await Promise.all([
+      query(
+        `SELECT fh.*, p.username
+         FROM follower_count_history fh
+         JOIN persons p ON p.id = fh.person_id
+         WHERE ABS(fh.delta) >= $1
+         ORDER BY ${orderColumn} ${order}
+         LIMIT $2 OFFSET $3`,
+        [minDelta, limit, offset]
+      ),
+      query(
+        `SELECT COUNT(*) as total
+         FROM follower_count_history fh
+         WHERE ABS(fh.delta) >= $1`,
+        [minDelta]
+      ),
+    ]);
+
+    return {
+      changes: changesResult.rows as FollowerHistoryWithUsername[],
+      total: parseInt(countResult.rows[0]?.total || '0'),
     };
   }
 }

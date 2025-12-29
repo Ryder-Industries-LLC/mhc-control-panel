@@ -5,6 +5,8 @@ import { ProfileService } from '../services/profile.service.js';
 import { PersonService } from '../services/person.service.js';
 import { ProfileEnrichmentService } from '../services/profile-enrichment.service.js';
 import { BroadcastSessionService } from '../services/broadcast-session.service.js';
+import { ServiceRelationshipService } from '../services/service-relationship.service.js';
+import { ProfileNotesService } from '../services/profile-notes.service.js';
 import { statbateClient } from '../api/statbate/client.js';
 import { logger } from '../config/logger.js';
 import { query } from '../db/client.js';
@@ -524,6 +526,273 @@ router.get('/:username/member-info', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error fetching member info from Statbate', { error, username: req.params.username });
     res.status(500).json({ error: 'Failed to fetch member info from Statbate' });
+  }
+});
+
+// ============================================================
+// NOTES ENDPOINTS
+// ============================================================
+
+/**
+ * GET /api/profile/:username/notes
+ * Get all notes for a profile (paginated)
+ */
+router.get('/:username/notes', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { limit = '20', offset = '0' } = req.query;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person and profile
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      return res.json({ notes: [], total: 0 });
+    }
+
+    const profileId = profileResult.rows[0].id;
+    const result = await ProfileNotesService.getNotes(
+      profileId,
+      parseInt(limit as string, 10),
+      parseInt(offset as string, 10)
+    );
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error getting profile notes', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/:username/notes
+ * Add a new note to a profile
+ */
+router.post('/:username/notes', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { content } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Note content is required' });
+    }
+
+    // Get or create person
+    const person = await PersonService.findOrCreate({ username, role: 'MODEL' });
+    if (!person) {
+      return res.status(500).json({ error: 'Failed to get person record' });
+    }
+
+    // Get or create profile
+    let profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      await query('INSERT INTO profiles (person_id) VALUES ($1)', [person.id]);
+      profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    }
+
+    const profileId = profileResult.rows[0].id;
+    const note = await ProfileNotesService.addNote(profileId, content.trim());
+
+    res.status(201).json(note);
+  } catch (error) {
+    logger.error('Error adding profile note', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PATCH /api/profile/:username/notes/:noteId
+ * Update an existing note
+ */
+router.patch('/:username/notes/:noteId', async (req: Request, res: Response) => {
+  try {
+    const { noteId } = req.params;
+    const { content } = req.body;
+
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Note content is required' });
+    }
+
+    const note = await ProfileNotesService.updateNote(noteId, content.trim());
+    if (!note) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+
+    res.json(note);
+  } catch (error) {
+    logger.error('Error updating profile note', { error, noteId: req.params.noteId });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/profile/:username/notes/:noteId
+ * Delete a note
+ */
+router.delete('/:username/notes/:noteId', async (req: Request, res: Response) => {
+  try {
+    const { noteId } = req.params;
+
+    const deleted = await ProfileNotesService.deleteNote(noteId);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error deleting profile note', { error, noteId: req.params.noteId });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// SERVICE RELATIONSHIPS ENDPOINTS
+// ============================================================
+
+/**
+ * GET /api/profile/:username/service-relationships
+ * Get all service relationships for a profile
+ */
+router.get('/:username/service-relationships', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person and profile
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      return res.json({ relationships: [] });
+    }
+
+    const profileId = profileResult.rows[0].id;
+    const relationships = await ServiceRelationshipService.getByProfileId(profileId);
+
+    res.json({ relationships });
+  } catch (error) {
+    logger.error('Error getting service relationships', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PUT /api/profile/:username/service-relationships
+ * Create or update a service relationship
+ */
+router.put('/:username/service-relationships', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { serviceRole, serviceLevel, serviceTypes, startedAt, endedAt, notes } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    if (!serviceRole || !['sub', 'dom'].includes(serviceRole)) {
+      return res.status(400).json({ error: 'Valid serviceRole (sub or dom) is required' });
+    }
+
+    if (!serviceLevel) {
+      return res.status(400).json({ error: 'serviceLevel is required' });
+    }
+
+    // Validate service level based on role
+    const subLevels = ['Current', 'Potential', 'Decommissioned', 'Banished', 'Paused'];
+    const domLevels = ['Potential', 'Actively Serving', 'Ended', 'Paused'];
+    const validLevels = serviceRole === 'sub' ? subLevels : domLevels;
+
+    if (!validLevels.includes(serviceLevel)) {
+      return res.status(400).json({
+        error: `Invalid serviceLevel for ${serviceRole}. Valid options: ${validLevels.join(', ')}`,
+      });
+    }
+
+    // Get or create person
+    const person = await PersonService.findOrCreate({ username, role: 'MODEL' });
+    if (!person) {
+      return res.status(500).json({ error: 'Failed to get person record' });
+    }
+
+    // Get or create profile
+    let profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      await query('INSERT INTO profiles (person_id) VALUES ($1)', [person.id]);
+      profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    }
+
+    const profileId = profileResult.rows[0].id;
+    const relationship = await ServiceRelationshipService.upsert(profileId, {
+      serviceRole,
+      serviceLevel,
+      serviceTypes: serviceTypes || [],
+      startedAt: startedAt || null,
+      endedAt: endedAt || null,
+      notes: notes || null,
+    });
+
+    res.json(relationship);
+  } catch (error) {
+    logger.error('Error upserting service relationship', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/profile/:username/service-relationships/:role
+ * Delete a service relationship
+ */
+router.delete('/:username/service-relationships/:role', async (req: Request, res: Response) => {
+  try {
+    const { username, role } = req.params;
+
+    if (!role || !['sub', 'dom'].includes(role)) {
+      return res.status(400).json({ error: 'Valid role (sub or dom) is required' });
+    }
+
+    // Get person and profile
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    const profileId = profileResult.rows[0].id;
+    const deleted = await ServiceRelationshipService.delete(profileId, role as 'sub' | 'dom');
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Relationship not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error deleting service relationship', {
+      error,
+      username: req.params.username,
+      role: req.params.role,
+    });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

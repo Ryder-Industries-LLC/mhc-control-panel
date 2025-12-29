@@ -423,4 +423,34 @@ export class FollowerScraperService {
     );
     return result.rows;
   }
+
+  /**
+   * Get all users on the watchlist
+   */
+  static async getWatchlist(): Promise<any[]> {
+    const result = await query(
+      `SELECT
+        p.*,
+        pr.watch_list,
+        pr.notes,
+        pr.friend_tier,
+        pr.active_sub,
+        pr.first_service_date,
+        pr.last_service_date,
+        pr.following,
+        pr.follower,
+        pr.banned_me,
+        (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
+        (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL) as image_count,
+        (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,
+        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+       FROM persons p
+       INNER JOIN profiles pr ON pr.person_id = p.id
+       WHERE pr.watch_list = TRUE
+       ORDER BY p.last_seen_at DESC`
+    );
+    return result.rows;
+  }
 }

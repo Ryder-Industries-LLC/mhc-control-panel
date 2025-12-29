@@ -1,5 +1,6 @@
 import { CBHoursStatsService } from '../services/cbhours-stats.service.js';
 import { FollowerScraperService } from '../services/follower-scraper.service.js';
+import { JobPersistenceService } from '../services/job-persistence.service.js';
 import { logger } from '../config/logger.js';
 import { query } from '../db/client.js';
 
@@ -9,6 +10,7 @@ import { query } from '../db/client.js';
  */
 
 const DELAY_BETWEEN_BATCHES = 2000; // 2 seconds between batches (respect rate limits)
+const JOB_NAME = 'cbhours-polling';
 
 export interface CBHoursPollingConfig {
   intervalMinutes: number;
@@ -46,6 +48,54 @@ export class CBHoursPollingJob {
   };
 
   /**
+   * Initialize job state in database (on first run)
+   */
+  async init() {
+    await JobPersistenceService.ensureJobState(JOB_NAME, this.config);
+  }
+
+  /**
+   * Restore job state from database (on container restart)
+   */
+  async restore(): Promise<boolean> {
+    const state = await JobPersistenceService.loadState(JOB_NAME);
+    if (!state) {
+      logger.info('No persisted state found for cbhours-polling job');
+      return false;
+    }
+
+    // Restore config
+    if (state.config) {
+      this.config = {
+        ...this.config,
+        ...state.config,
+      };
+    }
+
+    // Restore stats if available
+    if (state.stats) {
+      this.stats = {
+        ...this.stats,
+        ...state.stats,
+      };
+    }
+
+    // If job was running, restart it
+    if (state.is_running && !state.is_paused) {
+      logger.info('Restoring cbhours-polling job to running state');
+      await this.start();
+      return true;
+    } else if (state.is_running && state.is_paused) {
+      logger.info('Restoring cbhours-polling job to paused state');
+      this.isRunning = true;
+      this.isPaused = true;
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Get job status
    */
   getStatus() {
@@ -61,12 +111,12 @@ export class CBHoursPollingJob {
   /**
    * Update job configuration
    */
-  updateConfig(config: Partial<CBHoursPollingConfig>) {
+  async updateConfig(config: Partial<CBHoursPollingConfig>) {
     const wasRunning = this.isRunning && !this.isPaused;
 
     // Stop if running
     if (wasRunning) {
-      this.stop();
+      await this.stop();
     }
 
     // Update config
@@ -75,18 +125,21 @@ export class CBHoursPollingJob {
       ...config,
     };
 
+    // Persist config to database
+    await JobPersistenceService.saveConfig(JOB_NAME, this.config);
+
     logger.info('CBHours polling job config updated', { config: this.config });
 
     // Restart if it was running
     if (wasRunning && this.config.enabled) {
-      this.start();
+      await this.start();
     }
   }
 
   /**
    * Start the background polling job
    */
-  start() {
+  async start() {
     if (this.isRunning && !this.isPaused) {
       logger.warn('CBHours polling job is already running');
       return;
@@ -106,6 +159,9 @@ export class CBHoursPollingJob {
     this.isRunning = true;
     this.isPaused = false;
 
+    // Persist running state to database
+    await JobPersistenceService.saveRunningState(JOB_NAME, true, false);
+
     // Run immediately on start
     this.runPoll();
 
@@ -120,37 +176,40 @@ export class CBHoursPollingJob {
   /**
    * Pause the polling job
    */
-  pause() {
+  async pause() {
     if (!this.isRunning) {
       logger.warn('CBHours polling job is not running');
       return;
     }
     this.isPaused = true;
+    await JobPersistenceService.saveRunningState(JOB_NAME, true, true);
     logger.info('CBHours polling job paused');
   }
 
   /**
    * Resume the polling job
    */
-  resume() {
+  async resume() {
     if (!this.isRunning) {
       logger.warn('CBHours polling job is not running');
       return;
     }
     this.isPaused = false;
+    await JobPersistenceService.saveRunningState(JOB_NAME, true, false);
     logger.info('CBHours polling job resumed');
   }
 
   /**
    * Stop the polling job
    */
-  stop() {
+  async stop() {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
     this.isRunning = false;
     this.isPaused = false;
+    await JobPersistenceService.saveRunningState(JOB_NAME, false, false);
     logger.info('CBHours polling job stopped');
   }
 

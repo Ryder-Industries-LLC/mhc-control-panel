@@ -249,12 +249,16 @@ router.get('/follower-trends/top-movers', async (req: Request, res: Response) =>
 /**
  * GET /api/system/follower-trends/dashboard
  * Get follower trends dashboard summary
+ * Query params:
+ *   - days: Number of days to look back (7, 14, 30, 60, 180, 365)
+ *   - limit: Number of top movers to return (default 10)
  */
 router.get('/follower-trends/dashboard', async (req: Request, res: Response) => {
   try {
-    const { days = '7' } = req.query;
+    const { days = '7', limit = '10' } = req.query;
     const summary = await FollowerHistoryService.getDashboardSummary(
-      parseInt(days as string, 10)
+      parseInt(days as string, 10),
+      parseInt(limit as string, 10)
     );
     res.json(summary);
   } catch (error) {
@@ -311,18 +315,33 @@ router.get('/follower-trends/person/:personId/growth', async (req: Request, res:
 
 /**
  * GET /api/system/follower-trends/recent-changes
- * Get recent follower changes across all tracked models
+ * Get recent follower changes across all tracked models (paginated)
+ * Query params:
+ *   - minDelta: Minimum absolute delta to include (default 100)
+ *   - limit: Number of results per page (default 20)
+ *   - offset: Pagination offset (default 0)
+ *   - sortBy: Sort column - 'date' or 'change' (default 'date')
+ *   - sortOrder: Sort direction - 'asc' or 'desc' (default 'desc')
  */
 router.get('/follower-trends/recent-changes', async (req: Request, res: Response) => {
   try {
-    const { limit = '50' } = req.query;
-    const changes = await FollowerHistoryService.getRecentChanges(
-      parseInt(limit as string, 10)
+    const {
+      minDelta = '100',
+      limit = '20',
+      offset = '0',
+      sortBy = 'date',
+      sortOrder = 'desc',
+    } = req.query;
+
+    const result = await FollowerHistoryService.getRecentChangesPaginated(
+      parseInt(minDelta as string, 10),
+      parseInt(limit as string, 10),
+      parseInt(offset as string, 10),
+      sortBy as 'date' | 'change',
+      sortOrder as 'asc' | 'desc'
     );
-    res.json({
-      changes,
-      count: changes.length,
-    });
+
+    res.json(result);
   } catch (error) {
     logger.error('Error fetching recent changes', { error });
     res.status(500).json({ error: 'Failed to fetch recent changes' });

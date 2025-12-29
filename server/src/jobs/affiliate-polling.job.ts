@@ -2,6 +2,7 @@ import { ProfileEnrichmentService } from '../services/profile-enrichment.service
 import { chaturbateAffiliateClient } from '../api/chaturbate/affiliate-client.js';
 import { feedCacheService } from '../services/feed-cache.service.js';
 import { PriorityLookupService } from '../services/priority-lookup.service.js';
+import { JobPersistenceService } from '../services/job-persistence.service.js';
 import { logger } from '../config/logger.js';
 
 /**
@@ -10,6 +11,7 @@ import { logger } from '../config/logger.js';
  */
 
 const DELAY_BETWEEN_REQUESTS = 1000; // 1 second between API calls (respect rate limits)
+const JOB_NAME = 'affiliate-polling';
 
 export interface AffiliatePollingConfig {
   intervalMinutes: number;
@@ -44,6 +46,54 @@ export class AffiliatePollingJob {
   };
 
   /**
+   * Initialize job state in database (on first run)
+   */
+  async init() {
+    await JobPersistenceService.ensureJobState(JOB_NAME, this.config);
+  }
+
+  /**
+   * Restore job state from database (on container restart)
+   */
+  async restore(): Promise<boolean> {
+    const state = await JobPersistenceService.loadState(JOB_NAME);
+    if (!state) {
+      logger.info('No persisted state found for affiliate-polling job');
+      return false;
+    }
+
+    // Restore config
+    if (state.config) {
+      this.config = {
+        ...this.config,
+        ...state.config,
+      };
+    }
+
+    // Restore stats if available
+    if (state.stats) {
+      this.stats = {
+        ...this.stats,
+        ...state.stats,
+      };
+    }
+
+    // If job was running, restart it
+    if (state.is_running && !state.is_paused) {
+      logger.info('Restoring affiliate-polling job to running state');
+      await this.start();
+      return true;
+    } else if (state.is_running && state.is_paused) {
+      logger.info('Restoring affiliate-polling job to paused state');
+      this.isRunning = true;
+      this.isPaused = true;
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Get job status
    */
   getStatus() {
@@ -59,12 +109,12 @@ export class AffiliatePollingJob {
   /**
    * Update job configuration
    */
-  updateConfig(config: Partial<AffiliatePollingConfig>) {
+  async updateConfig(config: Partial<AffiliatePollingConfig>) {
     const wasRunning = this.isRunning && !this.isPaused;
 
     // Stop if running
     if (wasRunning) {
-      this.stop();
+      await this.stop();
     }
 
     // Update config
@@ -73,18 +123,21 @@ export class AffiliatePollingJob {
       ...config,
     };
 
+    // Persist config to database
+    await JobPersistenceService.saveConfig(JOB_NAME, this.config);
+
     logger.info('Affiliate polling job config updated', { config: this.config });
 
     // Restart if it was running
     if (wasRunning && this.config.enabled) {
-      this.start();
+      await this.start();
     }
   }
 
   /**
    * Start the background polling job
    */
-  start() {
+  async start() {
     if (this.isRunning && !this.isPaused) {
       logger.warn('Affiliate polling job is already running');
       return;
@@ -104,6 +157,9 @@ export class AffiliatePollingJob {
     this.isRunning = true;
     this.isPaused = false;
 
+    // Persist running state to database
+    await JobPersistenceService.saveRunningState(JOB_NAME, true, false);
+
     // Run immediately on start
     this.runPoll();
 
@@ -118,37 +174,40 @@ export class AffiliatePollingJob {
   /**
    * Pause the polling job
    */
-  pause() {
+  async pause() {
     if (!this.isRunning) {
       logger.warn('Affiliate polling job is not running');
       return;
     }
     this.isPaused = true;
+    await JobPersistenceService.saveRunningState(JOB_NAME, true, true);
     logger.info('Affiliate polling job paused');
   }
 
   /**
    * Resume the polling job
    */
-  resume() {
+  async resume() {
     if (!this.isRunning) {
       logger.warn('Affiliate polling job is not running');
       return;
     }
     this.isPaused = false;
+    await JobPersistenceService.saveRunningState(JOB_NAME, true, false);
     logger.info('Affiliate polling job resumed');
   }
 
   /**
    * Stop the polling job
    */
-  stop() {
+  async stop() {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
     this.isRunning = false;
     this.isPaused = false;
+    await JobPersistenceService.saveRunningState(JOB_NAME, false, false);
     logger.info('Affiliate polling job stopped');
   }
 

@@ -1,6 +1,7 @@
 import { ChaturbateScraperService } from '../services/chaturbate-scraper.service.js';
 import { ProfileService } from '../services/profile.service.js';
 import { PersonService } from '../services/person.service.js';
+import { JobPersistenceService } from '../services/job-persistence.service.js';
 import { logger } from '../config/logger.js';
 
 /**
@@ -17,6 +18,7 @@ import { logger } from '../config/logger.js';
 const DELAY_BETWEEN_PROFILES = 5000; // 5 seconds between profiles (conservative)
 const MAX_PROFILES_PER_RUN = 50; // Limit per run to avoid long-running jobs
 const PROFILE_REFRESH_DAYS = 7; // Re-scrape profiles older than this
+const JOB_NAME = 'profile-scrape';
 
 export interface ProfileScrapeConfig {
   intervalMinutes: number;
@@ -57,6 +59,54 @@ export class ProfileScrapeJob {
   };
 
   /**
+   * Initialize job state in database (on first run)
+   */
+  async init() {
+    await JobPersistenceService.ensureJobState(JOB_NAME, this.config);
+  }
+
+  /**
+   * Restore job state from database (on container restart)
+   */
+  async restore(): Promise<boolean> {
+    const state = await JobPersistenceService.loadState(JOB_NAME);
+    if (!state) {
+      logger.info('No persisted state found for profile-scrape job');
+      return false;
+    }
+
+    // Restore config
+    if (state.config) {
+      this.config = {
+        ...this.config,
+        ...state.config,
+      };
+    }
+
+    // Restore stats if available
+    if (state.stats) {
+      this.stats = {
+        ...this.stats,
+        ...state.stats,
+      };
+    }
+
+    // If job was running, restart it
+    if (state.is_running && !state.is_paused) {
+      logger.info('Restoring profile-scrape job to running state');
+      await this.start();
+      return true;
+    } else if (state.is_running && state.is_paused) {
+      logger.info('Restoring profile-scrape job to paused state');
+      this.isRunning = true;
+      this.isPaused = true;
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Get job status
    */
   getStatus() {
@@ -72,12 +122,12 @@ export class ProfileScrapeJob {
   /**
    * Update job configuration
    */
-  updateConfig(config: Partial<ProfileScrapeConfig>) {
+  async updateConfig(config: Partial<ProfileScrapeConfig>) {
     const wasRunning = this.isRunning && !this.isPaused;
 
     // Stop if running
     if (wasRunning) {
-      this.stop();
+      await this.stop();
     }
 
     // Update config
@@ -86,11 +136,14 @@ export class ProfileScrapeJob {
       ...config,
     };
 
+    // Persist config to database
+    await JobPersistenceService.saveConfig(JOB_NAME, this.config);
+
     logger.info('Profile scrape job config updated', { config: this.config });
 
     // Restart if it was running
     if (wasRunning && this.config.enabled) {
-      this.start();
+      await this.start();
     }
   }
 
@@ -124,6 +177,9 @@ export class ProfileScrapeJob {
     this.isRunning = true;
     this.isPaused = false;
 
+    // Persist running state to database
+    await JobPersistenceService.saveRunningState(JOB_NAME, true, false);
+
     // Run immediately on start
     this.runScrape();
 
@@ -138,37 +194,40 @@ export class ProfileScrapeJob {
   /**
    * Pause the scrape job
    */
-  pause() {
+  async pause() {
     if (!this.isRunning) {
       logger.warn('Profile scrape job is not running');
       return;
     }
     this.isPaused = true;
+    await JobPersistenceService.saveRunningState(JOB_NAME, true, true);
     logger.info('Profile scrape job paused');
   }
 
   /**
    * Resume the scrape job
    */
-  resume() {
+  async resume() {
     if (!this.isRunning) {
       logger.warn('Profile scrape job is not running');
       return;
     }
     this.isPaused = false;
+    await JobPersistenceService.saveRunningState(JOB_NAME, true, false);
     logger.info('Profile scrape job resumed');
   }
 
   /**
    * Stop the scrape job
    */
-  stop() {
+  async stop() {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
     this.isRunning = false;
     this.isPaused = false;
+    await JobPersistenceService.saveRunningState(JOB_NAME, false, false);
     logger.info('Profile scrape job stopped');
   }
 

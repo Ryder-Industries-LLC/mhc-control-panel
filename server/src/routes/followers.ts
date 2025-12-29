@@ -166,6 +166,20 @@ router.get('/bans', async (_req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/followers/watchlist
+ * Get list of users on the watchlist
+ */
+router.get('/watchlist', async (_req: Request, res: Response) => {
+  try {
+    const watchlist = await FollowerScraperService.getWatchlist();
+    res.json({ watchlist, total: watchlist.length });
+  } catch (error) {
+    logger.error('Error getting watchlist', { error });
+    res.status(500).json({ error: 'Failed to get watchlist' });
+  }
+});
+
+/**
  * DELETE /api/followers/clear-following
  * Clear all following records (for debugging/reset)
  */

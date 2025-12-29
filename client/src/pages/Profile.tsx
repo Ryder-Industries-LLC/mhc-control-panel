@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import { formatDuration, formatGender } from '../utils/formatting';
+import { CollapsibleSection } from '../components/CollapsibleSection';
 // Profile.css removed - fully migrated to Tailwind CSS
 
 interface ProfilePageProps {}
@@ -89,17 +90,21 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [memberInfo, setMemberInfo] = useState<MemberInfo | null>(null);
   const [memberInfoLoading, setMemberInfoLoading] = useState(false);
   const [memberInfoError, setMemberInfoError] = useState<string | null>(null);
-  const [historySubTab, setHistorySubTab] = useState<HistorySubTab>('messaged');
+  const [historySubTab, setHistorySubTab] = useState<HistorySubTab>('tipped');
 
   // Notes and status state
   const [notes, setNotes] = useState('');
   const [bannedMe, setBannedMe] = useState(false);
+  const [watchList, setWatchList] = useState(false);
   const [activeSub, setActiveSub] = useState(false);
   const [firstServiceDate, setFirstServiceDate] = useState('');
   const [lastServiceDate, setLastServiceDate] = useState('');
   const [friendTier, setFriendTier] = useState<number | null>(null);
   const [notesSaving, setNotesSaving] = useState(false);
   const [notesMessage, setNotesMessage] = useState<string | null>(null);
+
+  // Top mover badge state
+  const [topMoverStatus, setTopMoverStatus] = useState<'gainer' | 'loser' | null>(null);
 
   // Auto-load profile if username in URL
   useEffect(() => {
@@ -153,12 +158,40 @@ const Profile: React.FC<ProfilePageProps> = () => {
     if (profileData?.profile) {
       setNotes(profileData.profile.notes || '');
       setBannedMe(profileData.profile.banned_me || false);
+      setWatchList(profileData.profile.watch_list || false);
       setActiveSub(profileData.profile.active_sub || false);
       setFirstServiceDate(profileData.profile.first_service_date ? profileData.profile.first_service_date.split('T')[0] : '');
       setLastServiceDate(profileData.profile.last_service_date ? profileData.profile.last_service_date.split('T')[0] : '');
       setFriendTier(profileData.profile.friend_tier || null);
     }
   }, [profileData?.profile]);
+
+  // Check if current profile is a top mover (7 day)
+  useEffect(() => {
+    if (profileData?.person?.username) {
+      fetch('/api/system/follower-trends/dashboard?days=7&limit=10')
+        .then(response => response.json())
+        .then(data => {
+          const currentUsername = profileData.person.username.toLowerCase();
+          const isTopGainer = data.topGainers?.some(
+            (m: { username: string }) => m.username.toLowerCase() === currentUsername
+          );
+          const isTopLoser = data.topLosers?.some(
+            (m: { username: string }) => m.username.toLowerCase() === currentUsername
+          );
+          if (isTopGainer) {
+            setTopMoverStatus('gainer');
+          } else if (isTopLoser) {
+            setTopMoverStatus('loser');
+          } else {
+            setTopMoverStatus(null);
+          }
+        })
+        .catch(() => {
+          setTopMoverStatus(null);
+        });
+    }
+  }, [profileData?.person?.username]);
 
   // Fetch image history when profile loads
   useEffect(() => {
@@ -263,6 +296,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
         body: JSON.stringify({
           notes,
           banned_me: bannedMe,
+          watch_list: watchList,
           active_sub: activeSub,
           first_service_date: firstServiceDate || null,
           last_service_date: lastServiceDate || null,
@@ -299,6 +333,24 @@ const Profile: React.FC<ProfilePageProps> = () => {
     } catch (err) {
       // Revert on error
       setBannedMe(!newValue);
+    }
+  };
+
+  const handleWatchListToggle = async () => {
+    if (!profileData?.person?.username) return;
+
+    const newValue = !watchList;
+    setWatchList(newValue);
+
+    try {
+      await fetch(`/api/profile/${profileData.person.username}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ watch_list: newValue }),
+      });
+    } catch (err) {
+      // Revert on error
+      setWatchList(!newValue);
     }
   };
 
@@ -462,7 +514,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   </div>
                   {/* Image timestamp */}
                   {imageHistory.length > 0 && imageHistory[currentImageIndex] && (
-                    <div className="text-xs text-white/70 text-center">
+                    <div className="text-xs text-white/90 text-center">
                       {new Date(imageHistory[currentImageIndex].observed_at).toLocaleString('en-US', {
                         dateStyle: 'short',
                         timeStyle: 'short'
@@ -473,8 +525,38 @@ const Profile: React.FC<ProfilePageProps> = () => {
               )}
 
               <div className="flex-1">
-                <div className="mb-2 flex items-center gap-2 flex-wrap">
-                  <span className="inline-block px-3 py-1 rounded-full text-sm font-semibold bg-white/20">{profileData.person.role}</span>
+                {/* Username row with role indicator, followers, and viewers */}
+                <div className="flex items-center gap-3 mb-3 flex-wrap">
+                  <h2 className="m-0 text-3xl font-bold">
+                    <a
+                      href={`https://chaturbate.com/${profileData.person.username}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-white no-underline hover:underline"
+                    >
+                      {profileData.person.username}
+                    </a>
+                  </h2>
+                  {/* Small role indicator */}
+                  <span className="text-xs px-2 py-0.5 rounded bg-white/20 text-white/80 uppercase tracking-wider">
+                    {profileData.person.role}
+                  </span>
+                  {/* Followers */}
+                  {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers) && (
+                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
+                      ❤️ {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers || 0).toLocaleString()} followers
+                    </span>
+                  )}
+                  {/* Viewers (if live) */}
+                  {isSessionLive(profileData.latestSession) && profileData.latestSession?.num_users !== undefined && (
+                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50">
+                      👁 {profileData.latestSession.num_users.toLocaleString()} viewers
+                    </span>
+                  )}
+                </div>
+
+                {/* Badges row */}
+                <div className="mb-3 flex items-center gap-2 flex-wrap">
                   {profileData.profile?.following && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50" title="You follow this user">
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -492,9 +574,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       Follows You
                     </span>
                   )}
-                  {profileData.latestSession?.is_hd && (
-                    <span className="text-xl ml-2 inline-block align-middle" title="HD Stream">🎥</span>
-                  )}
                   {activeSub && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50" title="Active Subscriber">
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -511,30 +590,34 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       Banned Me
                     </span>
                   )}
+                  {watchList && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-yellow-500/30 border border-yellow-500/50" title="On your watchlist">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                      </svg>
+                      Watchlist
+                    </span>
+                  )}
+                  {topMoverStatus === 'gainer' && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50 animate-pulse" title="Top Gainer (7 day)">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clipRule="evenodd"/>
+                      </svg>
+                      Top Gainer
+                    </span>
+                  )}
+                  {topMoverStatus === 'loser' && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-red-500/30 border border-red-500/50 animate-pulse" title="Top Loser (7 day)">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M12 13a1 1 0 100 2h5a1 1 0 001-1V9a1 1 0 10-2 0v2.586l-4.293-4.293a1 1 0 00-1.414 0L8 9.586 3.707 5.293a1 1 0 00-1.414 1.414l5 5a1 1 0 001.414 0L11 9.414 14.586 13H12z" clipRule="evenodd"/>
+                      </svg>
+                      Top Loser
+                    </span>
+                  )}
                 </div>
-                <h2 className="m-0 mb-4 text-3xl font-bold">
-                  <a
-                    href={`https://chaturbate.com/${profileData.person.username}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-white no-underline hover:underline"
-                  >
-                    {profileData.person.username}
-                  </a>
-                </h2>
-                <div className="flex gap-2.5 flex-wrap">
-                  {/* Broadcasting Status */}
-                  {isSessionLive(profileData.latestSession) && (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50 animate-pulse">
-                      ● LIVE
-                    </span>
-                  )}
-                  {!isSessionLive(profileData.latestSession) && (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-gray-500/30 border border-gray-500/50 text-white/80">
-                      ○ OFFLINE
-                    </span>
-                  )}
 
+                {/* Info row */}
+                <div className="flex gap-2.5 flex-wrap">
                   {/* Gender */}
                   {(profileData.profile?.gender || profileData.latestSession?.gender || profileData.latestSnapshot?.normalized_metrics?.gender) && (
                     <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
@@ -556,20 +639,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     </span>
                   )}
 
-                  {/* Viewers (if live or recent) */}
-                  {profileData.latestSession?.num_users !== undefined && profileData.latestSession?.num_users !== null && (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
-                      👁 {profileData.latestSession.num_users.toLocaleString()} viewers
-                    </span>
-                  )}
-
-                  {/* Followers */}
-                  {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers) && (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
-                      ❤️ {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers || 0).toLocaleString()} followers
-                    </span>
-                  )}
-
                   {/* Rank */}
                   {profileData.latestSnapshot?.normalized_metrics?.rank && (
                     <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
@@ -577,127 +646,172 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     </span>
                   )}
 
-                  {/* Show Start Time (if live) or Last Seen (if offline) */}
-                  {isSessionLive(profileData.latestSession) ? (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
-                      Live since: {new Date(profileData.latestSession.session_start).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'short', timeStyle: 'short' })} ET
+                  {/* Offline status */}
+                  {!isSessionLive(profileData.latestSession) && (
+                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-gray-500/30 border border-gray-500/50 text-white/80">
+                      Offline
                     </span>
-                  ) : (
-                    (profileData.latestSession?.observed_at || profileData.profile?.last_seen_online) && (
-                      <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
-                        Last Seen: {new Date(
-                          profileData.latestSession?.observed_at || profileData.profile.last_seen_online
-                        ).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'short', timeStyle: 'short' })} ET
-                      </span>
-                    )
+                  )}
+
+                  {/* Last Seen (if offline) */}
+                  {!isSessionLive(profileData.latestSession) && (profileData.latestSession?.observed_at || profileData.profile?.last_seen_online) && (
+                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
+                      Last Seen: {new Date(
+                        profileData.latestSession?.observed_at || profileData.profile.last_seen_online
+                      ).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'short', timeStyle: 'short' })} ET
+                    </span>
                   )}
                 </div>
 
-                {/* Room Subject */}
+                {/* Room Subject with extracted tags (when live) */}
                 {profileData.latestSession?.room_subject && (
-                  <div className="mt-4 px-4 py-3 bg-white/15 rounded-lg italic text-base leading-relaxed border-l-4 border-white/40">
-                    {profileData.latestSession.room_subject}
+                  <div className="mt-4">
+                    <div className="px-4 py-3 bg-white/15 rounded-lg text-base leading-relaxed border-l-4 border-white/40">
+                      {profileData.latestSession.room_subject}
+                    </div>
+                    {/* Extract hashtags from room subject */}
+                    {isSessionLive(profileData.latestSession) && (() => {
+                      const hashtags = profileData.latestSession.room_subject.match(/#\w+/g);
+                      if (hashtags && hashtags.length > 0) {
+                        return (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {hashtags.map((tag: string, idx: number) => (
+                              <span key={idx} className="px-2.5 py-1 bg-mhc-primary/80 text-white rounded-full text-xs font-medium">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
+                )}
+
+                {/* Session Started (when live) - bottom right aligned text */}
+                {isSessionLive(profileData.latestSession) && (
+                  <div className="mt-3 text-right text-white/80 text-sm">
+                    Session Started: {new Date(profileData.latestSession.session_start).toLocaleString('en-US', {
+                      timeZone: 'America/New_York',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: false
+                    })} ET
                   </div>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Notes & Status Section */}
-          <div className="bg-mhc-surface rounded-lg shadow-lg mb-5 p-5">
-            <div className="flex flex-col gap-4">
-              {/* Row 1: Active Sub and Service Dates */}
-              <div className="flex flex-wrap items-center gap-6">
-                {/* Active Sub Toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={activeSub}
-                    onChange={handleActiveSubToggle}
-                    className="w-5 h-5 rounded border-2 border-emerald-500/50 bg-mhc-surface-light text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-                  />
-                  <span className="text-mhc-text font-medium">Active Sub</span>
-                </label>
+          {/* Attributes Section (Collapsible) */}
+          <div className="mb-5">
+            <CollapsibleSection title="Attributes" defaultCollapsed={false} className="bg-mhc-surface">
+              <div className="flex flex-col gap-4">
+                {/* Row 1: Active Sub and Service Dates */}
+                <div className="flex flex-wrap items-center gap-6">
+                  {/* Active Sub Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={activeSub}
+                      onChange={handleActiveSubToggle}
+                      className="w-5 h-5 rounded border-2 border-emerald-500/50 bg-mhc-surface-light text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <span className="text-mhc-text font-medium">Active Sub</span>
+                  </label>
 
-                {/* First Service Date */}
-                <div className="flex items-center gap-2">
-                  <label className="text-mhc-text font-medium whitespace-nowrap">First Service:</label>
-                  <input
-                    type="date"
-                    value={firstServiceDate}
-                    onChange={(e) => setFirstServiceDate(e.target.value)}
-                    className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                  />
+                  {/* First Service Date */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-mhc-text font-medium whitespace-nowrap">First Service:</label>
+                    <input
+                      type="date"
+                      value={firstServiceDate}
+                      onChange={(e) => setFirstServiceDate(e.target.value)}
+                      className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                    />
+                  </div>
+
+                  {/* Last Service Date */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-mhc-text font-medium whitespace-nowrap">Last Service:</label>
+                    <input
+                      type="date"
+                      value={lastServiceDate}
+                      onChange={(e) => setLastServiceDate(e.target.value)}
+                      className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                    />
+                  </div>
                 </div>
 
-                {/* Last Service Date */}
-                <div className="flex items-center gap-2">
-                  <label className="text-mhc-text font-medium whitespace-nowrap">Last Service:</label>
-                  <input
-                    type="date"
-                    value={lastServiceDate}
-                    onChange={(e) => setLastServiceDate(e.target.value)}
-                    className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                  />
+                {/* Row 2: Friend Tier and Banned Me */}
+                <div className="flex flex-wrap items-center gap-6">
+                  {/* Friend Tier Dropdown */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-mhc-text font-medium whitespace-nowrap">Friend Tier:</label>
+                    <select
+                      value={friendTier || ''}
+                      onChange={(e) => handleFriendTierChange(e.target.value ? parseInt(e.target.value, 10) : null)}
+                      className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20 min-w-[150px]"
+                    >
+                      <option value="">None</option>
+                      <option value="1">Tier 1 - Special</option>
+                      <option value="2">Tier 2 - Tipper</option>
+                      <option value="3">Tier 3 - Regular</option>
+                      <option value="4">Tier 4 - Drive-by</option>
+                    </select>
+                  </div>
+
+                  {/* Banned Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={bannedMe}
+                      onChange={handleBannedToggle}
+                      className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
+                    />
+                    <span className="text-mhc-text font-medium">Banned Me</span>
+                  </label>
+
+                  {/* Watchlist Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={watchList}
+                      onChange={handleWatchListToggle}
+                      className="w-5 h-5 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
+                    />
+                    <span className="text-mhc-text font-medium">Watchlist</span>
+                  </label>
                 </div>
               </div>
+            </CollapsibleSection>
+          </div>
 
-              {/* Row 2: Friend Tier and Banned Me */}
-              <div className="flex flex-wrap items-center gap-6">
-                {/* Friend Tier Dropdown */}
-                <div className="flex items-center gap-2">
-                  <label className="text-mhc-text font-medium whitespace-nowrap">Friend Tier:</label>
-                  <select
-                    value={friendTier || ''}
-                    onChange={(e) => handleFriendTierChange(e.target.value ? parseInt(e.target.value, 10) : null)}
-                    className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20 min-w-[150px]"
-                  >
-                    <option value="">None</option>
-                    <option value="1">Tier 1 - Special</option>
-                    <option value="2">Tier 2 - Tipper</option>
-                    <option value="3">Tier 3 - Regular</option>
-                    <option value="4">Tier 4 - Drive-by</option>
-                  </select>
-                </div>
-
-                {/* Banned Toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={bannedMe}
-                    onChange={handleBannedToggle}
-                    className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
-                  />
-                  <span className="text-mhc-text font-medium">Banned Me</span>
-                </label>
+          {/* Notes Section (Collapsible) */}
+          <div className="mb-5">
+            <CollapsibleSection title="Notes" defaultCollapsed={false} className="bg-mhc-surface">
+              <div className="flex gap-3">
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add personal notes about this user..."
+                  rows={3}
+                  className="flex-1 px-4 py-2.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                />
+                <button
+                  onClick={handleSaveNotes}
+                  disabled={notesSaving}
+                  className="px-5 py-2 bg-mhc-primary text-white border-none rounded-md text-sm font-semibold cursor-pointer transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed self-start"
+                >
+                  {notesSaving ? 'Saving...' : 'Save'}
+                </button>
               </div>
-
-              {/* Row 3: Notes and Save Button */}
-              <div className="flex-1">
-                <label className="block text-mhc-text-muted text-sm font-semibold mb-2">Notes</label>
-                <div className="flex gap-3">
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Add personal notes about this user..."
-                    rows={2}
-                    className="flex-1 px-4 py-2.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                  />
-                  <button
-                    onClick={handleSaveNotes}
-                    disabled={notesSaving}
-                    className="px-5 py-2 bg-mhc-primary text-white border-none rounded-md text-sm font-semibold cursor-pointer transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed self-start"
-                  >
-                    {notesSaving ? 'Saving...' : 'Save'}
-                  </button>
-                </div>
-                {notesMessage && (
-                  <span className={`text-sm mt-1 block ${notesMessage === 'Saved!' ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {notesMessage}
-                  </span>
-                )}
-              </div>
-            </div>
+              {notesMessage && (
+                <span className={`text-sm mt-2 block ${notesMessage === 'Saved!' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {notesMessage}
+                </span>
+              )}
+            </CollapsibleSection>
           </div>
 
           {/* Tabs */}
@@ -740,7 +854,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
               }`}
               onClick={() => setActiveTab('interactions')}
             >
-              Recent Interactions
+              Interactions
             </button>
             <button
               className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
@@ -1044,13 +1158,13 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
             {activeTab === 'interactions' && (
               <div>
-                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Recent Interactions</h3>
+                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Interactions</h3>
                 {profileData.interactions && profileData.interactions.length > 0 ? (
                   <div className="flex flex-col gap-4">
                     {profileData.interactions.map((interaction: any) => (
                       <div key={interaction.id} className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
                         <div className="flex justify-between items-center mb-3">
-                          <span className="font-semibold text-mhc-primary text-sm uppercase">{interaction.type}</span>
+                          <span className="font-semibold text-mhc-primary text-sm uppercase">{interaction.type.replace(/_/g, ' ')}</span>
                           <span className="text-mhc-text-muted text-sm">{new Date(interaction.timestamp).toLocaleString()}</span>
                         </div>
                         {interaction.content && (
@@ -1060,7 +1174,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-mhc-text-muted">No recent interactions found.</p>
+                  <p className="text-mhc-text-muted">No interactions found.</p>
                 )}
               </div>
             )}
@@ -1142,14 +1256,41 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
                 {memberInfo && (
                   <div className="space-y-6">
-                    {/* Overview Stats */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">First Message</span>
-                        <span className="block text-mhc-text text-base">
-                          {memberInfo.first_message_date
-                            ? new Date(memberInfo.first_message_date).toLocaleDateString('en-US', { dateStyle: 'medium' })
-                            : 'Never'}
+                    {/* Overview Stats - Reordered: All-Time | Models Tipped | Last Tip | First Tip | First Message */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-emerald-500">
+                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">All-Time Tokens</span>
+                        <span className="block text-emerald-400 text-base font-semibold">
+                          {memberInfo.all_time_tokens.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-blue-500">
+                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Models Tipped</span>
+                        <span className="block text-blue-400 text-base font-semibold">
+                          {memberInfo.models_tipped_2weeks}
+                        </span>
+                      </div>
+                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-yellow-500">
+                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Tip</span>
+                        <span className="block text-yellow-400 text-base font-semibold">
+                          {memberInfo.last_tip_amount > 0 ? (
+                            <>
+                              {memberInfo.last_tip_amount.toLocaleString()} tokens
+                              {memberInfo.last_tip_to && (
+                                <a
+                                  href={`/profile/${memberInfo.last_tip_to}`}
+                                  className="block text-mhc-primary text-sm mt-1 hover:underline"
+                                >
+                                  to {memberInfo.last_tip_to}
+                                </a>
+                              )}
+                              {memberInfo.last_tip_date && (
+                                <span className="block text-mhc-text-muted text-xs mt-0.5">
+                                  {Math.floor((Date.now() - new Date(memberInfo.last_tip_date).getTime()) / (1000 * 60 * 60 * 24))} days ago
+                                </span>
+                              )}
+                            </>
+                          ) : 'Never'}
                         </span>
                       </div>
                       <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
@@ -1161,53 +1302,17 @@ const Profile: React.FC<ProfilePageProps> = () => {
                         </span>
                       </div>
                       <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Tip</span>
+                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">First Message</span>
                         <span className="block text-mhc-text text-base">
-                          {memberInfo.last_tip_date
-                            ? new Date(memberInfo.last_tip_date).toLocaleDateString('en-US', { dateStyle: 'medium' })
+                          {memberInfo.first_message_date
+                            ? new Date(memberInfo.first_message_date).toLocaleDateString('en-US', { dateStyle: 'medium' })
                             : 'Never'}
-                        </span>
-                      </div>
-                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-yellow-500">
-                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Tip Amount</span>
-                        <span className="block text-yellow-400 text-base font-semibold">
-                          {memberInfo.last_tip_amount > 0 ? `${memberInfo.last_tip_amount.toLocaleString()} tokens` : 'N/A'}
-                        </span>
-                        {memberInfo.last_tip_to && (
-                          <a
-                            href={`/profile/${memberInfo.last_tip_to}`}
-                            className="block text-mhc-primary text-sm mt-1 hover:underline"
-                          >
-                            to {memberInfo.last_tip_to}
-                          </a>
-                        )}
-                      </div>
-                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-emerald-500">
-                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">All-Time Tokens</span>
-                        <span className="block text-emerald-400 text-base font-semibold">
-                          {memberInfo.all_time_tokens.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-blue-500">
-                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Models Messaged (2wk)</span>
-                        <span className="block text-blue-400 text-base font-semibold">
-                          {memberInfo.models_messaged_2weeks}
                         </span>
                       </div>
                     </div>
 
-                    {/* Sub-tab navigation */}
+                    {/* Sub-tab navigation - default to tipped */}
                     <div className="flex gap-2 border-b border-gray-700 pb-2">
-                      <button
-                        onClick={() => setHistorySubTab('messaged')}
-                        className={`px-4 py-2 rounded-t-md font-medium transition-all ${
-                          historySubTab === 'messaged'
-                            ? 'bg-mhc-primary text-white'
-                            : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
-                        }`}
-                      >
-                        Models Messaged - 2 Weeks ({memberInfo.models_messaged_2weeks})
-                      </button>
                       <button
                         onClick={() => setHistorySubTab('tipped')}
                         className={`px-4 py-2 rounded-t-md font-medium transition-all ${
@@ -1216,7 +1321,17 @@ const Profile: React.FC<ProfilePageProps> = () => {
                             : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
                         }`}
                       >
-                        Models Tipped - 2 Weeks ({memberInfo.models_tipped_2weeks})
+                        Models Tipped ({memberInfo.models_tipped_2weeks})
+                      </button>
+                      <button
+                        onClick={() => setHistorySubTab('messaged')}
+                        className={`px-4 py-2 rounded-t-md font-medium transition-all ${
+                          historySubTab === 'messaged'
+                            ? 'bg-mhc-primary text-white'
+                            : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
+                        }`}
+                      >
+                        Models Messaged ({memberInfo.models_messaged_2weeks})
                       </button>
                     </div>
 
@@ -1265,12 +1380,12 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       )}
                     </div>
 
-                    {/* Recent Tokens Per Day */}
+                    {/* Token Activity */}
                     {memberInfo.per_day_tokens && memberInfo.per_day_tokens.length > 0 && (
                       <div className="mt-6">
-                        <h4 className="text-mhc-text text-lg font-semibold mb-3">Recent Token Activity</h4>
+                        <h4 className="text-mhc-text text-lg font-semibold mb-3">Token Activity</h4>
                         <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-2">
-                          {memberInfo.per_day_tokens.slice(0, 14).map((day) => (
+                          {memberInfo.per_day_tokens.slice(0, 31).map((day) => (
                             <div key={day.date} className="p-2 bg-mhc-surface-light rounded-md text-center">
                               <div className="text-xs text-mhc-text-muted">
                                 {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}

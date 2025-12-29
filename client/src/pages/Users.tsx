@@ -90,7 +90,7 @@ interface FeedCacheStatus {
   totalCount: number;
 }
 
-type TabType = 'directory' | 'following' | 'followers' | 'unfollowed' | 'subs' | 'friends' | 'bans';
+type TabType = 'directory' | 'following' | 'followers' | 'unfollowed' | 'subs' | 'friends' | 'bans' | 'watchlist';
 type StatFilter = 'all' | 'live' | 'priority2' | 'priority1' | 'with_image' | 'models' | 'viewers';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
@@ -166,6 +166,10 @@ const Users: React.FC = () => {
   const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([]);
   const [bansLoading, setBansLoading] = useState(false);
 
+  // Watchlist tab state
+  const [watchlistUsers, setWatchlistUsers] = useState<PersonWithSource[]>([]);
+  const [watchlistLoading, setWatchlistLoading] = useState(false);
+
   // View mode state (list or grid)
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
     const saved = localStorage.getItem('mhc-view-mode');
@@ -192,6 +196,8 @@ const Users: React.FC = () => {
       loadFriends();
     } else if (activeTab === 'bans') {
       loadBans();
+    } else if (activeTab === 'watchlist') {
+      loadWatchlist();
     }
   }, [activeTab]);
 
@@ -266,7 +272,7 @@ const Users: React.FC = () => {
       setLoading(true);
       setError(null);
       // Load all users - use a high limit to get everyone
-      const data = await api.getAllPersons(10000, 0);
+      const data = await api.getAllPersons(250000, 0);
       setPersons(data.persons);
     } catch (err) {
       setError('Failed to load persons');
@@ -385,6 +391,21 @@ const Users: React.FC = () => {
       console.error(err);
     } finally {
       setBansLoading(false);
+    }
+  };
+
+  const loadWatchlist = async () => {
+    try {
+      setWatchlistLoading(true);
+      setError(null);
+      const response = await fetch('http://localhost:3000/api/followers/watchlist');
+      const data = await response.json();
+      setWatchlistUsers(data.watchlist || []);
+    } catch (err) {
+      setError('Failed to load watchlist');
+      console.error(err);
+    } finally {
+      setWatchlistLoading(false);
     }
   };
 
@@ -2183,6 +2204,94 @@ const Users: React.FC = () => {
     );
   };
 
+  const renderWatchlistTab = () => {
+    return (
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Watchlist ({watchlistUsers.length})</h2>
+        </div>
+
+        {watchlistLoading ? (
+          <div className="p-12 text-center text-white/50">Loading watchlist...</div>
+        ) : (
+          <>
+            {/* View Mode Toggle */}
+            <div className="flex items-center justify-between mt-4 mb-4">
+              {renderViewModeToggle()}
+              <span className="text-white/50 text-sm">{watchlistUsers.length} users you're watching</span>
+            </div>
+
+            {viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {watchlistUsers.map(person => renderUserGridCard(person))}
+              </div>
+            ) : (
+              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Seen</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Friend Tier</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Is Sub</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {watchlistUsers.map((person: any) => {
+                      const tierBadge = getFriendTierBadge(person.friend_tier);
+                      return (
+                        <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-2">
+                              <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
+                              <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
+                              <span className="inline-block px-2 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">👁 Watching</span>
+                            </div>
+                          </td>
+                          <td className="px-2 py-2">
+                            {person.image_url && (
+                              <img
+                                src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                                alt={person.username}
+                                className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
+                              />
+                            )}
+                          </td>
+                          <td className="px-4 py-4 text-white/80">{person.last_seen_at ? formatDate(person.last_seen_at, { includeTime: false }) : '—'}</td>
+                          <td className="px-4 py-4">
+                            {tierBadge ? (
+                              <span className={tierBadge.class}>Tier {person.friend_tier} - {tierBadge.label}</span>
+                            ) : '—'}
+                          </td>
+                          <td className="px-4 py-4">
+                            {person.active_sub ? (
+                              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Yes</span>
+                            ) : '—'}
+                          </td>
+                          <td className="px-4 py-4 text-white/70 max-w-[200px] truncate" title={person.notes || ''}>
+                            {person.notes || '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {watchlistUsers.length === 0 && (
+                  <div className="p-12 text-center text-white/50">
+                    <p>Your watchlist is empty. Add users to your watchlist from their profile page.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
   if (loading && activeTab === 'directory') {
     return (
       <div className="max-w-[1600px] mx-auto p-8">
@@ -2280,6 +2389,16 @@ const Users: React.FC = () => {
           >
             Bans
           </button>
+          <button
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'watchlist'
+                ? 'bg-yellow-500/15 text-yellow-400 border-yellow-500 font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
+            onClick={() => setActiveTab('watchlist')}
+          >
+            Watchlist
+          </button>
         </div>
       </div>
 
@@ -2291,6 +2410,7 @@ const Users: React.FC = () => {
       {activeTab === 'subs' && renderSubsTab()}
       {activeTab === 'friends' && renderFriendsTab()}
       {activeTab === 'bans' && renderBansTab()}
+      {activeTab === 'watchlist' && renderWatchlistTab()}
 
       {/* Add to Priority Modal */}
       {showPriorityModal && (

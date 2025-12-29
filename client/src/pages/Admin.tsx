@@ -278,7 +278,7 @@ const Admin: React.FC = () => {
   const fetchFollowerTrends = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/system/follower-trends/dashboard?days=${trendsDays}`);
+      const response = await fetch(`/api/system/follower-trends/dashboard?days=${trendsDays}&limit=10`);
       if (!response.ok) {
         throw new Error('Failed to fetch follower trends');
       }
@@ -1046,18 +1046,18 @@ const Admin: React.FC = () => {
       <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
         <div className="p-5 border-b border-white/10 flex justify-between items-center">
           <h2 className="m-0 text-2xl text-white">Follower Trends</h2>
-          <div className="flex gap-2">
-            {[7, 14, 30].map(days => (
+          <div className="flex gap-2 flex-wrap">
+            {[7, 14, 30, 60, 180, 365].map(days => (
               <button
                 key={days}
                 onClick={() => setTrendsDays(days)}
-                className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${
+                className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-all ${
                   trendsDays === days
                     ? 'bg-mhc-primary text-white'
                     : 'bg-white/10 text-white/70 hover:bg-white/20'
                 }`}
               >
-                {days}d
+                {days === 365 ? '1y' : `${days}d`}
               </button>
             ))}
           </div>
@@ -1081,139 +1081,134 @@ const Admin: React.FC = () => {
       {followerTrends && (
         <>
           {/* Top Gainers */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Top Gainers ({trendsDays} days)</h2>
-              <span className="text-emerald-400 text-sm font-medium">Follower Growth</span>
-            </div>
-            <div className="p-5">
-              {followerTrends.topGainers.length === 0 ? (
-                <p className="text-white/60 text-center py-4">No data yet. Follower counts are tracked during polling jobs.</p>
-              ) : (
-                <div className="space-y-3">
-                  {followerTrends.topGainers.map((mover, index) => (
-                    <div
-                      key={mover.person_id}
-                      className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 hover:border-emerald-500/30 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-white/40 font-mono text-sm w-6">#{index + 1}</span>
-                        <a
-                          href={`/profile/${mover.username}`}
-                          className="text-mhc-primary hover:text-mhc-primary-light font-medium"
-                        >
-                          {mover.username}
-                        </a>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-white/60 text-sm">
-                          {mover.current_count?.toLocaleString() || 'N/A'} followers
-                        </span>
-                        <span className="text-emerald-400 font-bold text-lg">
-                          +{mover.total_change.toLocaleString()}
-                        </span>
-                      </div>
+          <CollapsibleSection
+            title={`Top Gainers (${trendsDays === 365 ? '1 year' : `${trendsDays} days`})`}
+            defaultCollapsed={false}
+            className="mb-5"
+          >
+            {followerTrends.topGainers.length === 0 ? (
+              <p className="text-white/60 text-center py-4">No data yet. Follower counts are tracked during polling jobs.</p>
+            ) : (
+              <div className="space-y-3">
+                {followerTrends.topGainers.map((mover, index) => (
+                  <div
+                    key={mover.person_id}
+                    className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 hover:border-emerald-500/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-white/40 font-mono text-sm w-6">#{index + 1}</span>
+                      <a
+                        href={`/profile/${mover.username}`}
+                        className="text-mhc-primary hover:text-mhc-primary-light font-medium"
+                      >
+                        {mover.username}
+                      </a>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-white/60 text-sm">
+                        {mover.current_count?.toLocaleString() || 'N/A'} followers
+                      </span>
+                      <span className="text-emerald-400 font-bold text-lg">
+                        +{mover.total_change.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CollapsibleSection>
 
           {/* Top Losers */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Top Losers ({trendsDays} days)</h2>
-              <span className="text-red-400 text-sm font-medium">Follower Decline</span>
-            </div>
-            <div className="p-5">
-              {followerTrends.topLosers.length === 0 ? (
-                <p className="text-white/60 text-center py-4">No data yet. Follower counts are tracked during polling jobs.</p>
-              ) : (
-                <div className="space-y-3">
-                  {followerTrends.topLosers.map((mover, index) => (
-                    <div
-                      key={mover.person_id}
-                      className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 hover:border-red-500/30 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-white/40 font-mono text-sm w-6">#{index + 1}</span>
-                        <a
-                          href={`/profile/${mover.username}`}
-                          className="text-mhc-primary hover:text-mhc-primary-light font-medium"
-                        >
-                          {mover.username}
-                        </a>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-white/60 text-sm">
-                          {mover.current_count?.toLocaleString() || 'N/A'} followers
-                        </span>
-                        <span className="text-red-400 font-bold text-lg">
-                          {mover.total_change.toLocaleString()}
-                        </span>
-                      </div>
+          <CollapsibleSection
+            title={`Top Losers (${trendsDays === 365 ? '1 year' : `${trendsDays} days`})`}
+            defaultCollapsed={false}
+            className="mb-5"
+          >
+            {followerTrends.topLosers.length === 0 ? (
+              <p className="text-white/60 text-center py-4">No data yet. Follower counts are tracked during polling jobs.</p>
+            ) : (
+              <div className="space-y-3">
+                {followerTrends.topLosers.map((mover, index) => (
+                  <div
+                    key={mover.person_id}
+                    className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 hover:border-red-500/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-white/40 font-mono text-sm w-6">#{index + 1}</span>
+                      <a
+                        href={`/profile/${mover.username}`}
+                        className="text-mhc-primary hover:text-mhc-primary-light font-medium"
+                      >
+                        {mover.username}
+                      </a>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+                    <div className="flex items-center gap-4">
+                      <span className="text-white/60 text-sm">
+                        {mover.current_count?.toLocaleString() || 'N/A'} followers
+                      </span>
+                      <span className="text-red-400 font-bold text-lg">
+                        {mover.total_change.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CollapsibleSection>
 
           {/* Recent Changes */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Recent Significant Changes</h2>
-              <span className="text-white/60 text-sm">Changes of 50+ followers</span>
-            </div>
-            <div className="p-5">
-              {followerTrends.recentChanges.length === 0 ? (
-                <p className="text-white/60 text-center py-4">No significant changes recorded yet.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="text-left border-b border-white/10">
-                        <th className="pb-3 text-white/70 font-semibold">Username</th>
-                        <th className="pb-3 text-white/70 font-semibold text-right">Count</th>
-                        <th className="pb-3 text-white/70 font-semibold text-right">Change</th>
-                        <th className="pb-3 text-white/70 font-semibold text-right">Source</th>
-                        <th className="pb-3 text-white/70 font-semibold text-right">When</th>
+          <CollapsibleSection
+            title="Recent Significant Changes"
+            defaultCollapsed={true}
+            className="mb-5"
+          >
+            {followerTrends.recentChanges.length === 0 ? (
+              <p className="text-white/60 text-center py-4">No significant changes recorded yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <div className="text-white/60 text-sm mb-3">Changes of 50+ followers</div>
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left border-b border-white/10">
+                      <th className="pb-3 text-white/70 font-semibold">Username</th>
+                      <th className="pb-3 text-white/70 font-semibold text-right">Count</th>
+                      <th className="pb-3 text-white/70 font-semibold text-right">Change</th>
+                      <th className="pb-3 text-white/70 font-semibold text-right">Source</th>
+                      <th className="pb-3 text-white/70 font-semibold text-right">When</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {followerTrends.recentChanges.map(change => (
+                      <tr key={change.id} className="border-b border-white/5 hover:bg-white/5">
+                        <td className="py-3">
+                          <a
+                            href={`/profile/${change.username}`}
+                            className="text-mhc-primary hover:text-mhc-primary-light"
+                          >
+                            {change.username}
+                          </a>
+                        </td>
+                        <td className="py-3 text-right text-white/80">
+                          {change.follower_count.toLocaleString()}
+                        </td>
+                        <td className={`py-3 text-right font-bold ${change.delta > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {change.delta > 0 ? '+' : ''}{change.delta.toLocaleString()}
+                        </td>
+                        <td className="py-3 text-right">
+                          <span className="px-2 py-0.5 rounded text-xs bg-white/10 text-white/70">
+                            {change.source}
+                          </span>
+                        </td>
+                        <td className="py-3 text-right text-white/60 text-sm">
+                          {new Date(change.recorded_at).toLocaleString()}
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {followerTrends.recentChanges.map(change => (
-                        <tr key={change.id} className="border-b border-white/5 hover:bg-white/5">
-                          <td className="py-3">
-                            <a
-                              href={`/profile/${change.username}`}
-                              className="text-mhc-primary hover:text-mhc-primary-light"
-                            >
-                              {change.username}
-                            </a>
-                          </td>
-                          <td className="py-3 text-right text-white/80">
-                            {change.follower_count.toLocaleString()}
-                          </td>
-                          <td className={`py-3 text-right font-bold ${change.delta > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {change.delta > 0 ? '+' : ''}{change.delta.toLocaleString()}
-                          </td>
-                          <td className="py-3 text-right">
-                            <span className="px-2 py-0.5 rounded text-xs bg-white/10 text-white/70">
-                              {change.source}
-                            </span>
-                          </td>
-                          <td className="py-3 text-right text-white/60 text-sm">
-                            {new Date(change.recorded_at).toLocaleString()}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CollapsibleSection>
         </>
       )}
 
