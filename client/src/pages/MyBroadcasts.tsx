@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { formatFullDate, formatMilitaryTime, formatTimeRange, formatDuration } from '../utils/formatting';
 import { TimeRangeSelect, TimeRange, getDateRangeForTimeRange } from '../components/TimeRangeSelect';
 import { ConfirmationModal } from '../components/ConfirmationModal';
+import { CollapsibleSection } from '../components/CollapsibleSection';
 
 interface MyBroadcast {
   id: string;
@@ -452,14 +453,21 @@ const MyBroadcasts: React.FC = () => {
         </div>
       )}
 
-      {/* Stats Overview */}
+      {/* Stats Overview - Collapsible, expanded by default */}
       {stats && (
-        <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-          <div className="p-5 border-b border-white/10 flex justify-between items-center">
-            <h2 className="text-xl font-semibold text-white">Statistics</h2>
-            <TimeRangeSelect value={timeRange} onChange={setTimeRange} />
-          </div>
-          <div className="p-5 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+        <CollapsibleSection
+          title={
+            <div className="flex items-center justify-between w-full">
+              <span>Statistics</span>
+              <div onClick={(e) => e.stopPropagation()}>
+                <TimeRangeSelect value={timeRange} onChange={setTimeRange} />
+              </div>
+            </div>
+          }
+          defaultCollapsed={false}
+          className="mb-5"
+        >
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
             <div className="text-center p-3 bg-white/5 rounded-lg">
               <div className="text-2xl font-bold text-mhc-primary">{stats.totalBroadcasts}</div>
               <div className="text-xs text-white/60 uppercase">Broadcasts</div>
@@ -489,7 +497,7 @@ const MyBroadcasts: React.FC = () => {
               <div className="text-xs text-white/60 uppercase">Followers</div>
             </div>
           </div>
-        </div>
+        </CollapsibleSection>
       )}
 
       {/* Actions */}
@@ -897,13 +905,18 @@ const MyBroadcasts: React.FC = () => {
         onCancel={handleDeleteCancel}
       />
 
-      {/* Broadcasts List */}
-      <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg">
-        <div className="p-5 border-b border-white/10 flex justify-between items-center">
-          <h2 className="text-xl font-semibold text-white">Past Broadcasts</h2>
-          <span className="text-sm text-white/50">{filteredBroadcasts.length} broadcasts</span>
-        </div>
-        <div className="divide-y divide-white/10">
+      {/* Broadcasts List - Collapsible, collapsed by default */}
+      <CollapsibleSection
+        title={
+          <div className="flex items-center justify-between w-full">
+            <span>My Broadcasts</span>
+            <span className="text-sm text-white/50 font-normal">{filteredBroadcasts.length} broadcasts</span>
+          </div>
+        }
+        defaultCollapsed={true}
+        className="mb-5"
+      >
+        <div className="divide-y divide-white/10 -mx-4 -mb-4">
           {filteredBroadcasts.length === 0 ? (
             <div className="p-10 text-center text-white/60">
               {broadcasts.length === 0
@@ -1116,7 +1129,7 @@ const MyBroadcasts: React.FC = () => {
             ))
           )}
         </div>
-      </div>
+      </CollapsibleSection>
     </div>
   );
 };

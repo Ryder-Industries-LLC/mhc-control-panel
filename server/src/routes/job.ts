@@ -32,9 +32,9 @@ router.get('/status', (_req: Request, res: Response) => {
  * POST /api/job/pause
  * Pause the background refresh job
  */
-router.post('/pause', (_req: Request, res: Response) => {
+router.post('/pause', async (_req: Request, res: Response) => {
   try {
-    statbateRefreshJob.pause();
+    await statbateRefreshJob.pause();
     res.json({ success: true, status: statbateRefreshJob.getStatus() });
   } catch (error) {
     logger.error('Pause job error', { error });
@@ -46,9 +46,9 @@ router.post('/pause', (_req: Request, res: Response) => {
  * POST /api/job/resume
  * Resume the background refresh job
  */
-router.post('/resume', (_req: Request, res: Response) => {
+router.post('/resume', async (_req: Request, res: Response) => {
   try {
-    statbateRefreshJob.resume();
+    await statbateRefreshJob.resume();
     res.json({ success: true, status: statbateRefreshJob.getStatus() });
   } catch (error) {
     logger.error('Resume job error', { error });
@@ -60,10 +60,10 @@ router.post('/resume', (_req: Request, res: Response) => {
  * POST /api/job/start
  * Start the background refresh job
  */
-router.post('/start', (req: Request, res: Response) => {
+router.post('/start', async (req: Request, res: Response) => {
   try {
     const { intervalMinutes = 360 } = req.body;
-    statbateRefreshJob.start(intervalMinutes);
+    await statbateRefreshJob.start(intervalMinutes);
     res.json({ success: true, status: statbateRefreshJob.getStatus() });
   } catch (error) {
     logger.error('Start job error', { error });
@@ -75,9 +75,9 @@ router.post('/start', (req: Request, res: Response) => {
  * POST /api/job/stop
  * Stop the background refresh job
  */
-router.post('/stop', (_req: Request, res: Response) => {
+router.post('/stop', async (_req: Request, res: Response) => {
   try {
-    statbateRefreshJob.stop();
+    await statbateRefreshJob.stop();
     res.json({ success: true, status: statbateRefreshJob.getStatus() });
   } catch (error) {
     logger.error('Stop job error', { error });
@@ -127,9 +127,9 @@ router.post('/affiliate/config', (req: Request, res: Response) => {
  * POST /api/job/affiliate/start
  * Start the affiliate polling job
  */
-router.post('/affiliate/start', (_req: Request, res: Response) => {
+router.post('/affiliate/start', async (_req: Request, res: Response) => {
   try {
-    affiliatePollingJob.start();
+    await affiliatePollingJob.start();
     res.json({ success: true, status: affiliatePollingJob.getStatus() });
   } catch (error) {
     logger.error('Start affiliate job error', { error });
@@ -141,9 +141,9 @@ router.post('/affiliate/start', (_req: Request, res: Response) => {
  * POST /api/job/affiliate/pause
  * Pause the affiliate polling job
  */
-router.post('/affiliate/pause', (_req: Request, res: Response) => {
+router.post('/affiliate/pause', async (_req: Request, res: Response) => {
   try {
-    affiliatePollingJob.pause();
+    await affiliatePollingJob.pause();
     res.json({ success: true, status: affiliatePollingJob.getStatus() });
   } catch (error) {
     logger.error('Pause affiliate job error', { error });
@@ -155,9 +155,9 @@ router.post('/affiliate/pause', (_req: Request, res: Response) => {
  * POST /api/job/affiliate/resume
  * Resume the affiliate polling job
  */
-router.post('/affiliate/resume', (_req: Request, res: Response) => {
+router.post('/affiliate/resume', async (_req: Request, res: Response) => {
   try {
-    affiliatePollingJob.resume();
+    await affiliatePollingJob.resume();
     res.json({ success: true, status: affiliatePollingJob.getStatus() });
   } catch (error) {
     logger.error('Resume affiliate job error', { error });
@@ -169,9 +169,9 @@ router.post('/affiliate/resume', (_req: Request, res: Response) => {
  * POST /api/job/affiliate/stop
  * Stop the affiliate polling job
  */
-router.post('/affiliate/stop', (_req: Request, res: Response) => {
+router.post('/affiliate/stop', async (_req: Request, res: Response) => {
   try {
-    affiliatePollingJob.stop();
+    await affiliatePollingJob.stop();
     res.json({ success: true, status: affiliatePollingJob.getStatus() });
   } catch (error) {
     logger.error('Stop affiliate job error', { error });
@@ -251,9 +251,9 @@ router.post('/profile-scrape/start', async (_req: Request, res: Response) => {
  * POST /api/job/profile-scrape/pause
  * Pause the profile scrape job
  */
-router.post('/profile-scrape/pause', (_req: Request, res: Response) => {
+router.post('/profile-scrape/pause', async (_req: Request, res: Response) => {
   try {
-    profileScrapeJob.pause();
+    await profileScrapeJob.pause();
     res.json({ success: true, status: profileScrapeJob.getStatus() });
   } catch (error) {
     logger.error('Pause profile scrape job error', { error });
@@ -265,9 +265,9 @@ router.post('/profile-scrape/pause', (_req: Request, res: Response) => {
  * POST /api/job/profile-scrape/resume
  * Resume the profile scrape job
  */
-router.post('/profile-scrape/resume', (_req: Request, res: Response) => {
+router.post('/profile-scrape/resume', async (_req: Request, res: Response) => {
   try {
-    profileScrapeJob.resume();
+    await profileScrapeJob.resume();
     res.json({ success: true, status: profileScrapeJob.getStatus() });
   } catch (error) {
     logger.error('Resume profile scrape job error', { error });
@@ -279,9 +279,9 @@ router.post('/profile-scrape/resume', (_req: Request, res: Response) => {
  * POST /api/job/profile-scrape/stop
  * Stop the profile scrape job
  */
-router.post('/profile-scrape/stop', (_req: Request, res: Response) => {
+router.post('/profile-scrape/stop', async (_req: Request, res: Response) => {
   try {
-    profileScrapeJob.stop();
+    await profileScrapeJob.stop();
     res.json({ success: true, status: profileScrapeJob.getStatus() });
   } catch (error) {
     logger.error('Stop profile scrape job error', { error });
@@ -370,9 +370,9 @@ router.post('/cbhours/config', (req: Request, res: Response) => {
  * POST /api/job/cbhours/start
  * Start the CBHours polling job
  */
-router.post('/cbhours/start', (_req: Request, res: Response) => {
+router.post('/cbhours/start', async (_req: Request, res: Response) => {
   try {
-    cbhoursPollingJob.start();
+    await cbhoursPollingJob.start();
     res.json({ success: true, status: cbhoursPollingJob.getStatus() });
   } catch (error) {
     logger.error('Start CBHours job error', { error });
@@ -384,9 +384,9 @@ router.post('/cbhours/start', (_req: Request, res: Response) => {
  * POST /api/job/cbhours/pause
  * Pause the CBHours polling job
  */
-router.post('/cbhours/pause', (_req: Request, res: Response) => {
+router.post('/cbhours/pause', async (_req: Request, res: Response) => {
   try {
-    cbhoursPollingJob.pause();
+    await cbhoursPollingJob.pause();
     res.json({ success: true, status: cbhoursPollingJob.getStatus() });
   } catch (error) {
     logger.error('Pause CBHours job error', { error });
@@ -398,9 +398,9 @@ router.post('/cbhours/pause', (_req: Request, res: Response) => {
  * POST /api/job/cbhours/resume
  * Resume the CBHours polling job
  */
-router.post('/cbhours/resume', (_req: Request, res: Response) => {
+router.post('/cbhours/resume', async (_req: Request, res: Response) => {
   try {
-    cbhoursPollingJob.resume();
+    await cbhoursPollingJob.resume();
     res.json({ success: true, status: cbhoursPollingJob.getStatus() });
   } catch (error) {
     logger.error('Resume CBHours job error', { error });
@@ -412,9 +412,9 @@ router.post('/cbhours/resume', (_req: Request, res: Response) => {
  * POST /api/job/cbhours/stop
  * Stop the CBHours polling job
  */
-router.post('/cbhours/stop', (_req: Request, res: Response) => {
+router.post('/cbhours/stop', async (_req: Request, res: Response) => {
   try {
-    cbhoursPollingJob.stop();
+    await cbhoursPollingJob.stop();
     res.json({ success: true, status: cbhoursPollingJob.getStatus() });
   } catch (error) {
     logger.error('Stop CBHours job error', { error });

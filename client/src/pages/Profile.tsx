@@ -26,6 +26,14 @@ interface MemberInfo {
   all_time_tokens: number;
 }
 
+interface ProfileNote {
+  id: string;
+  profile_id: number;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // Check if a session is currently live (observed within the last 30 minutes)
 const isSessionLive = (session: any): boolean => {
   if (!session?.observed_at || !session?.current_show) return false;
@@ -93,15 +101,22 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [historySubTab, setHistorySubTab] = useState<HistorySubTab>('tipped');
 
   // Notes and status state
-  const [notes, setNotes] = useState('');
+  const [profileNotes, setProfileNotes] = useState<ProfileNote[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [newNoteContent, setNewNoteContent] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteContent, setEditingNoteContent] = useState('');
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesMessage, setNotesMessage] = useState<string | null>(null);
+
+  // Profile attributes state
   const [bannedMe, setBannedMe] = useState(false);
   const [watchList, setWatchList] = useState(false);
   const [activeSub, setActiveSub] = useState(false);
   const [firstServiceDate, setFirstServiceDate] = useState('');
   const [lastServiceDate, setLastServiceDate] = useState('');
   const [friendTier, setFriendTier] = useState<number | null>(null);
-  const [notesSaving, setNotesSaving] = useState(false);
-  const [notesMessage, setNotesMessage] = useState<string | null>(null);
+
 
   // Top mover badge state
   const [topMoverStatus, setTopMoverStatus] = useState<'gainer' | 'loser' | null>(null);
@@ -153,10 +168,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
     return () => clearTimeout(timer);
   }, [username]);
 
-  // Sync notes and status state from profile data
+  // Sync profile attribute states from profile data
   useEffect(() => {
     if (profileData?.profile) {
-      setNotes(profileData.profile.notes || '');
       setBannedMe(profileData.profile.banned_me || false);
       setWatchList(profileData.profile.watch_list || false);
       setActiveSub(profileData.profile.active_sub || false);
@@ -165,6 +179,33 @@ const Profile: React.FC<ProfilePageProps> = () => {
       setFriendTier(profileData.profile.friend_tier || null);
     }
   }, [profileData?.profile]);
+
+  // Fetch notes when profile changes
+  useEffect(() => {
+    if (profileData?.person?.username) {
+      // Reset notes state
+      setProfileNotes([]);
+      setNewNoteContent('');
+      setEditingNoteId(null);
+      setEditingNoteContent('');
+      // Fetch notes
+      const fetchProfileNotes = async () => {
+        setNotesLoading(true);
+        try {
+          const response = await fetch(`/api/profile/${profileData.person.username}/notes`);
+          if (response.ok) {
+            const data = await response.json();
+            setProfileNotes(data.notes || []);
+          }
+        } catch (err) {
+          console.error('Error fetching notes:', err);
+        } finally {
+          setNotesLoading(false);
+        }
+      };
+      fetchProfileNotes();
+    }
+  }, [profileData?.person?.username]);
 
   // Check if current profile is a top mover (7 day)
   useEffect(() => {
@@ -242,7 +283,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
   useEffect(() => {
     setMemberInfo(null);
     setMemberInfoError(null);
-    setHistorySubTab('messaged');
+    setHistorySubTab('tipped');
   }, [profileData?.person?.username]);
 
   const handleLookup = async (lookupUsername?: string) => {
@@ -283,39 +324,92 @@ const Profile: React.FC<ProfilePageProps> = () => {
     }
   };
 
-  const handleSaveNotes = async () => {
-    if (!profileData?.person?.username) return;
+  // Add a new note
+  const handleAddNote = async () => {
+    if (!profileData?.person?.username || !newNoteContent.trim()) return;
 
     setNotesSaving(true);
-    setNotesMessage(null);
-
     try {
-      const response = await fetch(`/api/profile/${profileData.person.username}`, {
-        method: 'PATCH',
+      const response = await fetch(`/api/profile/${profileData.person.username}/notes`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          notes,
-          banned_me: bannedMe,
-          watch_list: watchList,
-          active_sub: activeSub,
-          first_service_date: firstServiceDate || null,
-          last_service_date: lastServiceDate || null,
-          friend_tier: friendTier,
-        }),
+        body: JSON.stringify({ content: newNoteContent.trim() }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to save');
+      if (response.ok) {
+        const note = await response.json();
+        setProfileNotes(prev => [note, ...prev]);
+        setNewNoteContent('');
+        setNotesMessage('Note added!');
+        setTimeout(() => setNotesMessage(null), 3000);
       }
-
-      setNotesMessage('Saved!');
-      setTimeout(() => setNotesMessage(null), 3000);
     } catch (err) {
-      setNotesMessage('Error saving');
+      setNotesMessage('Error adding note');
       setTimeout(() => setNotesMessage(null), 3000);
     } finally {
       setNotesSaving(false);
     }
+  };
+
+  // Update an existing note
+  const handleUpdateNote = async (noteId: string) => {
+    if (!profileData?.person?.username || !editingNoteContent.trim()) return;
+
+    setNotesSaving(true);
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/notes/${noteId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editingNoteContent.trim() }),
+      });
+
+      if (response.ok) {
+        const updatedNote = await response.json();
+        setProfileNotes(prev => prev.map(n => n.id === noteId ? updatedNote : n));
+        setEditingNoteId(null);
+        setEditingNoteContent('');
+        setNotesMessage('Note updated!');
+        setTimeout(() => setNotesMessage(null), 3000);
+      }
+    } catch (err) {
+      setNotesMessage('Error updating note');
+      setTimeout(() => setNotesMessage(null), 3000);
+    } finally {
+      setNotesSaving(false);
+    }
+  };
+
+  // Delete a note
+  const handleDeleteNote = async (noteId: string) => {
+    if (!profileData?.person?.username) return;
+    if (!window.confirm('Are you sure you want to delete this note?')) return;
+
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/notes/${noteId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setProfileNotes(prev => prev.filter(n => n.id !== noteId));
+        setNotesMessage('Note deleted!');
+        setTimeout(() => setNotesMessage(null), 3000);
+      }
+    } catch (err) {
+      setNotesMessage('Error deleting note');
+      setTimeout(() => setNotesMessage(null), 3000);
+    }
+  };
+
+  // Start editing a note
+  const startEditingNote = (note: ProfileNote) => {
+    setEditingNoteId(note.id);
+    setEditingNoteContent(note.content);
+  };
+
+  // Cancel editing
+  const cancelEditingNote = () => {
+    setEditingNoteId(null);
+    setEditingNoteContent('');
   };
 
   const handleBannedToggle = async () => {
@@ -537,8 +631,12 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       {profileData.person.username}
                     </a>
                   </h2>
-                  {/* Small role indicator */}
-                  <span className="text-xs px-2 py-0.5 rounded bg-white/20 text-white/80 uppercase tracking-wider">
+                  {/* Role indicator - styled differently for MODEL vs VIEWER */}
+                  <span className={`text-xs px-2 py-1 rounded font-semibold uppercase tracking-wider ${
+                    profileData.person.role === 'MODEL'
+                      ? 'bg-pink-500/30 text-pink-300 border border-pink-500/50'
+                      : 'bg-white/20 text-white/80'
+                  }`}>
                     {profileData.person.role}
                   </span>
                   {/* Followers */}
@@ -653,11 +751,21 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     </span>
                   )}
 
-                  {/* Last Seen (if offline) */}
-                  {!isSessionLive(profileData.latestSession) && (profileData.latestSession?.observed_at || profileData.profile?.last_seen_online) && (
+                  {/* Last Seen (if offline) - prioritize most recent data source */}
+                  {!isSessionLive(profileData.latestSession) && (
+                    profileData.latestSession?.observed_at ||
+                    profileData.profile?.last_seen_online ||
+                    profileData.person?.last_seen_at
+                  ) && (
                     <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
                       Last Seen: {new Date(
-                        profileData.latestSession?.observed_at || profileData.profile.last_seen_online
+                        // Prioritize most accurate last seen data:
+                        // 1. Session observed_at (model was broadcasting)
+                        // 2. Profile last_seen_online (scraped data)
+                        // 3. Person last_seen_at (any interaction)
+                        profileData.latestSession?.observed_at ||
+                        profileData.profile?.last_seen_online ||
+                        profileData.person?.last_seen_at
                       ).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'short', timeStyle: 'short' })} ET
                     </span>
                   )}
@@ -706,82 +814,83 @@ const Profile: React.FC<ProfilePageProps> = () => {
           {/* Attributes Section (Collapsible) */}
           <div className="mb-5">
             <CollapsibleSection title="Attributes" defaultCollapsed={false} className="bg-mhc-surface">
-              <div className="flex flex-col gap-4">
-                {/* Row 1: Active Sub and Service Dates */}
-                <div className="flex flex-wrap items-center gap-6">
-                  {/* Active Sub Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={activeSub}
-                      onChange={handleActiveSubToggle}
-                      className="w-5 h-5 rounded border-2 border-emerald-500/50 bg-mhc-surface-light text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-                    />
-                    <span className="text-mhc-text font-medium">Active Sub</span>
-                  </label>
-
-                  {/* First Service Date */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-mhc-text font-medium whitespace-nowrap">First Service:</label>
-                    <input
-                      type="date"
-                      value={firstServiceDate}
-                      onChange={(e) => setFirstServiceDate(e.target.value)}
-                      className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                    />
-                  </div>
-
-                  {/* Last Service Date */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-mhc-text font-medium whitespace-nowrap">Last Service:</label>
-                    <input
-                      type="date"
-                      value={lastServiceDate}
-                      onChange={(e) => setLastServiceDate(e.target.value)}
-                      className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                    />
-                  </div>
+              <div className="flex flex-wrap items-center gap-6">
+                {/* Friend Tier Dropdown */}
+                <div className="flex items-center gap-2">
+                  <label className="text-mhc-text font-medium whitespace-nowrap">Friend Tier:</label>
+                  <select
+                    value={friendTier || ''}
+                    onChange={(e) => handleFriendTierChange(e.target.value ? parseInt(e.target.value, 10) : null)}
+                    className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20 min-w-[150px]"
+                  >
+                    <option value="">None</option>
+                    <option value="1">Tier 1 - Special</option>
+                    <option value="2">Tier 2 - Tipper</option>
+                    <option value="3">Tier 3 - Regular</option>
+                    <option value="4">Tier 4 - Drive-by</option>
+                  </select>
                 </div>
 
-                {/* Row 2: Friend Tier and Banned Me */}
-                <div className="flex flex-wrap items-center gap-6">
-                  {/* Friend Tier Dropdown */}
-                  <div className="flex items-center gap-2">
-                    <label className="text-mhc-text font-medium whitespace-nowrap">Friend Tier:</label>
-                    <select
-                      value={friendTier || ''}
-                      onChange={(e) => handleFriendTierChange(e.target.value ? parseInt(e.target.value, 10) : null)}
-                      className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20 min-w-[150px]"
-                    >
-                      <option value="">None</option>
-                      <option value="1">Tier 1 - Special</option>
-                      <option value="2">Tier 2 - Tipper</option>
-                      <option value="3">Tier 3 - Regular</option>
-                      <option value="4">Tier 4 - Drive-by</option>
-                    </select>
-                  </div>
+                {/* Banned Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={bannedMe}
+                    onChange={handleBannedToggle}
+                    className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
+                  />
+                  <span className="text-mhc-text font-medium">Banned Me</span>
+                </label>
 
-                  {/* Banned Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={bannedMe}
-                      onChange={handleBannedToggle}
-                      className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
-                    />
-                    <span className="text-mhc-text font-medium">Banned Me</span>
-                  </label>
+                {/* Watchlist Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={watchList}
+                    onChange={handleWatchListToggle}
+                    className="w-5 h-5 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
+                  />
+                  <span className="text-mhc-text font-medium">Watchlist</span>
+                </label>
+              </div>
+            </CollapsibleSection>
+          </div>
 
-                  {/* Watchlist Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={watchList}
-                      onChange={handleWatchListToggle}
-                      className="w-5 h-5 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
-                    />
-                    <span className="text-mhc-text font-medium">Watchlist</span>
-                  </label>
+          {/* Service Section (Collapsible) */}
+          <div className="mb-5">
+            <CollapsibleSection title="Service" defaultCollapsed={true} className="bg-mhc-surface">
+              <div className="flex flex-wrap items-center gap-6">
+                {/* Active Sub Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={activeSub}
+                    onChange={handleActiveSubToggle}
+                    className="w-5 h-5 rounded border-2 border-emerald-500/50 bg-mhc-surface-light text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <span className="text-mhc-text font-medium">Active Sub</span>
+                </label>
+
+                {/* First Service Date */}
+                <div className="flex items-center gap-2">
+                  <label className="text-mhc-text font-medium whitespace-nowrap">First Service:</label>
+                  <input
+                    type="date"
+                    value={firstServiceDate}
+                    onChange={(e) => setFirstServiceDate(e.target.value)}
+                    className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                  />
+                </div>
+
+                {/* Last Service Date */}
+                <div className="flex items-center gap-2">
+                  <label className="text-mhc-text font-medium whitespace-nowrap">Last Service:</label>
+                  <input
+                    type="date"
+                    value={lastServiceDate}
+                    onChange={(e) => setLastServiceDate(e.target.value)}
+                    className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                  />
                 </div>
               </div>
             </CollapsibleSection>
@@ -789,27 +898,122 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
           {/* Notes Section (Collapsible) */}
           <div className="mb-5">
-            <CollapsibleSection title="Notes" defaultCollapsed={false} className="bg-mhc-surface">
-              <div className="flex gap-3">
+            <CollapsibleSection
+              title={
+                <div className="flex items-center gap-2">
+                  <span>Notes</span>
+                  {profileNotes.length > 0 && (
+                    <span className="text-xs text-white/50 font-normal">({profileNotes.length})</span>
+                  )}
+                </div>
+              }
+              defaultCollapsed={false}
+              className="bg-mhc-surface"
+            >
+              {/* Add New Note */}
+              <div className="flex gap-3 mb-4">
                 <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Add personal notes about this user..."
-                  rows={3}
+                  value={newNoteContent}
+                  onChange={(e) => setNewNoteContent(e.target.value)}
+                  placeholder="Add a new note..."
+                  rows={2}
                   className="flex-1 px-4 py-2.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
                 />
                 <button
-                  onClick={handleSaveNotes}
-                  disabled={notesSaving}
+                  onClick={handleAddNote}
+                  disabled={notesSaving || !newNoteContent.trim()}
                   className="px-5 py-2 bg-mhc-primary text-white border-none rounded-md text-sm font-semibold cursor-pointer transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed self-start"
                 >
-                  {notesSaving ? 'Saving...' : 'Save'}
+                  {notesSaving ? 'Adding...' : 'Add Note'}
                 </button>
               </div>
+
+              {/* Status Message */}
               {notesMessage && (
-                <span className={`text-sm mt-2 block ${notesMessage === 'Saved!' ? 'text-emerald-400' : 'text-red-400'}`}>
+                <div className={`text-sm mb-3 px-3 py-2 rounded ${
+                  notesMessage.includes('Error')
+                    ? 'bg-red-500/20 text-red-400'
+                    : 'bg-emerald-500/20 text-emerald-400'
+                }`}>
                   {notesMessage}
-                </span>
+                </div>
+              )}
+
+              {/* Notes List */}
+              {notesLoading ? (
+                <div className="text-white/50 text-sm py-4 text-center">Loading notes...</div>
+              ) : profileNotes.length === 0 ? (
+                <div className="text-white/50 text-sm py-4 text-center">No notes yet. Add one above.</div>
+              ) : (
+                <div className="space-y-3">
+                  {profileNotes.map((note) => (
+                    <div key={note.id} className="bg-mhc-surface-light rounded-md p-4 border border-white/10">
+                      {editingNoteId === note.id ? (
+                        /* Editing Mode */
+                        <div className="space-y-3">
+                          <textarea
+                            value={editingNoteContent}
+                            onChange={(e) => setEditingNoteContent(e.target.value)}
+                            rows={3}
+                            className="w-full px-4 py-2.5 bg-mhc-surface border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                            autoFocus
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={cancelEditingNote}
+                              className="px-4 py-1.5 text-white/70 hover:text-white text-sm transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleUpdateNote(note.id)}
+                              disabled={notesSaving || !editingNoteContent.trim()}
+                              className="px-4 py-1.5 bg-mhc-primary text-white rounded text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                            >
+                              {notesSaving ? 'Saving...' : 'Save'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Display Mode */
+                        <>
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-xs text-white/40">
+                              {new Date(note.created_at).toLocaleString('en-US', {
+                                weekday: 'short',
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                              {note.updated_at !== note.created_at && (
+                                <span className="ml-2 italic">(edited)</span>
+                              )}
+                            </span>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => startEditingNote(note)}
+                                className="text-white/40 hover:text-white/80 text-xs transition-colors"
+                                title="Edit note"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDeleteNote(note.id)}
+                                className="text-red-400/60 hover:text-red-400 text-xs transition-colors"
+                                title="Delete note"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                          <p className="text-mhc-text text-sm whitespace-pre-wrap m-0">{note.content}</p>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </CollapsibleSection>
           </div>
@@ -884,107 +1088,139 @@ const Profile: React.FC<ProfilePageProps> = () => {
               <div>
                 <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Latest Snapshot</h3>
                 {(profileData.latestSession || profileData.latestSnapshot) ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {/* Broadcast Session Data (Affiliate API) */}
-                    {profileData.latestSession && (
-                      <>
-                        <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Observed:</span>
-                          <span className="block text-mhc-text text-base">{new Date(profileData.latestSession.observed_at).toLocaleString()}</span>
-                        </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Current Show:</span>
-                          <span className="block text-mhc-text text-base">{profileData.latestSession.current_show || 'N/A'}</span>
-                        </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary col-span-1 md:col-span-2 lg:col-span-3">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Room Subject:</span>
-                          <span className="block text-mhc-text text-base">{profileData.latestSession.room_subject || 'N/A'}</span>
-                        </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Viewers:</span>
-                          <span className="block text-mhc-text text-base">{(profileData.latestSession.num_users || 0).toLocaleString()}</span>
-                        </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Followers:</span>
-                          <span className="block text-mhc-text text-base">{(profileData.latestSession.num_followers || 0).toLocaleString()}</span>
-                        </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">HD Stream:</span>
-                          <span className="block text-mhc-text text-base">{profileData.latestSession.is_hd ? 'Yes' : 'No'}</span>
-                        </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Online Duration:</span>
-                          <span className="block text-mhc-text text-base">{formatDuration(Math.floor(profileData.latestSession.seconds_online / 60))}</span>
-                        </div>
-                        {profileData.latestSession.tags && profileData.latestSession.tags.length > 0 && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary col-span-1 md:col-span-2 lg:col-span-3">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-2">Tags:</span>
-                            <div className="flex flex-wrap gap-2">
-                              {profileData.latestSession.tags.map((tag: string, idx: number) => (
-                                <span key={idx} className="px-3 py-1 bg-mhc-primary text-white rounded-full text-sm">{tag}</span>
-                              ))}
+                  <div className="space-y-6">
+                    {/* Basic Info Section */}
+                    <div>
+                      <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">Live Session</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {profileData.latestSession && (
+                          <>
+                            <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                              <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Viewers:</span>
+                              <span className="block text-mhc-text text-lg font-semibold">{(profileData.latestSession.num_users || 0).toLocaleString()}</span>
                             </div>
-                          </div>
+                            <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                              <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Followers:</span>
+                              <span className="block text-mhc-text text-lg font-semibold">{(profileData.latestSession.num_followers || 0).toLocaleString()}</span>
+                            </div>
+                            <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                              <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Current Show:</span>
+                              <span className="block text-mhc-text text-base">{profileData.latestSession.current_show || 'Public'}</span>
+                            </div>
+                            <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                              <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Online Duration:</span>
+                              <span className="block text-mhc-text text-base">{formatDuration(Math.floor(profileData.latestSession.seconds_online / 60))}</span>
+                            </div>
+                          </>
                         )}
-                      </>
+                      </div>
+                      {/* Room Subject - Full Width */}
+                      {profileData.latestSession?.room_subject && (
+                        <div className="mt-4 p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Room Subject:</span>
+                          <span className="block text-mhc-text text-base">{profileData.latestSession.room_subject}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Financial Section */}
+                    {profileData.latestSnapshot?.normalized_metrics && (
+                      (profileData.latestSnapshot.normalized_metrics.income_usd !== undefined ||
+                       profileData.latestSnapshot.normalized_metrics.income_tokens !== undefined) && (
+                        <div>
+                          <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">Financial</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {profileData.latestSnapshot.normalized_metrics.income_usd !== undefined && (
+                              <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-emerald-500">
+                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Income (USD):</span>
+                                <span className="block text-emerald-400 text-xl font-bold">${profileData.latestSnapshot.normalized_metrics.income_usd.toLocaleString()}</span>
+                              </div>
+                            )}
+                            {profileData.latestSnapshot.normalized_metrics.income_tokens !== undefined && (
+                              <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-yellow-500">
+                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Income (Tokens):</span>
+                                <span className="block text-yellow-400 text-xl font-bold">{profileData.latestSnapshot.normalized_metrics.income_tokens.toLocaleString()}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
                     )}
 
-                    {/* Profile Tags (from scraped data if no session tags) */}
-                    {(!profileData.latestSession || !profileData.latestSession.tags || profileData.latestSession.tags.length === 0) &&
-                     profileData.profile?.tags && profileData.profile.tags.length > 0 && (
-                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary col-span-1 md:col-span-2 lg:col-span-3">
-                        <span className="block font-semibold text-mhc-text-muted text-sm mb-2">Tags:</span>
+                    {/* Session Statistics Section */}
+                    {profileData.latestSnapshot?.normalized_metrics && (
+                      (profileData.latestSnapshot.normalized_metrics.session_count !== undefined ||
+                       profileData.latestSnapshot.normalized_metrics.total_duration_minutes !== undefined ||
+                       profileData.latestSnapshot.normalized_metrics.average_duration_minutes !== undefined) && (
+                        <div>
+                          <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">Session Statistics</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {profileData.latestSnapshot.normalized_metrics.session_count !== undefined && (
+                              <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Session Count:</span>
+                                <span className="block text-mhc-text text-lg font-semibold">{profileData.latestSnapshot.normalized_metrics.session_count}</span>
+                              </div>
+                            )}
+                            {profileData.latestSnapshot.normalized_metrics.total_duration_minutes !== undefined && (
+                              <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Total Duration:</span>
+                                <span className="block text-mhc-text text-lg font-semibold">{formatDuration(profileData.latestSnapshot.normalized_metrics.total_duration_minutes)}</span>
+                              </div>
+                            )}
+                            {profileData.latestSnapshot.normalized_metrics.average_duration_minutes !== undefined && (
+                              <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Avg Duration:</span>
+                                <span className="block text-mhc-text text-lg font-semibold">{formatDuration(profileData.latestSnapshot.normalized_metrics.average_duration_minutes)}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    )}
+
+                    {/* Tags Section */}
+                    {((profileData.latestSession?.tags && profileData.latestSession.tags.length > 0) ||
+                      (profileData.profile?.tags && profileData.profile.tags.length > 0)) && (
+                      <div>
+                        <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">Tags</h4>
                         <div className="flex flex-wrap gap-2">
-                          {profileData.profile.tags.map((tag: string, idx: number) => (
-                            <span key={idx} className="px-3 py-1 bg-mhc-primary text-white rounded-full text-sm">{tag}</span>
+                          {(profileData.latestSession?.tags || profileData.profile?.tags || []).map((tag: string, idx: number) => (
+                            <span key={idx} className="px-3 py-1 bg-mhc-primary/20 text-mhc-primary border border-mhc-primary/30 rounded-full text-sm">{tag}</span>
                           ))}
                         </div>
                       </div>
                     )}
 
-                    {/* Statbate Snapshot Data - Additional Metrics */}
-                    {profileData.latestSnapshot?.normalized_metrics && (
-                      <>
-                        {profileData.latestSnapshot.normalized_metrics.income_usd !== undefined && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-emerald-500">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Income (USD):</span>
-                            <span className="block text-emerald-400 text-base font-semibold">${profileData.latestSnapshot.normalized_metrics.income_usd.toLocaleString()}</span>
+                    {/* Metadata Section */}
+                    <div>
+                      <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">Data Sources</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {profileData.latestSession && (
+                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-gray-500">
+                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Observed:</span>
+                            <span className="block text-mhc-text text-sm">{new Date(profileData.latestSession.observed_at).toLocaleString()}</span>
                           </div>
                         )}
-                        {profileData.latestSnapshot.normalized_metrics.income_tokens !== undefined && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-yellow-500">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Income (Tokens):</span>
-                            <span className="block text-yellow-400 text-base font-semibold">{profileData.latestSnapshot.normalized_metrics.income_tokens.toLocaleString()}</span>
+                        {profileData.latestSnapshot && (
+                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-gray-500">
+                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Snapshot Captured:</span>
+                            <span className="block text-mhc-text text-sm">{new Date(profileData.latestSnapshot.captured_at).toLocaleDateString()}</span>
                           </div>
                         )}
-                        {profileData.latestSnapshot.normalized_metrics.session_count !== undefined && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Session Count:</span>
-                            <span className="block text-mhc-text text-base">{profileData.latestSnapshot.normalized_metrics.session_count}</span>
+                        {profileData.latestSnapshot?.source && (
+                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-gray-500">
+                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Snapshot Source:</span>
+                            <span className="block text-mhc-text text-sm capitalize">{profileData.latestSnapshot.source}</span>
                           </div>
                         )}
-                        {profileData.latestSnapshot.normalized_metrics.total_duration_minutes !== undefined && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Total Duration:</span>
-                            <span className="block text-mhc-text text-base">{formatDuration(profileData.latestSnapshot.normalized_metrics.total_duration_minutes)}</span>
+                        {profileData.latestSession && (
+                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-gray-500">
+                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">HD Stream:</span>
+                            <span className="block text-mhc-text text-sm">{profileData.latestSession.is_hd ? 'Yes' : 'No'}</span>
                           </div>
                         )}
-                        {profileData.latestSnapshot.normalized_metrics.average_duration_minutes !== undefined && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Avg Duration:</span>
-                            <span className="block text-mhc-text text-base">{formatDuration(profileData.latestSnapshot.normalized_metrics.average_duration_minutes)}</span>
-                          </div>
-                        )}
-                        <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Data Source:</span>
-                          <span className="block text-mhc-text text-base">{profileData.latestSnapshot.source}</span>
-                        </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Captured:</span>
-                          <span className="block text-mhc-text text-base">{new Date(profileData.latestSnapshot.captured_at).toLocaleDateString()}</span>
-                        </div>
-                      </>
-                    )}
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <p className="text-mhc-text-muted">No recent snapshot data available.</p>
@@ -1062,96 +1298,101 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
             {activeTab === 'profile' && (
               <div>
-                <h3 className="m-0 mb-4 text-mhc-text text-2xl font-semibold">Profile Details</h3>
-                {profileData.profile ? (
-                  <>
-                    <div className="flex gap-8 flex-wrap lg:flex-nowrap">
-                      {/* Left side - Profile details */}
-                      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {profileData.profile.display_name && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Display Name:</span>
-                            <span className="block text-mhc-text text-base">{profileData.profile.display_name}</span>
-                          </div>
-                        )}
-                        {profileData.profile.age && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Age:</span>
-                            <span className="block text-mhc-text text-base">{profileData.profile.age}</span>
-                          </div>
-                        )}
-                        {profileData.profile.gender && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Gender:</span>
-                            <span className="block text-mhc-text text-base">{formatGender(profileData.profile.gender)}</span>
-                          </div>
-                        )}
-                        {profileData.profile.location && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Location:</span>
-                            <span className="block text-mhc-text text-base">{profileData.profile.location}</span>
-                          </div>
-                        )}
-                        {profileData.profile.spoken_languages && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Languages:</span>
-                            <span className="block text-mhc-text text-base">{profileData.profile.spoken_languages}</span>
-                          </div>
-                        )}
-                        {profileData.profile.country && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Country:</span>
-                            <span className="block text-mhc-text text-base">{profileData.profile.country}</span>
-                          </div>
-                        )}
-                        {profileData.profile.is_new !== null && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">New Model:</span>
-                            <span className="block text-mhc-text text-base">{profileData.profile.is_new ? 'Yes' : 'No'}</span>
-                          </div>
-                        )}
-                        {profileData.profile.bio && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md col-span-1 md:col-span-2">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Bio:</span>
-                            <p className="mt-2 mb-0 leading-relaxed text-mhc-text">{profileData.profile.bio}</p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Right side - Profile image */}
-                      {profileData.profile.photos && profileData.profile.photos.length > 0 && (
-                        <div className="flex-shrink-0">
-                          <img
-                            src={profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url}
-                            alt={profileData.person.username}
-                            className="max-w-[400px] h-auto rounded-lg"
-                          />
-                        </div>
-                      )}
+                <h3 className="m-0 mb-2 text-mhc-text text-2xl font-semibold">Profile Details</h3>
+                <p className="text-mhc-text-muted text-sm mb-5">Static bio from Chaturbate profile</p>
+                <div className="flex gap-8 flex-wrap lg:flex-nowrap">
+                  {/* Left side - Profile details */}
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="p-4 bg-mhc-surface-light rounded-md">
+                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Display Name:</span>
+                      <span className={`block text-base ${profileData.profile?.display_name ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                        {profileData.profile?.display_name || 'Not set'}
+                      </span>
                     </div>
-
-                    {/* Raw Data Toggle Button */}
-                    <div className="mt-8 flex justify-center">
-                      <button
-                        onClick={() => setShowRawData(!showRawData)}
-                        className="px-8 py-3 bg-gray-600 text-white border-none rounded-md text-base font-semibold cursor-pointer transition-all hover:bg-gray-500"
-                      >
-                        {showRawData ? 'Hide Raw Data' : 'Show Raw Data'}
-                      </button>
+                    <div className="p-4 bg-mhc-surface-light rounded-md">
+                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Age:</span>
+                      <span className={`block text-base ${profileData.profile?.age ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                        {profileData.profile?.age || 'Not set'}
+                      </span>
                     </div>
+                    <div className="p-4 bg-mhc-surface-light rounded-md">
+                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Gender:</span>
+                      <span className={`block text-base ${profileData.profile?.gender ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                        {profileData.profile?.gender ? formatGender(profileData.profile.gender) : 'Not set'}
+                      </span>
+                    </div>
+                    <div className="p-4 bg-mhc-surface-light rounded-md">
+                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Location:</span>
+                      <span className={`block text-base ${profileData.profile?.location ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                        {profileData.profile?.location || 'Not set'}
+                      </span>
+                    </div>
+                    <div className="p-4 bg-mhc-surface-light rounded-md">
+                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Country:</span>
+                      <span className={`block text-base ${profileData.profile?.country ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                        {profileData.profile?.country || 'Not set'}
+                      </span>
+                    </div>
+                    <div className="p-4 bg-mhc-surface-light rounded-md">
+                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Languages:</span>
+                      <span className={`block text-base ${profileData.profile?.spoken_languages ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                        {profileData.profile?.spoken_languages || 'Not set'}
+                      </span>
+                    </div>
+                    <div className="p-4 bg-mhc-surface-light rounded-md">
+                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">New Model:</span>
+                      <span className={`block text-base ${profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                        {profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined
+                          ? (profileData.profile.is_new ? 'Yes' : 'No')
+                          : 'Unknown'}
+                      </span>
+                    </div>
+                    <div className="p-4 bg-mhc-surface-light rounded-md">
+                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Broadcast:</span>
+                      <span className={`block text-base ${profileData.profile?.last_broadcast ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                        {profileData.profile?.last_broadcast
+                          ? new Date(profileData.profile.last_broadcast).toLocaleDateString()
+                          : 'Not set'}
+                      </span>
+                    </div>
+                    <div className="p-4 bg-mhc-surface-light rounded-md col-span-1 md:col-span-2">
+                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Bio:</span>
+                      <p className={`mt-2 mb-0 leading-relaxed ${profileData.profile?.bio ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                        {profileData.profile?.bio || 'No bio set'}
+                      </p>
+                    </div>
+                  </div>
 
-                    {/* Raw Data Display */}
-                    {showRawData && (
-                      <div className="mt-8">
-                        <h4 className="text-mhc-text-muted text-xl font-semibold mb-4">Raw Profile Data</h4>
-                        <pre className="bg-black text-emerald-400 p-4 rounded-md overflow-auto text-sm leading-relaxed min-h-[600px] whitespace-pre-wrap break-words border border-gray-700">
-                          {JSON.stringify(profileData, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-mhc-text-muted">No profile details available.</p>
+                  {/* Right side - Profile image */}
+                  {profileData.profile?.photos && profileData.profile.photos.length > 0 && (
+                    <div className="flex-shrink-0">
+                      <img
+                        src={profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url}
+                        alt={profileData.person.username}
+                        className="max-w-[400px] h-auto rounded-lg"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Raw Data Toggle Button */}
+                <div className="mt-8 flex justify-center">
+                  <button
+                    onClick={() => setShowRawData(!showRawData)}
+                    className="px-8 py-3 bg-gray-600 text-white border-none rounded-md text-base font-semibold cursor-pointer transition-all hover:bg-gray-500"
+                  >
+                    {showRawData ? 'Hide Raw Data' : 'Show Raw Data'}
+                  </button>
+                </div>
+
+                {/* Raw Data Display */}
+                {showRawData && (
+                  <div className="mt-8">
+                    <h4 className="text-mhc-text-muted text-xl font-semibold mb-4">Raw Profile Data</h4>
+                    <pre className="bg-black text-emerald-400 p-4 rounded-md overflow-auto text-sm leading-relaxed min-h-[600px] whitespace-pre-wrap break-words border border-gray-700">
+                      {JSON.stringify(profileData, null, 2)}
+                    </pre>
+                  </div>
                 )}
               </div>
             )}

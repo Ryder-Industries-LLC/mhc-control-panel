@@ -105,7 +105,7 @@ const isPersonLive = (person: PersonWithSource): boolean => {
 
 const Users: React.FC = () => {
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState<TabType>('directory');
+  const [activeTab, setActiveTab] = useState<TabType>('following');
 
   // Directory tab state
   const [persons, setPersons] = useState<PersonWithSource[]>([]);
@@ -229,7 +229,7 @@ const Users: React.FC = () => {
     }
 
     // Handle tab navigation from System Stats
-    if (tabParam && ['directory', 'following', 'followers', 'unfollowed', 'subs', 'friends', 'bans'].includes(tabParam)) {
+    if (tabParam && ['directory', 'following', 'followers', 'unfollowed', 'subs', 'friends', 'bans', 'watchlist'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
 
@@ -2317,18 +2317,9 @@ const Users: React.FC = () => {
           </div>
         )}
 
-        {/* Tabs */}
-        <div className="flex gap-2 mt-6 border-b-2 border-white/10">
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'directory'
-                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('directory')}
-          >
-            Directory
-          </button>
+        {/* Tabs - Reordered: Relationships first, then Directory, then Service, then Monitoring */}
+        <div className="flex gap-2 mt-6 border-b-2 border-white/10 flex-wrap">
+          {/* Following/Followers - Primary relationship tabs */}
           <button
             className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
               activeTab === 'following'
@@ -2349,16 +2340,18 @@ const Users: React.FC = () => {
           >
             Followers
           </button>
+          {/* Directory - All users */}
           <button
             className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'unfollowed'
+              activeTab === 'directory'
                 ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary font-semibold'
                 : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
             }`}
-            onClick={() => setActiveTab('unfollowed')}
+            onClick={() => setActiveTab('directory')}
           >
-            Unfollowed
+            Directory
           </button>
+          {/* Service tabs */}
           <button
             className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
               activeTab === 'subs'
@@ -2379,6 +2372,27 @@ const Users: React.FC = () => {
           >
             Friends
           </button>
+          {/* Monitoring tabs */}
+          <button
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'watchlist'
+                ? 'bg-orange-500/15 text-orange-400 border-orange-500 font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
+            onClick={() => setActiveTab('watchlist')}
+          >
+            Watchlist
+          </button>
+          <button
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'unfollowed'
+                ? 'bg-gray-500/15 text-gray-400 border-gray-500 font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
+            onClick={() => setActiveTab('unfollowed')}
+          >
+            Unfollowed
+          </button>
           <button
             className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
               activeTab === 'bans'
@@ -2388,16 +2402,6 @@ const Users: React.FC = () => {
             onClick={() => setActiveTab('bans')}
           >
             Bans
-          </button>
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'watchlist'
-                ? 'bg-yellow-500/15 text-yellow-400 border-yellow-500 font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('watchlist')}
-          >
-            Watchlist
           </button>
         </div>
       </div>

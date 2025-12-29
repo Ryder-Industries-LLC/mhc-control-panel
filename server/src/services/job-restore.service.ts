@@ -86,6 +86,7 @@ export class JobRestoreService {
 
   /**
    * Stop all running jobs (for graceful shutdown)
+   * This updates the database to mark jobs as stopped
    */
   static async stopAllJobs(): Promise<void> {
     logger.info('Stopping all jobs');
@@ -98,5 +99,23 @@ export class JobRestoreService {
     ]);
 
     logger.info('All jobs stopped');
+  }
+
+  /**
+   * Halt all running jobs without updating database state
+   * Used during graceful shutdown to stop timers but preserve
+   * running state so jobs auto-restore on next startup
+   */
+  static async haltAllJobs(): Promise<void> {
+    logger.info('Halting all jobs (preserving DB state for restart)');
+
+    await Promise.all([
+      affiliatePollingJob.halt(),
+      profileScrapeJob.halt(),
+      cbhoursPollingJob.halt(),
+      statbateRefreshJob.halt(),
+    ]);
+
+    logger.info('All jobs halted');
   }
 }

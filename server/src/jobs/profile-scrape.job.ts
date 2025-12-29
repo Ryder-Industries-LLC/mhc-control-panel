@@ -218,7 +218,7 @@ export class ProfileScrapeJob {
   }
 
   /**
-   * Stop the scrape job
+   * Stop the scrape job (updates database)
    */
   async stop() {
     if (this.intervalId) {
@@ -229,6 +229,19 @@ export class ProfileScrapeJob {
     this.isPaused = false;
     await JobPersistenceService.saveRunningState(JOB_NAME, false, false);
     logger.info('Profile scrape job stopped');
+  }
+
+  /**
+   * Halt the scrape job without updating database
+   * Used during graceful shutdown to preserve state for restart
+   */
+  async halt() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    // Don't update isRunning/isPaused or database - preserve state for restart
+    logger.info('Profile scrape job halted (state preserved)');
   }
 
   /**

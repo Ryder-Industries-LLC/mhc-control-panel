@@ -14,17 +14,19 @@ async function startWorker() {
   logger.info(`Broadcaster: ${env.CHATURBATE_USERNAME}`);
 
   // Handle graceful shutdown
+  // IMPORTANT: Don't call stopAllJobs() here - we want jobs to remain marked as "running"
+  // in the database so they auto-restore on the next startup. Only stop the internal timers.
   process.on('SIGTERM', async () => {
     logger.info('SIGTERM received, shutting down gracefully');
     chaturbateEventsClient.stop();
-    await JobRestoreService.stopAllJobs();
+    await JobRestoreService.haltAllJobs(); // Halt timers but preserve running state in DB
     process.exit(0);
   });
 
   process.on('SIGINT', async () => {
     logger.info('SIGINT received, shutting down gracefully');
     chaturbateEventsClient.stop();
-    await JobRestoreService.stopAllJobs();
+    await JobRestoreService.haltAllJobs(); // Halt timers but preserve running state in DB
     process.exit(0);
   });
 

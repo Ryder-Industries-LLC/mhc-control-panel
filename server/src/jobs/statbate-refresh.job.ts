@@ -200,7 +200,7 @@ export class StatbateRefreshJob {
   }
 
   /**
-   * Stop the background refresh job
+   * Stop the background refresh job (updates database)
    */
   async stop() {
     if (this.intervalId) {
@@ -211,6 +211,19 @@ export class StatbateRefreshJob {
     this.isPaused = false;
     await JobPersistenceService.saveRunningState(JOB_NAME, false, false);
     logger.info('Statbate refresh job stopped');
+  }
+
+  /**
+   * Halt the refresh job without updating database
+   * Used during graceful shutdown to preserve state for restart
+   */
+  async halt() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    // Don't update isRunning/isPaused or database - preserve state for restart
+    logger.info('Statbate refresh job halted (state preserved)');
   }
 
   /**

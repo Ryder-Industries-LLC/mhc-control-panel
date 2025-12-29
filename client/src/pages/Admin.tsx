@@ -151,7 +151,6 @@ const Admin: React.FC = () => {
   const [trendsDays, setTrendsDays] = useState<number>(7);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [configCollapsed, setConfigCollapsed] = useState(true);
   const [configForm, setConfigForm] = useState<JobConfig>({
     intervalMinutes: 30,
     gender: 'm',
@@ -604,244 +603,246 @@ const Admin: React.FC = () => {
     <>
       {jobStatus && (
         <>
-          {/* Status Section */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Current Status</h2>
-              {getStatusBadge()}
-            </div>
-            <div className="p-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
-                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                  <span className="font-semibold text-white/70">State:</span>
-                  <span className="text-white font-medium">
-                    {jobStatus.isRunning ? (jobStatus.isPaused ? 'Paused' : 'Running') : 'Stopped'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                  <span className="font-semibold text-white/70">Enabled:</span>
-                  <span className="text-white font-medium">{jobStatus.config.enabled ? 'Yes' : 'No'}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                  <span className="font-semibold text-white/70">Interval:</span>
-                  <span className="text-white font-medium">{jobStatus.config.intervalMinutes} minutes</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                  <span className="font-semibold text-white/70">Gender Filter:</span>
-                  <span className="text-white font-medium">{jobStatus.config.gender.toUpperCase()}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                  <span className="font-semibold text-white/70">Limit:</span>
-                  <span className="text-white font-medium">
-                    {jobStatus.config.limit === 0 ? 'ALL (paginated)' : `${jobStatus.config.limit} per cycle`}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Controls Section */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Job Controls</h2>
-            </div>
-            <div className="p-5">
-              <div className="flex flex-wrap gap-3">
-                {!jobStatus.isRunning && (
-                  <button
-                    onClick={() => handleJobControl('start')}
-                    className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-success text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={loading || !jobStatus.config.enabled}
-                  >
-                    Start Job
-                  </button>
-                )}
-                {jobStatus.isRunning && !jobStatus.isPaused && (
-                  <button
-                    onClick={() => handleJobControl('pause')}
-                    className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-warning text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={loading}
-                  >
-                    Pause Job
-                  </button>
-                )}
-                {jobStatus.isRunning && jobStatus.isPaused && (
-                  <button
-                    onClick={() => handleJobControl('resume')}
-                    className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-success text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={loading}
-                  >
-                    Resume Job
-                  </button>
-                )}
-                {jobStatus.isRunning && (
-                  <button
-                    onClick={() => handleJobControl('stop')}
-                    className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-danger text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={loading}
-                  >
-                    Stop Job
-                  </button>
-                )}
-              </div>
-              {!jobStatus.config.enabled && (
-                <div className="p-3 px-4 rounded-md mt-5 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
-                  <strong className="font-bold mr-1">Note:</strong> Job is disabled. Enable it in the configuration section below to start it.
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Configuration Section */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div
-              className="p-5 border-b border-white/10 flex justify-between items-center cursor-pointer hover:bg-white/5 transition-colors"
-              onClick={() => setConfigCollapsed(!configCollapsed)}
-            >
-              <h2 className="m-0 text-2xl text-white">Configuration {configCollapsed ? '▼' : '▲'}</h2>
-            </div>
-            {!configCollapsed && (
-            <div className="p-5">
-              <div className="max-w-xl">
-                <div className="mb-5">
-                  <label htmlFor="enabled" className="flex items-center mb-2 font-semibold text-white/90 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      id="enabled"
-                      checked={configForm.enabled}
-                      onChange={(e) => handleConfigChange('enabled', e.target.checked)}
-                      className="mr-2 w-4 h-4 cursor-pointer accent-mhc-primary"
-                    />
-                    <span className="font-semibold text-white/90">Enable Job</span>
-                  </label>
-                  <small className="block mt-1 text-white/60 text-sm">Must be enabled for job to start</small>
-                </div>
-
-                <div className="mb-5">
-                  <label htmlFor="intervalMinutes" className="block mb-2 font-semibold text-white/90">Polling Interval (minutes)</label>
-                  <input
-                    type="number"
-                    id="intervalMinutes"
-                    value={configForm.intervalMinutes}
-                    onChange={(e) => handleConfigChange('intervalMinutes', parseInt(e.target.value))}
-                    min="5"
-                    max="1440"
-                    step="5"
-                    className="w-full p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                  />
-                  <small className="block mt-1 text-white/60 text-sm">How often to poll the Affiliate API (5-1440 minutes)</small>
-                </div>
-
-                <div className="mb-5">
-                  <label htmlFor="gender" className="block mb-2 font-semibold text-white/90">Gender Filter</label>
-                  <select
-                    id="gender"
-                    value={configForm.gender}
-                    onChange={(e) => handleConfigChange('gender', e.target.value)}
-                    className="w-full p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                  >
-                    <option value="m">Male</option>
-                    <option value="f">Female</option>
-                    <option value="t">Trans</option>
-                    <option value="c">Couple</option>
-                    <option value="m,f">Male + Female</option>
-                    <option value="m,f,t">Male + Female + Trans</option>
-                    <option value="m,f,t,c">All Genders</option>
-                  </select>
-                  <small className="block mt-1 text-white/60 text-sm">Which gender categories to track</small>
-                </div>
-
-                <div className="mb-5">
-                  <label htmlFor="limit" className="block mb-2 font-semibold text-white/90">Broadcasters Per Cycle</label>
-                  <input
-                    type="number"
-                    id="limit"
-                    value={configForm.limit}
-                    onChange={(e) => handleConfigChange('limit', parseInt(e.target.value))}
-                    min="0"
-                    max="10000"
-                    step="100"
-                    className="w-full p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                  />
-                  <small className="block mt-1 text-white/60 text-sm">
-                    Set to 0 to fetch ALL available broadcasters (uses pagination).
-                    Otherwise, limit to specific number (100-10000).
-                  </small>
-                </div>
-
+          {/* Statistics Section - Moved to TOP, expanded by default */}
+          <CollapsibleSection
+            title={
+              <div className="flex items-center justify-between w-full">
+                <span>Statistics</span>
                 <button
-                  onClick={handleUpdateConfig}
-                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={loading}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleResetStats();
+                  }}
+                  className="px-3 py-1.5 rounded-md text-sm font-semibold transition-all bg-gray-500 text-white hover:bg-gray-600"
                 >
-                  {loading ? 'Updating...' : 'Update Configuration'}
+                  Reset Stats
                 </button>
               </div>
-            </div>
-            )}
-          </div>
-
-          {/* Statistics Section */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Statistics</h2>
-              <button
-                onClick={handleResetStats}
-                className="px-3 py-1.5 rounded-md text-sm font-semibold transition-all bg-gray-500 text-white hover:bg-gray-600"
-              >
-                Reset Stats
-              </button>
-            </div>
-            <div className="p-5">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-5">
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{jobStatus.stats.totalRuns}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Cycles</div>
-                </div>
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{jobStatus.stats.totalEnriched}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Enriched</div>
-                </div>
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{jobStatus.stats.totalFailed}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Failed</div>
-                </div>
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{formatDate(jobStatus.stats.lastRun)}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Last Run</div>
-                </div>
+            }
+            defaultCollapsed={false}
+            className="mb-5"
+          >
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-5">
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{jobStatus.stats.totalRuns}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Total Cycles</div>
               </div>
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{jobStatus.stats.totalEnriched}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Total Enriched</div>
+              </div>
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{jobStatus.stats.totalFailed}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Total Failed</div>
+              </div>
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{formatDate(jobStatus.stats.lastRun)}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Last Run</div>
+              </div>
+            </div>
 
-              {jobStatus.stats.lastRun && (
-                <div className="mt-5 pt-5 border-t border-white/10">
-                  <h3 className="text-lg mb-4 text-white">Last Cycle Results:</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                      <span className="font-semibold text-white/70">Enriched:</span>
-                      <span className="text-white font-medium">{jobStatus.stats.lastRunEnriched}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                      <span className="font-semibold text-white/70">Failed:</span>
-                      <span className="text-white font-medium">{jobStatus.stats.lastRunFailed}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                      <span className="font-semibold text-white/70">Success Rate:</span>
-                      <span className="text-white font-medium">
-                        {jobStatus.stats.lastRunEnriched + jobStatus.stats.lastRunFailed > 0
-                          ? Math.round(
-                              (jobStatus.stats.lastRunEnriched /
-                                (jobStatus.stats.lastRunEnriched + jobStatus.stats.lastRunFailed)) *
-                                100
-                            )
-                          : 0}
-                        %
-                      </span>
-                    </div>
+            {jobStatus.stats.lastRun && (
+              <div className="mt-5 pt-5 border-t border-white/10">
+                <h3 className="text-lg mb-4 text-white">Last Cycle Results:</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                    <span className="font-semibold text-white/70">Enriched:</span>
+                    <span className="text-white font-medium">{jobStatus.stats.lastRunEnriched}</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                    <span className="font-semibold text-white/70">Failed:</span>
+                    <span className="text-white font-medium">{jobStatus.stats.lastRunFailed}</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                    <span className="font-semibold text-white/70">Success Rate:</span>
+                    <span className="text-white font-medium">
+                      {jobStatus.stats.lastRunEnriched + jobStatus.stats.lastRunFailed > 0
+                        ? Math.round(
+                            (jobStatus.stats.lastRunEnriched /
+                              (jobStatus.stats.lastRunEnriched + jobStatus.stats.lastRunFailed)) *
+                              100
+                          )
+                        : 0}
+                      %
+                    </span>
                   </div>
                 </div>
+              </div>
+            )}
+          </CollapsibleSection>
+
+          {/* Current Status Section - collapsed by default */}
+          <CollapsibleSection
+            title={
+              <div className="flex items-center gap-3">
+                <span>Current Status</span>
+                {getStatusBadge()}
+              </div>
+            }
+            defaultCollapsed={true}
+            className="mb-5"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                <span className="font-semibold text-white/70">State:</span>
+                <span className="text-white font-medium">
+                  {jobStatus.isRunning ? (jobStatus.isPaused ? 'Paused' : 'Running') : 'Stopped'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                <span className="font-semibold text-white/70">Enabled:</span>
+                <span className="text-white font-medium">{jobStatus.config.enabled ? 'Yes' : 'No'}</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                <span className="font-semibold text-white/70">Interval:</span>
+                <span className="text-white font-medium">{jobStatus.config.intervalMinutes} minutes</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                <span className="font-semibold text-white/70">Gender Filter:</span>
+                <span className="text-white font-medium">{jobStatus.config.gender.toUpperCase()}</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                <span className="font-semibold text-white/70">Limit:</span>
+                <span className="text-white font-medium">
+                  {jobStatus.config.limit === 0 ? 'ALL (paginated)' : `${jobStatus.config.limit} per cycle`}
+                </span>
+              </div>
+            </div>
+          </CollapsibleSection>
+
+          {/* Job Controls Section - collapsed by default */}
+          <CollapsibleSection
+            title="Job Controls"
+            defaultCollapsed={true}
+            className="mb-5"
+          >
+            <div className="flex flex-wrap gap-3">
+              {!jobStatus.isRunning && (
+                <button
+                  onClick={() => handleJobControl('start')}
+                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-success text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={loading || !jobStatus.config.enabled}
+                >
+                  Start Job
+                </button>
+              )}
+              {jobStatus.isRunning && !jobStatus.isPaused && (
+                <button
+                  onClick={() => handleJobControl('pause')}
+                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-warning text-white hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={loading}
+                >
+                  Pause Job
+                </button>
+              )}
+              {jobStatus.isRunning && jobStatus.isPaused && (
+                <button
+                  onClick={() => handleJobControl('resume')}
+                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-success text-white hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={loading}
+                >
+                  Resume Job
+                </button>
+              )}
+              {jobStatus.isRunning && (
+                <button
+                  onClick={() => handleJobControl('stop')}
+                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-danger text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={loading}
+                >
+                  Stop Job
+                </button>
               )}
             </div>
-          </div>
+            {!jobStatus.config.enabled && (
+              <div className="p-3 px-4 rounded-md mt-5 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
+                <strong className="font-bold mr-1">Note:</strong> Job is disabled. Enable it in the configuration section below to start it.
+              </div>
+            )}
+          </CollapsibleSection>
+
+          {/* Configuration Section - collapsed by default */}
+          <CollapsibleSection
+            title="Configuration"
+            defaultCollapsed={true}
+            className="mb-5"
+          >
+            <div className="max-w-xl">
+              <div className="mb-5">
+                <label htmlFor="enabled" className="flex items-center mb-2 font-semibold text-white/90 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    id="enabled"
+                    checked={configForm.enabled}
+                    onChange={(e) => handleConfigChange('enabled', e.target.checked)}
+                    className="mr-2 w-4 h-4 cursor-pointer accent-mhc-primary"
+                  />
+                  <span className="font-semibold text-white/90">Enable Job</span>
+                </label>
+                <small className="block mt-1 text-white/60 text-sm">Must be enabled for job to start</small>
+              </div>
+
+              <div className="mb-5">
+                <label htmlFor="intervalMinutes" className="block mb-2 font-semibold text-white/90">Polling Interval (minutes)</label>
+                <input
+                  type="number"
+                  id="intervalMinutes"
+                  value={configForm.intervalMinutes}
+                  onChange={(e) => handleConfigChange('intervalMinutes', parseInt(e.target.value))}
+                  min="5"
+                  max="1440"
+                  step="5"
+                  className="w-full p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                />
+                <small className="block mt-1 text-white/60 text-sm">How often to poll the Affiliate API (5-1440 minutes)</small>
+              </div>
+
+              <div className="mb-5">
+                <label htmlFor="gender" className="block mb-2 font-semibold text-white/90">Gender Filter</label>
+                <select
+                  id="gender"
+                  value={configForm.gender}
+                  onChange={(e) => handleConfigChange('gender', e.target.value)}
+                  className="w-full p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                >
+                  <option value="m">Male</option>
+                  <option value="f">Female</option>
+                  <option value="t">Trans</option>
+                  <option value="c">Couple</option>
+                  <option value="m,f">Male + Female</option>
+                  <option value="m,f,t">Male + Female + Trans</option>
+                  <option value="m,f,t,c">All Genders</option>
+                </select>
+                <small className="block mt-1 text-white/60 text-sm">Which gender categories to track</small>
+              </div>
+
+              <div className="mb-5">
+                <label htmlFor="limit" className="block mb-2 font-semibold text-white/90">Broadcasters Per Cycle</label>
+                <input
+                  type="number"
+                  id="limit"
+                  value={configForm.limit}
+                  onChange={(e) => handleConfigChange('limit', parseInt(e.target.value))}
+                  min="0"
+                  max="10000"
+                  step="100"
+                  className="w-full p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                />
+                <small className="block mt-1 text-white/60 text-sm">
+                  Set to 0 to fetch ALL available broadcasters (uses pagination).
+                  Otherwise, limit to specific number (100-10000).
+                </small>
+              </div>
+
+              <button
+                onClick={handleUpdateConfig}
+                className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={loading}
+              >
+                {loading ? 'Updating...' : 'Update Configuration'}
+              </button>
+            </div>
+          </CollapsibleSection>
         </>
       )}
     </>
@@ -861,174 +862,161 @@ const Admin: React.FC = () => {
     <>
       {systemStats && (
         <>
-          {/* User Segments Card - Moved to TOP */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">User Segments</h2>
-            </div>
-            <div className="p-5">
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-                <Link
-                  to="/?tab=following"
-                  className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
-                >
-                  <div className="text-2xl font-bold mb-1">{systemStats.following.followingCount}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">Following</div>
-                </Link>
-                <Link
-                  to="/?tab=followers"
-                  className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
-                >
-                  <div className="text-2xl font-bold mb-1">{systemStats.following.followerCount}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">Followers</div>
-                </Link>
-                <Link
-                  to="/?tab=subs"
-                  className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
-                >
-                  <div className="text-2xl font-bold mb-1">{systemStats.following.subsCount}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">Active Subs</div>
-                </Link>
-                <Link
-                  to="/?tab=friends"
-                  className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
-                >
-                  <div className="text-2xl font-bold mb-1">{systemStats.following.friendsCount}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">Friends</div>
-                </Link>
-                <Link
-                  to="/?tab=bans"
-                  className="text-center p-4 bg-gradient-to-br from-red-600 to-red-800 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
-                >
-                  <div className="text-2xl font-bold mb-1">{systemStats.following.bannedCount}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">Banned</div>
-                </Link>
-              </div>
-            </div>
-          </div>
-
-          {/* Database & Storage Card */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Database & Storage</h2>
-            </div>
-            <div className="p-5">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{formatBytes(systemStats.database.sizeBytes)}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Database Size</div>
-                </div>
-                <Link
-                  to="/"
-                  className="text-center p-5 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity block no-underline"
-                >
-                  <div className="text-3xl font-bold mb-2">{systemStats.database.totalPersons.toLocaleString()}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Persons</div>
-                </Link>
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{systemStats.database.imagesStored.toLocaleString()}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Images Stored</div>
-                </div>
-              </div>
-
-              {/* Role & Source breakdown - Collapsible */}
-              <CollapsibleSection
-                title="Role & Source Breakdown"
-                defaultCollapsed={true}
-                className="mt-5"
+          {/* User Segments - Collapsible, expanded by default */}
+          <CollapsibleSection
+            title="User Segments"
+            defaultCollapsed={false}
+            className="mb-5"
+          >
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+              <Link
+                to="/?tab=following"
+                className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
               >
-                {/* Role breakdown */}
-                <div className="mb-5">
-                  <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">By Role</h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {Object.entries(systemStats.database.byRole).map(([role, count]) => (
-                      <Link
-                        key={role}
-                        to={`/?role=${role}`}
-                        className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10 hover:border-mhc-primary/50 transition-colors no-underline"
-                      >
-                        <span className="font-semibold text-white/70">{role}:</span>
-                        <span className="text-white font-medium">{count.toLocaleString()}</span>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
+                <div className="text-2xl font-bold mb-1">{systemStats.following.followingCount}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Following</div>
+              </Link>
+              <Link
+                to="/?tab=followers"
+                className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
+              >
+                <div className="text-2xl font-bold mb-1">{systemStats.following.followerCount}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Followers</div>
+              </Link>
+              <Link
+                to="/?tab=subs"
+                className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
+              >
+                <div className="text-2xl font-bold mb-1">{systemStats.following.subsCount}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Active Subs</div>
+              </Link>
+              <Link
+                to="/?tab=friends"
+                className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
+              >
+                <div className="text-2xl font-bold mb-1">{systemStats.following.friendsCount}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Friends</div>
+              </Link>
+              <Link
+                to="/?tab=bans"
+                className="text-center p-4 bg-gradient-to-br from-red-600 to-red-800 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
+              >
+                <div className="text-2xl font-bold mb-1">{systemStats.following.bannedCount}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Banned</div>
+              </Link>
+            </div>
+          </CollapsibleSection>
 
-                {/* Source breakdown */}
-                {Object.keys(systemStats.database.bySource).length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Snapshots by Source</h4>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {Object.entries(systemStats.database.bySource).map(([source, count]) => (
-                        <div key={source} className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                          <span className="font-semibold text-white/70">{source}:</span>
-                          <span className="text-white font-medium">{count.toLocaleString()}</span>
-                        </div>
-                      ))}
+          {/* Database & Storage - Collapsible, collapsed by default */}
+          <CollapsibleSection
+            title="Database & Storage"
+            defaultCollapsed={true}
+            className="mb-5"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-5">
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{formatBytes(systemStats.database.sizeBytes)}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Database Size</div>
+              </div>
+              <Link
+                to="/"
+                className="text-center p-5 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity block no-underline"
+              >
+                <div className="text-3xl font-bold mb-2">{systemStats.database.totalPersons.toLocaleString()}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Total Persons</div>
+              </Link>
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{systemStats.database.imagesStored.toLocaleString()}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Images Stored</div>
+              </div>
+            </div>
+
+            {/* Role breakdown */}
+            <div className="mb-5">
+              <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">By Role</h4>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {Object.entries(systemStats.database.byRole).map(([role, count]) => (
+                  <Link
+                    key={role}
+                    to={`/?role=${role}`}
+                    className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10 hover:border-mhc-primary/50 transition-colors no-underline"
+                  >
+                    <span className="font-semibold text-white/70">{role}:</span>
+                    <span className="text-white font-medium">{count.toLocaleString()}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            {/* Source breakdown */}
+            {Object.keys(systemStats.database.bySource).length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Snapshots by Source</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {Object.entries(systemStats.database.bySource).map(([source, count]) => (
+                    <div key={source} className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                      <span className="font-semibold text-white/70">{source}:</span>
+                      <span className="text-white font-medium">{count.toLocaleString()}</span>
                     </div>
-                  </div>
-                )}
-              </CollapsibleSection>
-            </div>
-          </div>
-
-          {/* Activity & Real-time Card */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Activity & Real-time</h2>
-            </div>
-            <div className="p-5">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-2xl font-bold mb-1">{systemStats.activity.snapshotsLastHour}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">Snapshots (1h)</div>
-                </div>
-                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-2xl font-bold mb-1">{systemStats.activity.snapshotsLast24h.toLocaleString()}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">Snapshots (24h)</div>
-                </div>
-                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-2xl font-bold mb-1">{systemStats.realtime.feedCacheSize}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">Feed Cache</div>
-                </div>
-                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-2xl font-bold mb-1">{systemStats.realtime.cbhoursOnline}/{systemStats.realtime.cbhoursTracked}</div>
-                  <div className="text-xs opacity-90 uppercase tracking-wide">CBHours Online</div>
+                  ))}
                 </div>
               </div>
+            )}
+          </CollapsibleSection>
 
-              {systemStats.realtime.feedCacheUpdatedAt && (
-                <div className="mt-4 text-sm text-white/60 text-center">
-                  Feed cache last updated: {formatDate(systemStats.realtime.feedCacheUpdatedAt)}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Queue Statistics Card */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Priority Lookup Queue</h2>
-            </div>
-            <div className="p-5">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{systemStats.queue.priority1Pending}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Priority 1 Pending</div>
-                </div>
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{systemStats.queue.priority2Active}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Priority 2 Active</div>
-                </div>
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{systemStats.queue.failedLast24h}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Failed (24h)</div>
-                </div>
+          {/* Activity & Real-time - Collapsible, collapsed by default */}
+          <CollapsibleSection
+            title="Activity & Real-time"
+            defaultCollapsed={true}
+            className="mb-5"
+          >
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{systemStats.activity.snapshotsLastHour}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Snapshots (1h)</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{systemStats.activity.snapshotsLast24h.toLocaleString()}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Snapshots (24h)</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{systemStats.realtime.feedCacheSize}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Feed Cache</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{systemStats.realtime.cbhoursOnline}/{systemStats.realtime.cbhoursTracked}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">CBHours Online</div>
               </div>
             </div>
-          </div>
 
-          {/* Background Jobs Summary removed - see Jobs Management tab instead */}
+            {systemStats.realtime.feedCacheUpdatedAt && (
+              <div className="mt-4 text-sm text-white/60 text-center">
+                Feed cache last updated: {formatDate(systemStats.realtime.feedCacheUpdatedAt)}
+              </div>
+            )}
+          </CollapsibleSection>
+
+          {/* Priority Lookup Queue - Collapsible, collapsed by default */}
+          <CollapsibleSection
+            title="Priority Lookup Queue"
+            defaultCollapsed={true}
+            className="mb-5"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{systemStats.queue.priority1Pending}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Priority 1 Pending</div>
+              </div>
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{systemStats.queue.priority2Active}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Priority 2 Active</div>
+              </div>
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{systemStats.queue.failedLast24h}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Failed (24h)</div>
+              </div>
+            </div>
+          </CollapsibleSection>
         </>
       )}
 
@@ -1042,25 +1030,10 @@ const Admin: React.FC = () => {
 
   const renderFollowerTrendsTab = () => (
     <>
-      {/* Time Period Selector */}
+      {/* Header with Stats Cards */}
       <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-        <div className="p-5 border-b border-white/10 flex justify-between items-center">
+        <div className="p-5 border-b border-white/10">
           <h2 className="m-0 text-2xl text-white">Follower Trends</h2>
-          <div className="flex gap-2 flex-wrap">
-            {[7, 14, 30, 60, 180, 365].map(days => (
-              <button
-                key={days}
-                onClick={() => setTrendsDays(days)}
-                className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-all ${
-                  trendsDays === days
-                    ? 'bg-mhc-primary text-white'
-                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                }`}
-              >
-                {days === 365 ? '1y' : `${days}d`}
-              </button>
-            ))}
-          </div>
         </div>
         <div className="p-5">
           {followerTrends && (
@@ -1078,12 +1051,34 @@ const Admin: React.FC = () => {
         </div>
       </div>
 
+      {/* Sticky Time Period Selector */}
+      <div className="sticky top-0 z-10 bg-mhc-dark/95 backdrop-blur-sm py-3 mb-5 -mx-5 px-5 border-b border-white/10">
+        <div className="flex items-center justify-between">
+          <span className="text-white/70 text-sm font-medium">Time Period:</span>
+          <div className="flex gap-2 flex-wrap">
+            {[7, 14, 30, 60, 180, 365].map(days => (
+              <button
+                key={days}
+                onClick={() => setTrendsDays(days)}
+                className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-all ${
+                  trendsDays === days
+                    ? 'bg-mhc-primary text-white'
+                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                }`}
+              >
+                {days === 365 ? '1y' : `${days}d`}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {followerTrends && (
         <>
           {/* Top Gainers */}
           <CollapsibleSection
             title={`Top Gainers (${trendsDays === 365 ? '1 year' : `${trendsDays} days`})`}
-            defaultCollapsed={false}
+            defaultCollapsed={true}
             className="mb-5"
           >
             {followerTrends.topGainers.length === 0 ? (
@@ -1121,7 +1116,7 @@ const Admin: React.FC = () => {
           {/* Top Losers */}
           <CollapsibleSection
             title={`Top Losers (${trendsDays === 365 ? '1 year' : `${trendsDays} days`})`}
-            defaultCollapsed={false}
+            defaultCollapsed={true}
             className="mb-5"
           >
             {followerTrends.topLosers.length === 0 ? (
@@ -1459,70 +1454,129 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
 
       {profileScrapeStatus && (
         <>
-          {/* Status Section */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Profile Scrape Job Status</h2>
-              {getProfileScrapeStatusBadge()}
+          {/* Statistics Section - Expanded by default, at the top */}
+          <CollapsibleSection
+            title="Statistics"
+            defaultCollapsed={false}
+            className="mb-5"
+            headerClassName="flex justify-between items-center"
+          >
+            <div className="flex justify-end mb-4">
+              <button
+                onClick={handleProfileScrapeResetStats}
+                className="px-3 py-1.5 rounded-md text-sm font-semibold transition-all bg-gray-500 text-white hover:bg-gray-600"
+              >
+                Reset Stats
+              </button>
             </div>
-            <div className="p-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
-                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                  <span className="font-semibold text-white/70">State:</span>
-                  <span className="text-white font-medium">
-                    {profileScrapeStatus.isProcessing
-                      ? 'Processing'
-                      : profileScrapeStatus.isRunning
-                        ? (profileScrapeStatus.isPaused ? 'Paused' : 'Running')
-                        : 'Stopped'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                  <span className="font-semibold text-white/70">Enabled:</span>
-                  <span className="text-white font-medium">{profileScrapeStatus.config.enabled ? 'Yes' : 'No'}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                  <span className="font-semibold text-white/70">Interval:</span>
-                  <span className="text-white font-medium">{profileScrapeStatus.config.intervalMinutes} min</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                  <span className="font-semibold text-white/70">Max Profiles/Run:</span>
-                  <span className="text-white font-medium">{profileScrapeStatus.config.maxProfilesPerRun}</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                  <span className="font-semibold text-white/70">Delay Between:</span>
-                  <span className="text-white font-medium">{profileScrapeStatus.config.delayBetweenProfiles / 1000}s</span>
-                </div>
-                <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                  <span className="font-semibold text-white/70">Refresh After:</span>
-                  <span className="text-white font-medium">{profileScrapeStatus.config.refreshDays} days</span>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-5">
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{profileScrapeStatus.stats.totalRuns}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Total Cycles</div>
+              </div>
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{profileScrapeStatus.stats.totalScraped}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Total Scraped</div>
+              </div>
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{profileScrapeStatus.stats.totalFailed}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Total Failed</div>
+              </div>
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{profileScrapeStatus.stats.totalSkipped}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Total Skipped</div>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10 mb-5">
+              <span className="font-semibold text-white/70">Last Run:</span>
+              <span className="text-white font-medium">{formatDate(profileScrapeStatus.stats.lastRun)}</span>
+            </div>
+
+            {profileScrapeStatus.stats.lastRun && (
+              <div className="mt-5 pt-5 border-t border-white/10">
+                <h3 className="text-lg mb-4 text-white">Last Cycle Results:</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                    <span className="font-semibold text-white/70">Scraped:</span>
+                    <span className="text-white font-medium">{profileScrapeStatus.stats.lastRunScraped}</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                    <span className="font-semibold text-white/70">Failed:</span>
+                    <span className="text-white font-medium">{profileScrapeStatus.stats.lastRunFailed}</span>
+                  </div>
+                  <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                    <span className="font-semibold text-white/70">Skipped:</span>
+                    <span className="text-white font-medium">{profileScrapeStatus.stats.lastRunSkipped}</span>
+                  </div>
                 </div>
               </div>
+            )}
+          </CollapsibleSection>
 
-              {/* Progress during processing */}
-              {profileScrapeStatus.isProcessing && profileScrapeStatus.stats.currentUsername && (
-                <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg mt-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-blue-300 font-medium">Currently scraping: {profileScrapeStatus.stats.currentUsername}</span>
-                    <span className="text-blue-300">{profileScrapeStatus.stats.progress} / {profileScrapeStatus.stats.total}</span>
-                  </div>
-                  <div className="w-full bg-blue-500/20 rounded-full h-2">
-                    <div
-                      className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${profileScrapeStatus.stats.total > 0 ? (profileScrapeStatus.stats.progress / profileScrapeStatus.stats.total) * 100 : 0}%` }}
-                    />
-                  </div>
+          {/* Job Status Section - Collapsed by default */}
+          <CollapsibleSection
+            title={
+              <span className="flex items-center gap-3">
+                Job Status
+                {getProfileScrapeStatusBadge()}
+              </span>
+            }
+            defaultCollapsed={true}
+            className="mb-5"
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                <span className="font-semibold text-white/70">State:</span>
+                <span className="text-white font-medium">
+                  {profileScrapeStatus.isProcessing
+                    ? 'Processing'
+                    : profileScrapeStatus.isRunning
+                      ? (profileScrapeStatus.isPaused ? 'Paused' : 'Running')
+                      : 'Stopped'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                <span className="font-semibold text-white/70">Enabled:</span>
+                <span className="text-white font-medium">{profileScrapeStatus.config.enabled ? 'Yes' : 'No'}</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                <span className="font-semibold text-white/70">Interval:</span>
+                <span className="text-white font-medium">{profileScrapeStatus.config.intervalMinutes} min</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                <span className="font-semibold text-white/70">Max Profiles/Run:</span>
+                <span className="text-white font-medium">{profileScrapeStatus.config.maxProfilesPerRun}</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                <span className="font-semibold text-white/70">Delay Between:</span>
+                <span className="text-white font-medium">{profileScrapeStatus.config.delayBetweenProfiles / 1000}s</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                <span className="font-semibold text-white/70">Refresh After:</span>
+                <span className="text-white font-medium">{profileScrapeStatus.config.refreshDays} days</span>
+              </div>
+            </div>
+
+            {/* Progress during processing */}
+            {profileScrapeStatus.isProcessing && profileScrapeStatus.stats.currentUsername && (
+              <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg mt-4">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-blue-300 font-medium">Currently scraping: {profileScrapeStatus.stats.currentUsername}</span>
+                  <span className="text-blue-300">{profileScrapeStatus.stats.progress} / {profileScrapeStatus.stats.total}</span>
                 </div>
-              )}
-            </div>
-          </div>
+                <div className="w-full bg-blue-500/20 rounded-full h-2">
+                  <div
+                    className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${profileScrapeStatus.stats.total > 0 ? (profileScrapeStatus.stats.progress / profileScrapeStatus.stats.total) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+            )}
 
-          {/* Controls Section */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Job Controls</h2>
-            </div>
-            <div className="p-5">
+            {/* Controls */}
+            <div className="mt-5 pt-5 border-t border-white/10">
+              <h3 className="text-lg mb-4 text-white">Job Controls</h3>
               <div className="flex flex-wrap gap-3">
                 {!profileScrapeStatus.isRunning && (
                   <button
@@ -1567,41 +1621,40 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
                 </div>
               )}
             </div>
-          </div>
+          </CollapsibleSection>
 
-          {/* Manual Scrape Section */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Manual Profile Scrape</h2>
+          {/* Manual Scrape Section - Collapsed by default */}
+          <CollapsibleSection
+            title="Manual Profile Scrape"
+            defaultCollapsed={true}
+            className="mb-5"
+          >
+            <p className="text-white/60 text-base p-4 bg-white/5 rounded-lg mb-4">
+              Manually trigger a profile scrape for a specific username. This bypasses the scheduled job and runs immediately.
+            </p>
+            <div className="flex gap-3 items-center max-w-xl">
+              <input
+                type="text"
+                value={manualScrapeUsername}
+                onChange={(e) => setManualScrapeUsername(e.target.value)}
+                placeholder="Enter username..."
+                className="flex-1 p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                onKeyDown={(e) => e.key === 'Enter' && handleManualProfileScrape()}
+              />
+              <button
+                onClick={handleManualProfileScrape}
+                className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                disabled={manualScraping || !hasCookies}
+              >
+                {manualScraping ? 'Scraping...' : 'Scrape Profile'}
+              </button>
             </div>
-            <div className="p-5">
-              <p className="text-white/60 text-base p-4 bg-white/5 rounded-lg mb-4">
-                Manually trigger a profile scrape for a specific username. This bypasses the scheduled job and runs immediately.
-              </p>
-              <div className="flex gap-3 items-center max-w-xl">
-                <input
-                  type="text"
-                  value={manualScrapeUsername}
-                  onChange={(e) => setManualScrapeUsername(e.target.value)}
-                  placeholder="Enter username..."
-                  className="flex-1 p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                  onKeyDown={(e) => e.key === 'Enter' && handleManualProfileScrape()}
-                />
-                <button
-                  onClick={handleManualProfileScrape}
-                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                  disabled={manualScraping || !hasCookies}
-                >
-                  {manualScraping ? 'Scraping...' : 'Scrape Profile'}
-                </button>
+            {manualScrapeResult && (
+              <div className="p-3 px-4 rounded-md mt-4 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
+                {manualScrapeResult}
               </div>
-              {manualScrapeResult && (
-                <div className="p-3 px-4 rounded-md mt-4 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
-                  {manualScrapeResult}
-                </div>
-              )}
-            </div>
-          </div>
+            )}
+          </CollapsibleSection>
 
           {/* Configuration Section */}
           <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
@@ -1713,64 +1766,6 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
             </div>
             )}
           </div>
-
-          {/* Statistics Section */}
-          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-            <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Statistics</h2>
-              <button
-                onClick={handleProfileScrapeResetStats}
-                className="px-3 py-1.5 rounded-md text-sm font-semibold transition-all bg-gray-500 text-white hover:bg-gray-600"
-              >
-                Reset Stats
-              </button>
-            </div>
-            <div className="p-5">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-5">
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{profileScrapeStatus.stats.totalRuns}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Cycles</div>
-                </div>
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{profileScrapeStatus.stats.totalScraped}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Scraped</div>
-                </div>
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{profileScrapeStatus.stats.totalFailed}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Failed</div>
-                </div>
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{profileScrapeStatus.stats.totalSkipped}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Skipped</div>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10 mb-5">
-                <span className="font-semibold text-white/70">Last Run:</span>
-                <span className="text-white font-medium">{formatDate(profileScrapeStatus.stats.lastRun)}</span>
-              </div>
-
-              {profileScrapeStatus.stats.lastRun && (
-                <div className="mt-5 pt-5 border-t border-white/10">
-                  <h3 className="text-lg mb-4 text-white">Last Cycle Results:</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                      <span className="font-semibold text-white/70">Scraped:</span>
-                      <span className="text-white font-medium">{profileScrapeStatus.stats.lastRunScraped}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                      <span className="font-semibold text-white/70">Failed:</span>
-                      <span className="text-white font-medium">{profileScrapeStatus.stats.lastRunFailed}</span>
-                    </div>
-                    <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                      <span className="font-semibold text-white/70">Skipped:</span>
-                      <span className="text-white font-medium">{profileScrapeStatus.stats.lastRunSkipped}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
         </>
       )}
 
@@ -1807,7 +1802,7 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
             }`}
             onClick={() => setActiveTab('jobs')}
           >
-            Jobs Management
+            Affiliate API
             {jobStatus && (
               jobStatus.isRunning && !jobStatus.isPaused ? (
                 <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-mhc-success text-white">Running</span>

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 
 export interface CollapsibleSectionProps {
-  title: string;
+  title: React.ReactNode;
   defaultCollapsed?: boolean;
   className?: string;
   headerClassName?: string;
