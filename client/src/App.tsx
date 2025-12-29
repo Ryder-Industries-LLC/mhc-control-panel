@@ -6,6 +6,7 @@ import Users from './pages/Users';
 import EventsFeed from './pages/EventsFeed';
 import Admin from './pages/Admin';
 import Profile from './pages/Profile';
+import MyBroadcasts from './pages/MyBroadcasts';
 import { useTheme, ThemeName } from './context/ThemeContext';
 
 const themeLabels: Record<ThemeName, string> = {
@@ -39,6 +40,9 @@ function App() {
               <Link to="/hudson" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Hudson
               </Link>
+              <Link to="/broadcasts" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
+                Broadcasts
+              </Link>
               <Link to="/events" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Events
               </Link>
@@ -67,6 +71,7 @@ function App() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/profile/:username" element={<Profile />} />
             <Route path="/hudson" element={<Hudson />} />
+            <Route path="/broadcasts" element={<MyBroadcasts />} />
             <Route path="/events" element={<EventsFeed />} />
             <Route path="/admin" element={<Admin />} />
           </Routes>

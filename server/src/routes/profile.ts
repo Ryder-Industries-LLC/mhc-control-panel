@@ -5,6 +5,7 @@ import { ProfileService } from '../services/profile.service.js';
 import { PersonService } from '../services/person.service.js';
 import { ProfileEnrichmentService } from '../services/profile-enrichment.service.js';
 import { BroadcastSessionService } from '../services/broadcast-session.service.js';
+import { statbateClient } from '../api/statbate/client.js';
 import { logger } from '../config/logger.js';
 import { query } from '../db/client.js';
 
@@ -465,6 +466,35 @@ router.delete('/:username', async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error deleting profile', { error });
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/profile/:username/member-info
+ * Get member activity info from Statbate API
+ * Returns: first_message_date, first_tip_date, last_tip_date, last_tip_amount,
+ *          models_messaged_2weeks, models_tipped_2weeks, all_time_tokens
+ */
+router.get('/:username/member-info', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    logger.info(`Fetching Statbate member info for: ${username}`);
+
+    const memberInfo = await statbateClient.getMemberInfo('chaturbate', username);
+
+    if (!memberInfo) {
+      return res.status(404).json({ error: 'Member not found in Statbate' });
+    }
+
+    res.json(memberInfo);
+  } catch (error) {
+    logger.error('Error fetching member info from Statbate', { error, username: req.params.username });
+    res.status(500).json({ error: 'Failed to fetch member info from Statbate' });
   }
 });
 

@@ -21,12 +21,13 @@ export interface AffiliatePollingConfig {
 export class AffiliatePollingJob {
   private isRunning = false;
   private isPaused = false;
+  private isProcessing = false;
   private intervalId: NodeJS.Timeout | null = null;
   private config: AffiliatePollingConfig = {
-    intervalMinutes: 30,
+    intervalMinutes: 5,
     gender: 'm',
-    limit: 0,
-    enabled: false,
+    limit: 250,
+    enabled: true,
   };
 
   // Statistics
@@ -37,6 +38,9 @@ export class AffiliatePollingJob {
     totalFailed: 0,
     lastRunEnriched: 0,
     lastRunFailed: 0,
+    currentUsername: null as string | null,
+    progress: 0,
+    total: 0,
   };
 
   /**
@@ -46,6 +50,7 @@ export class AffiliatePollingJob {
     return {
       isRunning: this.isRunning,
       isPaused: this.isPaused,
+      isProcessing: this.isProcessing,
       config: this.config,
       stats: this.stats,
     };
@@ -151,7 +156,17 @@ export class AffiliatePollingJob {
    * Run a single polling cycle
    */
   private async runPoll() {
+    if (this.isProcessing) {
+      logger.warn('Affiliate polling job is already processing');
+      return;
+    }
+
     try {
+      this.isProcessing = true;
+      this.stats.progress = 0;
+      this.stats.total = 0;
+      this.stats.currentUsername = null;
+
       const fetchAll = this.config.limit === 0;
       logger.info('Starting Affiliate API polling cycle', {
         gender: this.config.gender,
@@ -175,6 +190,7 @@ export class AffiliatePollingJob {
 
       // Cache the complete feed
       feedCacheService.setFeed(allRooms, allRooms.length);
+      this.stats.total = allRooms.length;
       logger.info(`Feed cached with ${allRooms.length} rooms`);
 
       // STEP 2: Process Priority 2 users FIRST (active tracking)
@@ -197,6 +213,7 @@ export class AffiliatePollingJob {
 
       this.stats.lastRun = new Date();
       this.stats.totalRuns++;
+      this.stats.currentUsername = null;
 
       logger.info('Affiliate API polling cycle completed', {
         enriched: this.stats.lastRunEnriched,
@@ -205,6 +222,8 @@ export class AffiliatePollingJob {
       });
     } catch (error) {
       logger.error('Error in Affiliate API polling cycle', { error });
+    } finally {
+      this.isProcessing = false;
     }
   }
 
@@ -319,7 +338,11 @@ export class AffiliatePollingJob {
 
     let processed = 0;
 
-    for (const room of allRooms) {
+    for (let i = 0; i < allRooms.length && !this.isPaused; i++) {
+      const room = allRooms[i];
+      this.stats.progress = i + 1;
+      this.stats.currentUsername = room.username;
+
       // Skip if this user was already processed as a priority user
       if (priorityUsernames.has(room.username.toLowerCase())) {
         continue;
@@ -364,6 +387,9 @@ export class AffiliatePollingJob {
       totalFailed: 0,
       lastRunEnriched: 0,
       lastRunFailed: 0,
+      currentUsername: null,
+      progress: 0,
+      total: 0,
     };
     logger.info('Affiliate polling job stats reset');
   }

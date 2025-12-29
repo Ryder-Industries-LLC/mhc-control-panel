@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { statbateRefreshJob } from '../jobs/statbate-refresh.job.js';
 import { affiliatePollingJob } from '../jobs/affiliate-polling.job.js';
 import { profileScrapeJob } from '../jobs/profile-scrape.job.js';
+import { cbhoursPollingJob } from '../jobs/cbhours-polling.job.js';
 import { ImageStorageService } from '../services/image-storage.service.js';
 import { pool } from '../db/client.js';
 import { logger } from '../config/logger.js';
@@ -18,6 +19,7 @@ router.get('/status', (_req: Request, res: Response) => {
       statbateRefresh: statbateRefreshJob.getStatus(),
       affiliatePolling: affiliatePollingJob.getStatus(),
       profileScrape: profileScrapeJob.getStatus(),
+      cbhoursPolling: cbhoursPollingJob.getStatus(),
     };
     res.json(status);
   } catch (error) {
@@ -322,6 +324,140 @@ router.post('/profile-scrape/one/:username', async (req: Request, res: Response)
     });
   } catch (error) {
     logger.error('Manual profile scrape error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ===== CBHours Polling Job Endpoints =====
+
+/**
+ * GET /api/job/cbhours/status
+ * Get CBHours polling job status
+ */
+router.get('/cbhours/status', (_req: Request, res: Response) => {
+  try {
+    const status = cbhoursPollingJob.getStatus();
+    res.json(status);
+  } catch (error) {
+    logger.error('Get CBHours job status error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/cbhours/config
+ * Update CBHours polling job configuration
+ */
+router.post('/cbhours/config', (req: Request, res: Response) => {
+  try {
+    const { intervalMinutes, batchSize, enabled, targetFollowing } = req.body;
+
+    cbhoursPollingJob.updateConfig({
+      ...(intervalMinutes !== undefined && { intervalMinutes }),
+      ...(batchSize !== undefined && { batchSize }),
+      ...(enabled !== undefined && { enabled }),
+      ...(targetFollowing !== undefined && { targetFollowing }),
+    });
+
+    res.json({ success: true, status: cbhoursPollingJob.getStatus() });
+  } catch (error) {
+    logger.error('Update CBHours job config error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/cbhours/start
+ * Start the CBHours polling job
+ */
+router.post('/cbhours/start', (_req: Request, res: Response) => {
+  try {
+    cbhoursPollingJob.start();
+    res.json({ success: true, status: cbhoursPollingJob.getStatus() });
+  } catch (error) {
+    logger.error('Start CBHours job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/cbhours/pause
+ * Pause the CBHours polling job
+ */
+router.post('/cbhours/pause', (_req: Request, res: Response) => {
+  try {
+    cbhoursPollingJob.pause();
+    res.json({ success: true, status: cbhoursPollingJob.getStatus() });
+  } catch (error) {
+    logger.error('Pause CBHours job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/cbhours/resume
+ * Resume the CBHours polling job
+ */
+router.post('/cbhours/resume', (_req: Request, res: Response) => {
+  try {
+    cbhoursPollingJob.resume();
+    res.json({ success: true, status: cbhoursPollingJob.getStatus() });
+  } catch (error) {
+    logger.error('Resume CBHours job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/cbhours/stop
+ * Stop the CBHours polling job
+ */
+router.post('/cbhours/stop', (_req: Request, res: Response) => {
+  try {
+    cbhoursPollingJob.stop();
+    res.json({ success: true, status: cbhoursPollingJob.getStatus() });
+  } catch (error) {
+    logger.error('Stop CBHours job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/cbhours/reset-stats
+ * Reset CBHours polling job statistics
+ */
+router.post('/cbhours/reset-stats', (_req: Request, res: Response) => {
+  try {
+    cbhoursPollingJob.resetStats();
+    res.json({ success: true, status: cbhoursPollingJob.getStatus() });
+  } catch (error) {
+    logger.error('Reset CBHours job stats error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/cbhours/poll
+ * Manually trigger a poll for specific usernames
+ */
+router.post('/cbhours/poll', async (req: Request, res: Response) => {
+  try {
+    const { usernames } = req.body;
+    if (!usernames || !Array.isArray(usernames) || usernames.length === 0) {
+      return res.status(400).json({ error: 'Usernames array required' });
+    }
+
+    logger.info(`Manual CBHours poll triggered for ${usernames.length} usernames`);
+    const result = await cbhoursPollingJob.pollUsernames(usernames);
+
+    res.json({
+      requestSuccess: true,
+      recorded: result.success,
+      failed: result.failed,
+      online: result.online,
+    });
+  } catch (error) {
+    logger.error('Manual CBHours poll error', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

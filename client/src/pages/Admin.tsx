@@ -56,41 +56,97 @@ interface JobStatus {
 }
 
 interface SystemStats {
-  diskUsage?: {
-    total: number;
-    database: number;
-    images: number;
-  };
-  userCounts?: {
-    total: number;
-    bySource: Record<string, number>;
+  database: {
+    sizeBytes: number;
+    totalPersons: number;
     byRole: Record<string, number>;
+    bySource: Record<string, number>;
+    imagesStored: number;
   };
-  queueStats?: {
+  queue: {
     priority1Pending: number;
     priority2Active: number;
-    failedLookups24h: number;
+    failedLast24h: number;
   };
-  dataFreshness?: {
+  following: {
+    followingCount: number;
+    followerCount: number;
+    subsCount: number;
+    bannedCount: number;
+    friendsCount: number;
+  };
+  activity: {
+    snapshotsLast24h: number;
+    snapshotsLastHour: number;
+  };
+  realtime: {
+    feedCacheSize: number;
+    feedCacheUpdatedAt: string | null;
+    cbhoursOnline: number;
+    cbhoursTracked: number;
+  };
+  jobs: {
     affiliate: {
-      lastPoll: string | null;
-      modelsTracked: number;
-      onlineNow: number;
+      isRunning: boolean;
+      isPaused: boolean;
+      lastRun: string | null;
+      totalRuns: number;
+      totalEnriched: number;
+    };
+    profileScrape: {
+      isRunning: boolean;
+      isPaused: boolean;
+      lastRun: string | null;
+      totalRuns: number;
+      totalScraped: number;
     };
     cbhours: {
-      lastPoll: string | null;
-      modelsWithTrophy: number;
-      currentlyOnline: number;
+      isRunning: boolean;
+      isPaused: boolean;
+      lastRun: string | null;
+      totalRuns: number;
+      totalRecorded: number;
+    };
+    statbate: {
+      isRunning: boolean;
+      isPaused: boolean;
     };
   };
 }
 
-type AdminTab = 'jobs' | 'system-stats' | 'data-sources' | 'scraper' | 'profile-scrape';
+type AdminTab = 'jobs' | 'system-stats' | 'follower-trends' | 'data-sources' | 'scraper' | 'profile-scrape';
+
+interface FollowerMover {
+  username: string;
+  person_id: string;
+  total_change: number;
+  current_count: number;
+}
+
+interface FollowerRecentChange {
+  id: string;
+  username: string;
+  person_id: string;
+  follower_count: number;
+  delta: number;
+  recorded_at: string;
+  source: string;
+}
+
+interface FollowerTrendsDashboard {
+  topGainers: FollowerMover[];
+  topLosers: FollowerMover[];
+  recentChanges: FollowerRecentChange[];
+  totalTracked: number;
+  totalWithChanges: number;
+}
 
 const Admin: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('jobs');
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
+  const [followerTrends, setFollowerTrends] = useState<FollowerTrendsDashboard | null>(null);
+  const [trendsDays, setTrendsDays] = useState<number>(7);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [configCollapsed, setConfigCollapsed] = useState(true);
@@ -139,6 +195,13 @@ const Admin: React.FC = () => {
       fetchSystemStats();
     }
   }, [activeTab]);
+
+  // Load follower trends when on Follower Trends tab
+  useEffect(() => {
+    if (activeTab === 'follower-trends') {
+      fetchFollowerTrends();
+    }
+  }, [activeTab, trendsDays]);
 
   // Check cookie status when on Scraper tab
   useEffect(() => {
@@ -196,37 +259,29 @@ const Admin: React.FC = () => {
   const fetchSystemStats = async () => {
     try {
       setLoading(true);
-      // TODO: Implement system stats API endpoint
-      // For now, using placeholder data
-      setSystemStats({
-        diskUsage: {
-          total: 0,
-          database: 0,
-          images: 0,
-        },
-        userCounts: {
-          total: 0,
-          bySource: {},
-          byRole: {},
-        },
-        queueStats: {
-          priority1Pending: 0,
-          priority2Active: 0,
-          failedLookups24h: 0,
-        },
-        dataFreshness: {
-          affiliate: {
-            lastPoll: null,
-            modelsTracked: 0,
-            onlineNow: 0,
-          },
-          cbhours: {
-            lastPoll: null,
-            modelsWithTrophy: 0,
-            currentlyOnline: 0,
-          },
-        },
-      });
+      const response = await fetch('/api/system/stats');
+      if (!response.ok) {
+        throw new Error('Failed to fetch system stats');
+      }
+      const data = await response.json();
+      setSystemStats(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchFollowerTrends = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/system/follower-trends/dashboard?days=${trendsDays}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch follower trends');
+      }
+      const data = await response.json();
+      setFollowerTrends(data);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -790,72 +845,410 @@ const Admin: React.FC = () => {
     </>
   );
 
+  const getJobStatusBadge = (isRunning: boolean, isPaused: boolean) => {
+    const baseBadge = "px-2 py-0.5 rounded-full text-xs font-semibold uppercase";
+    if (isRunning && !isPaused) {
+      return <span className={`${baseBadge} bg-emerald-500/20 text-emerald-400`}>Running</span>;
+    } else if (isPaused) {
+      return <span className={`${baseBadge} bg-amber-500/20 text-amber-400`}>Paused</span>;
+    }
+    return <span className={`${baseBadge} bg-gray-500/20 text-gray-400`}>Stopped</span>;
+  };
+
   const renderSystemStatsTab = () => (
     <>
       {systemStats && (
         <>
-          {/* Disk Usage Card */}
+          {/* Database & Storage Card */}
           <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
             <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Disk Usage</h2>
+              <h2 className="m-0 text-2xl text-white">Database & Storage</h2>
             </div>
             <div className="p-5">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                 <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{formatBytes(systemStats.diskUsage?.total || 0)}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Disk Usage</div>
-                </div>
-                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{formatBytes(systemStats.diskUsage?.database || 0)}</div>
+                  <div className="text-3xl font-bold mb-2">{formatBytes(systemStats.database.sizeBytes)}</div>
                   <div className="text-sm opacity-90 uppercase tracking-wide">Database Size</div>
                 </div>
                 <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{formatBytes(systemStats.diskUsage?.images || 0)}</div>
+                  <div className="text-3xl font-bold mb-2">{systemStats.database.totalPersons.toLocaleString()}</div>
+                  <div className="text-sm opacity-90 uppercase tracking-wide">Total Persons</div>
+                </div>
+                <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                  <div className="text-3xl font-bold mb-2">{systemStats.database.imagesStored.toLocaleString()}</div>
                   <div className="text-sm opacity-90 uppercase tracking-wide">Images Stored</div>
+                </div>
+              </div>
+
+              {/* Role breakdown */}
+              <div className="mt-5 pt-5 border-t border-white/10">
+                <h3 className="text-lg mb-4 text-white">By Role</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {Object.entries(systemStats.database.byRole).map(([role, count]) => (
+                    <div key={role} className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                      <span className="font-semibold text-white/70">{role}:</span>
+                      <span className="text-white font-medium">{count.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Source breakdown */}
+              {Object.keys(systemStats.database.bySource).length > 0 && (
+                <div className="mt-5 pt-5 border-t border-white/10">
+                  <h3 className="text-lg mb-4 text-white">Snapshots by Source</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {Object.entries(systemStats.database.bySource).map(([source, count]) => (
+                      <div key={source} className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
+                        <span className="font-semibold text-white/70">{source}:</span>
+                        <span className="text-white font-medium">{count.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Following & Social Card */}
+          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
+            <div className="p-5 border-b border-white/10 flex justify-between items-center">
+              <h2 className="m-0 text-2xl text-white">Following & Categorization</h2>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                  <div className="text-2xl font-bold mb-1">{systemStats.following.followingCount}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">Following</div>
+                </div>
+                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                  <div className="text-2xl font-bold mb-1">{systemStats.following.followerCount}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">Followers</div>
+                </div>
+                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                  <div className="text-2xl font-bold mb-1">{systemStats.following.subsCount}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">Active Subs</div>
+                </div>
+                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                  <div className="text-2xl font-bold mb-1">{systemStats.following.friendsCount}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">Friends</div>
+                </div>
+                <div className="text-center p-4 bg-gradient-to-br from-red-600 to-red-800 rounded-lg text-white">
+                  <div className="text-2xl font-bold mb-1">{systemStats.following.bannedCount}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">Banned</div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* User Statistics Card */}
+          {/* Activity & Real-time Card */}
           <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
             <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">User Statistics</h2>
+              <h2 className="m-0 text-2xl text-white">Activity & Real-time</h2>
             </div>
             <div className="p-5">
-              <div className="text-center p-8 bg-mhc-primary/10 border border-mhc-primary/30 rounded-lg mb-4">
-                <div className="text-5xl font-bold text-mhc-primary mb-2">{systemStats.userCounts?.total || 0}</div>
-                <div className="text-lg text-white/80">Total Users in Database</div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                  <div className="text-2xl font-bold mb-1">{systemStats.activity.snapshotsLastHour}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">Snapshots (1h)</div>
+                </div>
+                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                  <div className="text-2xl font-bold mb-1">{systemStats.activity.snapshotsLast24h.toLocaleString()}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">Snapshots (24h)</div>
+                </div>
+                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                  <div className="text-2xl font-bold mb-1">{systemStats.realtime.feedCacheSize}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">Feed Cache</div>
+                </div>
+                <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                  <div className="text-2xl font-bold mb-1">{systemStats.realtime.cbhoursOnline}/{systemStats.realtime.cbhoursTracked}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">CBHours Online</div>
+                </div>
               </div>
-              <p className="text-white/60 text-base mt-4 p-4 bg-white/5 rounded-lg">
-                System Stats API endpoint not yet implemented. Coming soon!
-              </p>
+
+              {systemStats.realtime.feedCacheUpdatedAt && (
+                <div className="mt-4 text-sm text-white/60 text-center">
+                  Feed cache last updated: {formatDate(systemStats.realtime.feedCacheUpdatedAt)}
+                </div>
+              )}
             </div>
           </div>
 
           {/* Queue Statistics Card */}
           <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
             <div className="p-5 border-b border-white/10 flex justify-between items-center">
-              <h2 className="m-0 text-2xl text-white">Queue Statistics</h2>
+              <h2 className="m-0 text-2xl text-white">Priority Lookup Queue</h2>
             </div>
             <div className="p-5">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
                 <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{systemStats.queueStats?.priority1Pending || 0}</div>
+                  <div className="text-3xl font-bold mb-2">{systemStats.queue.priority1Pending}</div>
                   <div className="text-sm opacity-90 uppercase tracking-wide">Priority 1 Pending</div>
                 </div>
                 <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{systemStats.queueStats?.priority2Active || 0}</div>
+                  <div className="text-3xl font-bold mb-2">{systemStats.queue.priority2Active}</div>
                   <div className="text-sm opacity-90 uppercase tracking-wide">Priority 2 Active</div>
                 </div>
                 <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                  <div className="text-3xl font-bold mb-2">{systemStats.queueStats?.failedLookups24h || 0}</div>
-                  <div className="text-sm opacity-90 uppercase tracking-wide">Failed Lookups (24h)</div>
+                  <div className="text-3xl font-bold mb-2">{systemStats.queue.failedLast24h}</div>
+                  <div className="text-sm opacity-90 uppercase tracking-wide">Failed (24h)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Background Jobs Summary Card */}
+          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
+            <div className="p-5 border-b border-white/10 flex justify-between items-center">
+              <h2 className="m-0 text-2xl text-white">Background Jobs Summary</h2>
+            </div>
+            <div className="p-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Affiliate Job */}
+                <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="font-semibold text-white">Affiliate API</span>
+                    {getJobStatusBadge(systemStats.jobs.affiliate.isRunning, systemStats.jobs.affiliate.isPaused)}
+                  </div>
+                  <div className="text-sm text-white/60 space-y-1">
+                    <div>Runs: {systemStats.jobs.affiliate.totalRuns}</div>
+                    <div>Enriched: {systemStats.jobs.affiliate.totalEnriched.toLocaleString()}</div>
+                    <div>Last: {systemStats.jobs.affiliate.lastRun ? formatDate(systemStats.jobs.affiliate.lastRun) : 'Never'}</div>
+                  </div>
+                </div>
+
+                {/* Profile Scrape Job */}
+                <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="font-semibold text-white">Profile Scraper</span>
+                    {getJobStatusBadge(systemStats.jobs.profileScrape.isRunning, systemStats.jobs.profileScrape.isPaused)}
+                  </div>
+                  <div className="text-sm text-white/60 space-y-1">
+                    <div>Runs: {systemStats.jobs.profileScrape.totalRuns}</div>
+                    <div>Scraped: {systemStats.jobs.profileScrape.totalScraped.toLocaleString()}</div>
+                    <div>Last: {systemStats.jobs.profileScrape.lastRun ? formatDate(systemStats.jobs.profileScrape.lastRun) : 'Never'}</div>
+                  </div>
+                </div>
+
+                {/* CBHours Job */}
+                <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="font-semibold text-white">CBHours</span>
+                    {getJobStatusBadge(systemStats.jobs.cbhours.isRunning, systemStats.jobs.cbhours.isPaused)}
+                  </div>
+                  <div className="text-sm text-white/60 space-y-1">
+                    <div>Runs: {systemStats.jobs.cbhours.totalRuns}</div>
+                    <div>Recorded: {systemStats.jobs.cbhours.totalRecorded.toLocaleString()}</div>
+                    <div>Last: {systemStats.jobs.cbhours.lastRun ? formatDate(systemStats.jobs.cbhours.lastRun) : 'Never'}</div>
+                  </div>
+                </div>
+
+                {/* Statbate Job */}
+                <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="font-semibold text-white">Statbate</span>
+                    {getJobStatusBadge(systemStats.jobs.statbate.isRunning, systemStats.jobs.statbate.isPaused)}
+                  </div>
+                  <div className="text-sm text-white/60 space-y-1">
+                    <div>Status: {systemStats.jobs.statbate.isRunning ? (systemStats.jobs.statbate.isPaused ? 'Paused' : 'Running') : 'Stopped'}</div>
+                    <div className="text-xs mt-2">See Jobs page for details</div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </>
+      )}
+
+      {!systemStats && loading && (
+        <div className="text-center p-10 text-white/60">
+          Loading system statistics...
+        </div>
+      )}
+    </>
+  );
+
+  const renderFollowerTrendsTab = () => (
+    <>
+      {/* Time Period Selector */}
+      <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
+        <div className="p-5 border-b border-white/10 flex justify-between items-center">
+          <h2 className="m-0 text-2xl text-white">Follower Trends</h2>
+          <div className="flex gap-2">
+            {[7, 14, 30].map(days => (
+              <button
+                key={days}
+                onClick={() => setTrendsDays(days)}
+                className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${
+                  trendsDays === days
+                    ? 'bg-mhc-primary text-white'
+                    : 'bg-white/10 text-white/70 hover:bg-white/20'
+                }`}
+              >
+                {days}d
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="p-5">
+          {followerTrends && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{followerTrends.totalTracked}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Models Tracked</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{followerTrends.totalWithChanges}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">With Changes</div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {followerTrends && (
+        <>
+          {/* Top Gainers */}
+          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
+            <div className="p-5 border-b border-white/10 flex justify-between items-center">
+              <h2 className="m-0 text-2xl text-white">Top Gainers ({trendsDays} days)</h2>
+              <span className="text-emerald-400 text-sm font-medium">Follower Growth</span>
+            </div>
+            <div className="p-5">
+              {followerTrends.topGainers.length === 0 ? (
+                <p className="text-white/60 text-center py-4">No data yet. Follower counts are tracked during polling jobs.</p>
+              ) : (
+                <div className="space-y-3">
+                  {followerTrends.topGainers.map((mover, index) => (
+                    <div
+                      key={mover.person_id}
+                      className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 hover:border-emerald-500/30 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-white/40 font-mono text-sm w-6">#{index + 1}</span>
+                        <a
+                          href={`/profile/${mover.username}`}
+                          className="text-mhc-primary hover:text-mhc-primary-light font-medium"
+                        >
+                          {mover.username}
+                        </a>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-white/60 text-sm">
+                          {mover.current_count?.toLocaleString() || 'N/A'} followers
+                        </span>
+                        <span className="text-emerald-400 font-bold text-lg">
+                          +{mover.total_change.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Top Losers */}
+          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
+            <div className="p-5 border-b border-white/10 flex justify-between items-center">
+              <h2 className="m-0 text-2xl text-white">Top Losers ({trendsDays} days)</h2>
+              <span className="text-red-400 text-sm font-medium">Follower Decline</span>
+            </div>
+            <div className="p-5">
+              {followerTrends.topLosers.length === 0 ? (
+                <p className="text-white/60 text-center py-4">No data yet. Follower counts are tracked during polling jobs.</p>
+              ) : (
+                <div className="space-y-3">
+                  {followerTrends.topLosers.map((mover, index) => (
+                    <div
+                      key={mover.person_id}
+                      className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 hover:border-red-500/30 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-white/40 font-mono text-sm w-6">#{index + 1}</span>
+                        <a
+                          href={`/profile/${mover.username}`}
+                          className="text-mhc-primary hover:text-mhc-primary-light font-medium"
+                        >
+                          {mover.username}
+                        </a>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-white/60 text-sm">
+                          {mover.current_count?.toLocaleString() || 'N/A'} followers
+                        </span>
+                        <span className="text-red-400 font-bold text-lg">
+                          {mover.total_change.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Recent Changes */}
+          <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
+            <div className="p-5 border-b border-white/10 flex justify-between items-center">
+              <h2 className="m-0 text-2xl text-white">Recent Significant Changes</h2>
+              <span className="text-white/60 text-sm">Changes of 50+ followers</span>
+            </div>
+            <div className="p-5">
+              {followerTrends.recentChanges.length === 0 ? (
+                <p className="text-white/60 text-center py-4">No significant changes recorded yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-left border-b border-white/10">
+                        <th className="pb-3 text-white/70 font-semibold">Username</th>
+                        <th className="pb-3 text-white/70 font-semibold text-right">Count</th>
+                        <th className="pb-3 text-white/70 font-semibold text-right">Change</th>
+                        <th className="pb-3 text-white/70 font-semibold text-right">Source</th>
+                        <th className="pb-3 text-white/70 font-semibold text-right">When</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {followerTrends.recentChanges.map(change => (
+                        <tr key={change.id} className="border-b border-white/5 hover:bg-white/5">
+                          <td className="py-3">
+                            <a
+                              href={`/profile/${change.username}`}
+                              className="text-mhc-primary hover:text-mhc-primary-light"
+                            >
+                              {change.username}
+                            </a>
+                          </td>
+                          <td className="py-3 text-right text-white/80">
+                            {change.follower_count.toLocaleString()}
+                          </td>
+                          <td className={`py-3 text-right font-bold ${change.delta > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {change.delta > 0 ? '+' : ''}{change.delta.toLocaleString()}
+                          </td>
+                          <td className="py-3 text-right">
+                            <span className="px-2 py-0.5 rounded text-xs bg-white/10 text-white/70">
+                              {change.source}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right text-white/60 text-sm">
+                            {new Date(change.recorded_at).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {!followerTrends && loading && (
+        <div className="text-center p-10 text-white/60">
+          Loading follower trends...
+        </div>
       )}
     </>
   );
@@ -1470,6 +1863,16 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
           </button>
           <button
             className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all ${
+              activeTab === 'follower-trends'
+                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary border-b-mhc-primary font-semibold'
+                : 'bg-mhc-surface/60 text-white/90 hover:bg-mhc-primary/10 hover:text-mhc-primary-light hover:border-mhc-primary/40'
+            }`}
+            onClick={() => setActiveTab('follower-trends')}
+          >
+            Follower Trends
+          </button>
+          <button
+            className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all ${
               activeTab === 'data-sources'
                 ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary border-b-mhc-primary font-semibold'
                 : 'bg-mhc-surface/60 text-white/90 hover:bg-mhc-primary/10 hover:text-mhc-primary-light hover:border-mhc-primary/40'
@@ -1521,6 +1924,7 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
       <div className="mt-4">
         {activeTab === 'jobs' && renderJobsTab()}
         {activeTab === 'system-stats' && renderSystemStatsTab()}
+        {activeTab === 'follower-trends' && renderFollowerTrendsTab()}
         {activeTab === 'data-sources' && renderDataSourcesTab()}
         {activeTab === 'scraper' && renderScraperTab()}
         {activeTab === 'profile-scrape' && renderProfileScrapeTab()}

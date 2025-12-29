@@ -2,6 +2,8 @@ import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
 import { cbhoursClient, CBHoursLiveModel, CBHoursActivitySegment } from '../api/cbhours/cbhours-client.js';
 import { PersonService } from './person.service.js';
+import { FollowerHistoryService } from './follower-history.service.js';
+
 
 export class CBHoursStatsService {
   /**
@@ -65,6 +67,11 @@ export class CBHoursStatsService {
            has_cbhours_trophy = TRUE`,
         [person.id]
       );
+
+      // Record follower count history for trend tracking
+      if (stats.followers && stats.followers > 0) {
+        await FollowerHistoryService.recordCount(person.id, stats.followers, 'cbhours');
+      }
 
       logger.debug('CBHours live stats recorded', {
         username,

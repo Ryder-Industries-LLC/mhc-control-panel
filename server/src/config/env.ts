@@ -56,6 +56,12 @@ const envSchema = z.object({
   CHATURBATE_STATS_TOKEN: z.string().min(1).optional(),
   CHATURBATE_USERNAME: z.string().min(1),
 
+  // OpenAI (for AI summaries)
+  // Recommended models: gpt-4.1-mini (best balance), gpt-4.1-nano (cheapest), gpt-4o-mini (legacy)
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_MODEL: z.string().default('gpt-4.1-mini'),
+  OPENAI_MAX_TOKENS: z.string().regex(/^\d+$/).transform(Number).default('6000'),
+
   // Runtime
   RUN_MODE: z.enum(['web', 'worker']).default('web'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

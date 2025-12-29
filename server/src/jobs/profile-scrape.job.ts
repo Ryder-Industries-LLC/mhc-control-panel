@@ -33,11 +33,11 @@ export class ProfileScrapeJob {
   private isProcessing = false;
   private intervalId: NodeJS.Timeout | null = null;
   private config: ProfileScrapeConfig = {
-    intervalMinutes: 60, // Run every hour
-    maxProfilesPerRun: MAX_PROFILES_PER_RUN,
+    intervalMinutes: 15,
+    maxProfilesPerRun: 50,
     delayBetweenProfiles: DELAY_BETWEEN_PROFILES,
     refreshDays: PROFILE_REFRESH_DAYS,
-    enabled: false,
+    enabled: true,
     prioritizeFollowing: true,
   };
 

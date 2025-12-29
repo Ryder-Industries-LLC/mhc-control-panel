@@ -15,6 +15,8 @@ import insightsRoutes from './routes/insights.js';
 import profileRoutes from './routes/profile.js';
 import affiliateRoutes from './routes/affiliate.js';
 import followersRoutes from './routes/followers.js';
+import systemRoutes from './routes/system.js';
+import broadcastsRoutes from './routes/broadcasts.js';
 
 export function createApp() {
   const app = express();
@@ -60,6 +62,8 @@ export function createApp() {
   app.use('/api/profile', profileRoutes);
   app.use('/api/affiliate', affiliateRoutes);
   app.use('/api/followers', followersRoutes);
+  app.use('/api/system', systemRoutes);
+  app.use('/api/broadcasts', broadcastsRoutes);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

@@ -6,7 +6,23 @@ import { formatDuration, formatGender } from '../utils/formatting';
 
 interface ProfilePageProps {}
 
-type TabType = 'snapshot' | 'sessions' | 'profile' | 'interactions' | 'images';
+type TabType = 'snapshot' | 'sessions' | 'profile' | 'interactions' | 'images' | 'history';
+type HistorySubTab = 'messaged' | 'tipped';
+
+interface MemberInfo {
+  name: string;
+  did: number;
+  first_message_date: string | null;
+  first_tip_date: string | null;
+  last_tip_date: string | null;
+  last_tip_amount: number;
+  models_messaged_2weeks: number;
+  models_messaged_2weeks_list: string[];
+  models_tipped_2weeks: number;
+  models_tipped_2weeks_list: string[];
+  per_day_tokens: Array<{ date: string; tokens: number }>;
+  all_time_tokens: number;
+}
 
 // Check if a session is currently live (observed within the last 30 minutes)
 const isSessionLive = (session: any): boolean => {
@@ -68,9 +84,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [imageHistory, setImageHistory] = useState<ImageHistoryItem[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
+  // Member info (Statbate) state
+  const [memberInfo, setMemberInfo] = useState<MemberInfo | null>(null);
+  const [memberInfoLoading, setMemberInfoLoading] = useState(false);
+  const [memberInfoError, setMemberInfoError] = useState<string | null>(null);
+  const [historySubTab, setHistorySubTab] = useState<HistorySubTab>('messaged');
+
   // Notes and status state
   const [notes, setNotes] = useState('');
-  const [streamSummary, setStreamSummary] = useState('');
   const [bannedMe, setBannedMe] = useState(false);
   const [activeSub, setActiveSub] = useState(false);
   const [firstServiceDate, setFirstServiceDate] = useState('');
@@ -130,7 +151,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
   useEffect(() => {
     if (profileData?.profile) {
       setNotes(profileData.profile.notes || '');
-      setStreamSummary(profileData.profile.stream_summary || '');
       setBannedMe(profileData.profile.banned_me || false);
       setActiveSub(profileData.profile.active_sub || false);
       setFirstServiceDate(profileData.profile.first_service_date ? profileData.profile.first_service_date.split('T')[0] : '');
@@ -154,6 +174,42 @@ const Profile: React.FC<ProfilePageProps> = () => {
         });
     }
   }, [profileData?.person?.id]);
+
+  // Fetch member info from Statbate when History tab is selected
+  useEffect(() => {
+    if (activeTab === 'history' && profileData?.person?.username && !memberInfo && !memberInfoLoading) {
+      setMemberInfoLoading(true);
+      setMemberInfoError(null);
+
+      fetch(`/api/profile/${profileData.person.username}/member-info`)
+        .then(response => {
+          if (!response.ok) {
+            if (response.status === 404) {
+              throw new Error('Member not found in Statbate');
+            }
+            throw new Error('Failed to fetch member info');
+          }
+          return response.json();
+        })
+        .then(data => {
+          setMemberInfo(data.data);
+        })
+        .catch(err => {
+          console.error('Failed to fetch member info', err);
+          setMemberInfoError(err.message || 'Failed to fetch member info');
+        })
+        .finally(() => {
+          setMemberInfoLoading(false);
+        });
+    }
+  }, [activeTab, profileData?.person?.username, memberInfo, memberInfoLoading]);
+
+  // Reset member info when profile changes
+  useEffect(() => {
+    setMemberInfo(null);
+    setMemberInfoError(null);
+    setHistorySubTab('messaged');
+  }, [profileData?.person?.username]);
 
   const handleLookup = async (lookupUsername?: string) => {
     const usernameToLookup = lookupUsername || username;
@@ -205,7 +261,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           notes,
-          stream_summary: streamSummary,
           banned_me: bannedMe,
           active_sub: activeSub,
           first_service_date: firstServiceDate || null,
@@ -616,19 +671,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 </label>
               </div>
 
-              {/* Row 3: Stream Summary */}
-              <div className="flex-1">
-                <label className="block text-mhc-text-muted text-sm font-semibold mb-2">Stream Summary</label>
-                <textarea
-                  value={streamSummary}
-                  onChange={(e) => setStreamSummary(e.target.value)}
-                  placeholder="Post-broadcast notes and summary..."
-                  rows={3}
-                  className="w-full px-4 py-2.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                />
-              </div>
-
-              {/* Row 4: Notes and Save Button */}
+              {/* Row 3: Notes and Save Button */}
               <div className="flex-1">
                 <label className="block text-mhc-text-muted text-sm font-semibold mb-2">Notes</label>
                 <div className="flex gap-3">
@@ -707,6 +750,16 @@ const Profile: React.FC<ProfilePageProps> = () => {
               onClick={() => setActiveTab('images')}
             >
               Images {imageHistory.length > 0 && `(${imageHistory.length})`}
+            </button>
+            <button
+              className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
+                activeTab === 'history'
+                  ? 'bg-mhc-primary text-white'
+                  : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
+              }`}
+              onClick={() => setActiveTab('history')}
+            >
+              History
             </button>
           </div>
 
@@ -1066,6 +1119,166 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   </div>
                 ) : (
                   <p className="text-mhc-text-muted">No images saved yet. Images are captured when the user broadcasts.</p>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'history' && (
+              <div>
+                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Member History</h3>
+
+                {memberInfoLoading && (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="text-mhc-text-muted">Loading member info from Statbate...</div>
+                  </div>
+                )}
+
+                {memberInfoError && (
+                  <div className="bg-red-500/20 border-l-4 border-red-500 text-red-300 px-4 py-3 rounded-md mb-5">
+                    <strong className="font-bold mr-1">Error:</strong> {memberInfoError}
+                  </div>
+                )}
+
+                {memberInfo && (
+                  <div className="space-y-6">
+                    {/* Overview Stats */}
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">First Message</span>
+                        <span className="block text-mhc-text text-base">
+                          {memberInfo.first_message_date
+                            ? new Date(memberInfo.first_message_date).toLocaleDateString('en-US', { dateStyle: 'medium' })
+                            : 'Never'}
+                        </span>
+                      </div>
+                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">First Tip</span>
+                        <span className="block text-mhc-text text-base">
+                          {memberInfo.first_tip_date
+                            ? new Date(memberInfo.first_tip_date).toLocaleDateString('en-US', { dateStyle: 'medium' })
+                            : 'Never'}
+                        </span>
+                      </div>
+                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Tip</span>
+                        <span className="block text-mhc-text text-base">
+                          {memberInfo.last_tip_date
+                            ? new Date(memberInfo.last_tip_date).toLocaleDateString('en-US', { dateStyle: 'medium' })
+                            : 'Never'}
+                        </span>
+                      </div>
+                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-yellow-500">
+                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Tip Amount</span>
+                        <span className="block text-yellow-400 text-base font-semibold">
+                          {memberInfo.last_tip_amount > 0 ? `${memberInfo.last_tip_amount.toLocaleString()} tokens` : 'N/A'}
+                        </span>
+                      </div>
+                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-emerald-500">
+                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">All-Time Tokens</span>
+                        <span className="block text-emerald-400 text-base font-semibold">
+                          {memberInfo.all_time_tokens.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-blue-500">
+                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Models Messaged (2wk)</span>
+                        <span className="block text-blue-400 text-base font-semibold">
+                          {memberInfo.models_messaged_2weeks}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Sub-tab navigation */}
+                    <div className="flex gap-2 border-b border-gray-700 pb-2">
+                      <button
+                        onClick={() => setHistorySubTab('messaged')}
+                        className={`px-4 py-2 rounded-t-md font-medium transition-all ${
+                          historySubTab === 'messaged'
+                            ? 'bg-mhc-primary text-white'
+                            : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
+                        }`}
+                      >
+                        Models Messaged - 2 Weeks ({memberInfo.models_messaged_2weeks})
+                      </button>
+                      <button
+                        onClick={() => setHistorySubTab('tipped')}
+                        className={`px-4 py-2 rounded-t-md font-medium transition-all ${
+                          historySubTab === 'tipped'
+                            ? 'bg-mhc-primary text-white'
+                            : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
+                        }`}
+                      >
+                        Models Tipped - 2 Weeks ({memberInfo.models_tipped_2weeks})
+                      </button>
+                    </div>
+
+                    {/* Sub-tab content */}
+                    <div className="mt-4">
+                      {historySubTab === 'messaged' && (
+                        <div>
+                          {memberInfo.models_messaged_2weeks_list.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                              {memberInfo.models_messaged_2weeks_list.map((modelUsername) => (
+                                <a
+                                  key={modelUsername}
+                                  href={`/profile/${modelUsername}`}
+                                  className="px-3 py-2 bg-mhc-surface-light rounded-md text-mhc-primary hover:bg-mhc-primary hover:text-white transition-colors text-center truncate"
+                                  title={modelUsername}
+                                >
+                                  {modelUsername}
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-mhc-text-muted">No models messaged in the last 2 weeks.</p>
+                          )}
+                        </div>
+                      )}
+
+                      {historySubTab === 'tipped' && (
+                        <div>
+                          {memberInfo.models_tipped_2weeks_list.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                              {memberInfo.models_tipped_2weeks_list.map((modelUsername) => (
+                                <a
+                                  key={modelUsername}
+                                  href={`/profile/${modelUsername}`}
+                                  className="px-3 py-2 bg-mhc-surface-light rounded-md text-mhc-primary hover:bg-mhc-primary hover:text-white transition-colors text-center truncate"
+                                  title={modelUsername}
+                                >
+                                  {modelUsername}
+                                </a>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-mhc-text-muted">No models tipped in the last 2 weeks.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Recent Tokens Per Day */}
+                    {memberInfo.per_day_tokens && memberInfo.per_day_tokens.length > 0 && (
+                      <div className="mt-6">
+                        <h4 className="text-mhc-text text-lg font-semibold mb-3">Recent Token Activity</h4>
+                        <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-2">
+                          {memberInfo.per_day_tokens.slice(0, 14).map((day) => (
+                            <div key={day.date} className="p-2 bg-mhc-surface-light rounded-md text-center">
+                              <div className="text-xs text-mhc-text-muted">
+                                {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </div>
+                              <div className={`text-sm font-semibold ${day.tokens > 0 ? 'text-yellow-400' : 'text-mhc-text-muted'}`}>
+                                {day.tokens > 0 ? day.tokens.toLocaleString() : '-'}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!memberInfoLoading && !memberInfoError && !memberInfo && (
+                  <p className="text-mhc-text-muted">Click on a user profile to load their member history from Statbate.</p>
                 )}
               </div>
             )}

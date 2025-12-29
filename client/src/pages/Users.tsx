@@ -24,6 +24,7 @@ interface PersonWithSource {
   age: number | null;
   following: boolean;
   follower: boolean;
+  banned_me?: boolean;
 }
 
 interface FollowingUser extends PersonWithSource {
@@ -760,11 +761,16 @@ const Users: React.FC = () => {
         </Link>
         {/* Info section */}
         <div className="p-3">
-          {/* Role badge - left aligned above username */}
-          <div className="mb-1">
+          {/* Role badge and Banned badge - left aligned above username */}
+          <div className="mb-1 flex items-center gap-1 flex-wrap">
             <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem]`}>
               {person.role}
             </span>
+            {person.banned_me && (
+              <span className="inline-block px-1.5 py-0.5 rounded text-[0.6rem] bg-red-500/20 text-red-400 border border-red-500/30">
+                Banned
+              </span>
+            )}
           </div>
           {/* Username */}
           <Link to={`/profile/${person.username}`} className="block font-semibold text-white truncate hover:text-mhc-primary transition-colors no-underline">
@@ -1137,6 +1143,9 @@ const Users: React.FC = () => {
                         {person.username}
                       </Link>
                       <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem] opacity-80`}>{person.role}</span>
+                      {person.banned_me && (
+                        <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-2 py-2">
@@ -1402,6 +1411,9 @@ const Users: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
                     <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
+                    {person.banned_me && (
+                      <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
+                    )}
                   </div>
                 </td>
                 <td className="px-2 py-2">
@@ -1604,6 +1616,9 @@ const Users: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
                     <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
+                    {person.banned_me && (
+                      <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
+                    )}
                   </div>
                 </td>
                 <td className="px-2 py-2">
@@ -1740,6 +1755,9 @@ const Users: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
                       <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
+                      {person.banned_me && (
+                        <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-2 py-2">
@@ -1857,6 +1875,9 @@ const Users: React.FC = () => {
                             <div className="flex items-center gap-2">
                               <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
                               <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
+                              {person.banned_me && (
+                                <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
+                              )}
                             </div>
                           </td>
                           <td className="px-2 py-2">
@@ -1999,6 +2020,9 @@ const Users: React.FC = () => {
                             <div className="flex items-center gap-2">
                               <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
                               <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
+                              {person.banned_me && (
+                                <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
+                              )}
                             </div>
                           </td>
                           <td className="px-2 py-2">

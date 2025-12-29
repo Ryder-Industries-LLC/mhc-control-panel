@@ -1,6 +1,7 @@
 import { PersonService } from './person.service.js';
 import { chaturbateAffiliateClient, type OnlineRoom } from '../api/chaturbate/affiliate-client.js';
 import { BroadcastSessionService } from './broadcast-session.service.js';
+import { FollowerHistoryService } from './follower-history.service.js';
 import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
 
@@ -71,6 +72,11 @@ export class ProfileEnrichmentService {
 
       // Record broadcast session
       const session = await BroadcastSessionService.recordSession(person.id, roomData);
+
+      // Record follower count history (for trend tracking)
+      if (roomData.num_followers > 0) {
+        await FollowerHistoryService.recordCount(person.id, roomData.num_followers, 'affiliate_api');
+      }
 
       logger.info(`Profile enriched from Affiliate API`, {
         username,
