@@ -368,8 +368,9 @@ export class MyBroadcastService {
 
   /**
    * Get summary statistics
+   * Combines my_broadcasts with stream_sessions to match getAll behavior
    */
-  static async getStats(days = 30): Promise<{
+  static async getStats(days = 30, broadcaster = 'hudson_cage'): Promise<{
     totalBroadcasts: number;
     totalMinutes: number;
     avgDuration: number;
@@ -378,8 +379,47 @@ export class MyBroadcastService {
     peakViewers: number;
     totalFollowersGained: number;
   }> {
+    // Use the same UNION logic as getAll to ensure consistent counts
     const result = await query(
-      `SELECT
+      `WITH all_broadcasts AS (
+        -- From my_broadcasts table
+        SELECT
+          id,
+          started_at,
+          duration_minutes,
+          peak_viewers,
+          total_tokens,
+          followers_gained,
+          source
+        FROM my_broadcasts
+        WHERE started_at >= NOW() - INTERVAL '1 day' * $1
+
+        UNION ALL
+
+        -- From stream_sessions table (sessions belonging to the broadcaster)
+        SELECT
+          id,
+          started_at,
+          CASE WHEN ended_at IS NOT NULL
+            THEN EXTRACT(EPOCH FROM (ended_at - started_at)) / 60
+            ELSE NULL
+          END::integer as duration_minutes,
+          0 as peak_viewers,
+          0 as total_tokens,
+          0 as followers_gained,
+          'events_api' as source
+        FROM stream_sessions
+        WHERE LOWER(broadcaster) = LOWER($2)
+          AND started_at >= NOW() - INTERVAL '1 day' * $1
+      ),
+      -- Deduplicate same as getAll (by hour)
+      deduped AS (
+        SELECT DISTINCT ON (DATE_TRUNC('hour', started_at))
+          *
+        FROM all_broadcasts
+        ORDER BY DATE_TRUNC('hour', started_at) DESC, source = 'manual' DESC
+      )
+      SELECT
         COUNT(*) as total_broadcasts,
         COALESCE(SUM(duration_minutes), 0) as total_minutes,
         COALESCE(AVG(duration_minutes), 0) as avg_duration,
@@ -387,9 +427,8 @@ export class MyBroadcastService {
         COALESCE(AVG(peak_viewers), 0) as avg_viewers,
         COALESCE(MAX(peak_viewers), 0) as peak_viewers,
         COALESCE(SUM(followers_gained), 0) as total_followers_gained
-       FROM my_broadcasts
-       WHERE started_at >= NOW() - INTERVAL '1 day' * $1`,
-      [days]
+      FROM deduped`,
+      [days, broadcaster]
     );
 
     const stats = result.rows[0];

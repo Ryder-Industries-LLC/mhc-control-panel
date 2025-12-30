@@ -416,11 +416,32 @@ const MyBroadcasts: React.FC = () => {
 
   return (
     <div className="max-w-6xl mx-auto px-5 py-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2 bg-gradient-primary bg-clip-text text-transparent">
-          My Broadcasts
-        </h1>
-        <p className="text-mhc-text-muted">Track and summarize your broadcast sessions</p>
+      {/* Header with action buttons */}
+      <div className="flex justify-between items-start mb-8">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 bg-gradient-primary bg-clip-text text-transparent">
+            My Broadcasts
+          </h1>
+          <p className="text-mhc-text-muted">Track and summarize your broadcast sessions</p>
+        </div>
+        <div className="flex gap-3 flex-wrap">
+          {!currentBroadcast && (
+            <button
+              onClick={() => setShowNewBroadcastForm(!showNewBroadcastForm)}
+              className="px-5 py-2.5 bg-mhc-primary hover:bg-mhc-primary-dark text-white font-semibold rounded-lg transition-colors"
+            >
+              {showNewBroadcastForm ? 'Cancel' : 'Start Manual Broadcast'}
+            </button>
+          )}
+          {aiStatus?.available && (
+            <button
+              onClick={openPreviewPanel}
+              className="px-5 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-400 font-semibold rounded-lg transition-colors"
+            >
+              Preview Mode
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -467,7 +488,7 @@ const MyBroadcasts: React.FC = () => {
           defaultCollapsed={false}
           className="mb-5"
         >
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mt-4">
             <div className="text-center p-3 bg-white/5 rounded-lg">
               <div className="text-2xl font-bold text-mhc-primary">{stats.totalBroadcasts}</div>
               <div className="text-xs text-white/60 uppercase">Broadcasts</div>
@@ -500,25 +521,6 @@ const MyBroadcasts: React.FC = () => {
         </CollapsibleSection>
       )}
 
-      {/* Actions */}
-      <div className="mb-5 flex gap-3 flex-wrap">
-        {!currentBroadcast && (
-          <button
-            onClick={() => setShowNewBroadcastForm(!showNewBroadcastForm)}
-            className="px-5 py-2.5 bg-mhc-primary hover:bg-mhc-primary-dark text-white font-semibold rounded-lg transition-colors"
-          >
-            {showNewBroadcastForm ? 'Cancel' : 'Start Manual Broadcast'}
-          </button>
-        )}
-        {aiStatus?.available && (
-          <button
-            onClick={openPreviewPanel}
-            className="px-5 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-400 font-semibold rounded-lg transition-colors"
-          >
-            Preview Mode (No Save)
-          </button>
-        )}
-      </div>
 
       {/* Preview Mode Panel */}
       {showPreviewPanel && (
@@ -910,7 +912,7 @@ const MyBroadcasts: React.FC = () => {
         title={
           <div className="flex items-center justify-between w-full">
             <span>My Broadcasts</span>
-            <span className="text-sm text-white/50 font-normal">{filteredBroadcasts.length} broadcasts</span>
+            <span className="text-sm text-white/50 font-normal ml-3">{filteredBroadcasts.length} broadcasts</span>
           </div>
         }
         defaultCollapsed={true}

@@ -124,6 +124,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
   // Image preview modal state
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
+  // Interactions pagination state
+  const [interactionsPage, setInteractionsPage] = useState(0);
+  const INTERACTIONS_PER_PAGE = 20;
+
+  // Token activity pagination state
+  const [tokenActivityPage, setTokenActivityPage] = useState(0);
+  const TOKEN_ACTIVITY_PER_PAGE = 31;
+
   // Auto-load profile if username in URL
   useEffect(() => {
     if (urlUsername) {
@@ -718,11 +726,33 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   )}
                 </div>
 
+                {/* Stats row - Total Sessions & Images */}
+                <div className="flex gap-4 mb-3 text-white/80 text-sm">
+                  {profileData.sessionStats?.totalSessions > 0 && (
+                    <span title="Total broadcast sessions observed">
+                      📺 {profileData.sessionStats.totalSessions.toLocaleString()} sessions
+                    </span>
+                  )}
+                  {imageHistory.length > 0 && (
+                    <span title="Total images captured">
+                      🖼️ {imageHistory.length} images
+                    </span>
+                  )}
+                </div>
+
                 {/* Info row */}
                 <div className="flex gap-2.5 flex-wrap">
                   {/* Gender */}
                   {(profileData.profile?.gender || profileData.latestSession?.gender || profileData.latestSnapshot?.normalized_metrics?.gender) && (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
+                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                      (() => {
+                        const gender = (profileData.profile?.gender || profileData.latestSession?.gender || profileData.latestSnapshot?.normalized_metrics?.gender || '').toLowerCase();
+                        if (gender === 'f' || gender === 'female') return 'bg-pink-500/30 border border-pink-500/50';
+                        if (gender === 't' || gender === 'trans') return 'bg-purple-500/30 border border-purple-500/50';
+                        if (gender === 'c' || gender === 'couple') return 'bg-teal-500/30 border border-teal-500/50';
+                        return 'bg-white/20';
+                      })()
+                    }`}>
                       {formatGender(profileData.profile?.gender || profileData.latestSession?.gender || profileData.latestSnapshot?.normalized_metrics?.gender)}
                     </span>
                   )}
@@ -1397,21 +1427,54 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
             {activeTab === 'interactions' && (
               <div>
-                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Interactions</h3>
+                <div className="flex justify-between items-center mb-5">
+                  <h3 className="m-0 text-mhc-text text-2xl font-semibold">Interactions</h3>
+                  {profileData.interactions && profileData.interactions.length > 0 && (
+                    <span className="text-mhc-text-muted text-sm">
+                      Showing {Math.min((interactionsPage + 1) * INTERACTIONS_PER_PAGE, profileData.interactions.length)} of {profileData.interactions.length}
+                    </span>
+                  )}
+                </div>
                 {profileData.interactions && profileData.interactions.length > 0 ? (
-                  <div className="flex flex-col gap-4">
-                    {profileData.interactions.map((interaction: any) => (
-                      <div key={interaction.id} className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                        <div className="flex justify-between items-center mb-3">
-                          <span className="font-semibold text-mhc-primary text-sm uppercase">{interaction.type.replace(/_/g, ' ')}</span>
-                          <span className="text-mhc-text-muted text-sm">{new Date(interaction.timestamp).toLocaleString()}</span>
-                        </div>
-                        {interaction.content && (
-                          <div className="p-3 bg-mhc-surface rounded-md text-mhc-text leading-relaxed">{interaction.content}</div>
-                        )}
+                  <>
+                    <div className="flex flex-col gap-4">
+                      {profileData.interactions
+                        .slice(interactionsPage * INTERACTIONS_PER_PAGE, (interactionsPage + 1) * INTERACTIONS_PER_PAGE)
+                        .map((interaction: any) => (
+                          <div key={interaction.id} className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                            <div className="flex justify-between items-center mb-3">
+                              <span className="font-semibold text-mhc-primary text-sm uppercase">{interaction.type.replace(/_/g, ' ')}</span>
+                              <span className="text-mhc-text-muted text-sm">{new Date(interaction.timestamp).toLocaleString()}</span>
+                            </div>
+                            {interaction.content && (
+                              <div className="p-3 bg-mhc-surface rounded-md text-mhc-text leading-relaxed">{interaction.content}</div>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                    {/* Pagination Controls */}
+                    {profileData.interactions.length > INTERACTIONS_PER_PAGE && (
+                      <div className="flex justify-center items-center gap-4 mt-6">
+                        <button
+                          onClick={() => setInteractionsPage(prev => Math.max(0, prev - 1))}
+                          disabled={interactionsPage === 0}
+                          className="px-4 py-2 rounded-md text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-mhc-surface-light text-white hover:bg-mhc-primary"
+                        >
+                          ← Previous
+                        </button>
+                        <span className="text-mhc-text-muted text-sm">
+                          Page {interactionsPage + 1} of {Math.ceil(profileData.interactions.length / INTERACTIONS_PER_PAGE)}
+                        </span>
+                        <button
+                          onClick={() => setInteractionsPage(prev => Math.min(Math.ceil(profileData.interactions.length / INTERACTIONS_PER_PAGE) - 1, prev + 1))}
+                          disabled={interactionsPage >= Math.ceil(profileData.interactions.length / INTERACTIONS_PER_PAGE) - 1}
+                          className="px-4 py-2 rounded-md text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-mhc-surface-light text-white hover:bg-mhc-primary"
+                        >
+                          Next →
+                        </button>
                       </div>
-                    ))}
-                  </div>
+                    )}
+                  </>
                 ) : (
                   <p className="text-mhc-text-muted">No interactions found.</p>
                 )}
@@ -1624,19 +1687,48 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     {/* Token Activity */}
                     {memberInfo.per_day_tokens && memberInfo.per_day_tokens.length > 0 && (
                       <div className="mt-6">
-                        <h4 className="text-mhc-text text-lg font-semibold mb-3">Token Activity</h4>
-                        <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-2">
-                          {memberInfo.per_day_tokens.slice(0, 31).map((day) => (
-                            <div key={day.date} className="p-2 bg-mhc-surface-light rounded-md text-center">
-                              <div className="text-xs text-mhc-text-muted">
-                                {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                              </div>
-                              <div className={`text-sm font-semibold ${day.tokens > 0 ? 'text-yellow-400' : 'text-mhc-text-muted'}`}>
-                                {day.tokens > 0 ? day.tokens.toLocaleString() : '-'}
-                              </div>
-                            </div>
-                          ))}
+                        <div className="flex justify-between items-center mb-3">
+                          <h4 className="text-mhc-text text-lg font-semibold m-0">Token Activity</h4>
+                          <span className="text-mhc-text-muted text-sm">
+                            {memberInfo.per_day_tokens.length} days total
+                          </span>
                         </div>
+                        <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-2">
+                          {memberInfo.per_day_tokens
+                            .slice(tokenActivityPage * TOKEN_ACTIVITY_PER_PAGE, (tokenActivityPage + 1) * TOKEN_ACTIVITY_PER_PAGE)
+                            .map((day) => (
+                              <div key={day.date} className="p-2 bg-mhc-surface-light rounded-md text-center">
+                                <div className="text-xs text-mhc-text-muted">
+                                  {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                </div>
+                                <div className={`text-sm font-semibold ${day.tokens > 0 ? 'text-yellow-400' : 'text-mhc-text-muted'}`}>
+                                  {day.tokens > 0 ? day.tokens.toLocaleString() : '-'}
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                        {/* Pagination Controls */}
+                        {memberInfo.per_day_tokens.length > TOKEN_ACTIVITY_PER_PAGE && (
+                          <div className="flex justify-center items-center gap-4 mt-4">
+                            <button
+                              onClick={() => setTokenActivityPage(prev => Math.max(0, prev - 1))}
+                              disabled={tokenActivityPage === 0}
+                              className="px-3 py-1.5 rounded-md text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-mhc-surface-light text-white hover:bg-mhc-primary"
+                            >
+                              ← Newer
+                            </button>
+                            <span className="text-mhc-text-muted text-xs">
+                              Page {tokenActivityPage + 1} of {Math.ceil(memberInfo.per_day_tokens.length / TOKEN_ACTIVITY_PER_PAGE)}
+                            </span>
+                            <button
+                              onClick={() => setTokenActivityPage(prev => Math.min(Math.ceil(memberInfo.per_day_tokens.length / TOKEN_ACTIVITY_PER_PAGE) - 1, prev + 1))}
+                              disabled={tokenActivityPage >= Math.ceil(memberInfo.per_day_tokens.length / TOKEN_ACTIVITY_PER_PAGE) - 1}
+                              className="px-3 py-1.5 rounded-md text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-mhc-surface-light text-white hover:bg-mhc-primary"
+                            >
+                              Older →
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

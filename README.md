@@ -17,9 +17,9 @@ The MHC Control Panel is a persistent analysis and memory system for Chaturbate 
 
 If you're continuing work on this project with a new Claude Code account, start here:
 
-1. **[AGENTS.md](AGENTS.md)** - Read first: AI agent instructions and architectural rules
-2. **[CLAUDE_CODE_SETUP.md](CLAUDE_CODE_SETUP.md)** - Current project state and setup guide
-3. **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development workflow and Docker usage
+1. **[docs/AGENTS.md](docs/AGENTS.md)** - Read first: AI agent instructions and architectural rules
+2. **[docs/setup/CLAUDE_CODE_SETUP.md](docs/setup/CLAUDE_CODE_SETUP.md)** - Current project state and setup guide
+3. **[docs/setup/DEVELOPMENT.md](docs/setup/DEVELOPMENT.md)** - Development workflow and Docker usage
 
 ---
 
@@ -44,8 +44,12 @@ If you're continuing work on this project with a new Claude Code account, start 
 - **Profile Schema Optimization**: Updated to match Chaturbate Affiliate API structure
 - **Profile Header Redesign**: Image on right, prominent LIVE indicator, HD icon, show start time in ET
 - **Multi-Source Data Integration**: Intelligent prioritization of Affiliate API, scraped profiles, and Statbate data
+- **Live Now Filter**: Following and Followers tabs show live-only toggle
+- **MyBroadcasts Page**: Statistics with accurate counts from combined data sources, action buttons at top-right
+- **Profile Page Pagination**: Interactions (20/page) and Token Activity (31 days/page) now paginated
+- **Documentation Reorganization**: All docs moved to `docs/` directory with category subfolders
 
-See [docs/SESSION_SUMMARY_2025-12-27.md](docs/SESSION_SUMMARY_2025-12-27.md) for latest changes.
+See [docs/sessions/](docs/sessions/) for session summaries.
 
 ---
 
@@ -65,9 +69,9 @@ See [docs/SESSION_SUMMARY_2025-12-27.md](docs/SESSION_SUMMARY_2025-12-27.md) for
 
 ### Deployment Options
 
-1. **Local Development (Docker)**: See [DEVELOPMENT.md](DEVELOPMENT.md) - **Start here for daily development**
-2. **Production (Render.com)**: See [DEPLOYMENT.md](DEPLOYMENT.md)
-3. **Docker Registry (Refineo)**: See [DOCKER_MIGRATION_REFINEO.md](DOCKER_MIGRATION_REFINEO.md)
+1. **Local Development (Docker)**: See [docs/setup/DEVELOPMENT.md](docs/setup/DEVELOPMENT.md) - **Start here for daily development**
+2. **Production (Render.com)**: See [docs/setup/DEPLOYMENT.md](docs/setup/DEPLOYMENT.md)
+3. **Docker Registry (Refineo)**: See [docs/setup/DOCKER_MIGRATION_REFINEO.md](docs/setup/DOCKER_MIGRATION_REFINEO.md)
 
 **Quick Start - Development Mode**:
 ```bash
@@ -163,7 +167,7 @@ cp .env.example .env
 - Rate limit: 2000 requests per minute
 - Events: `chatMessage`, `privateMessage`, `tip`, `follow`, `unfollow`, `broadcastStart`, `broadcastStop`, `userEnter`, `userLeave`, `fanclubJoin`, `mediaPurchase`, `roomSubjectChange`
 
-**Reference**: See [EVENTS_API_DOCS.md](EVENTS_API_DOCS.md) for full documentation
+**Reference**: See [docs/api/EVENTS_API_DOCS.md](docs/api/EVENTS_API_DOCS.md) for full documentation
 
 ### Chaturbate Stats API
 
@@ -238,7 +242,7 @@ PORT=3000
 
 ## Database Schema
 
-See [SCHEMA.md](SCHEMA.md) for detailed schema documentation.
+See [docs/SCHEMA.md](docs/SCHEMA.md) for detailed schema documentation.
 
 ### Core Tables
 
@@ -259,8 +263,8 @@ See [SCHEMA.md](SCHEMA.md) for detailed schema documentation.
 ## Development
 
 **Documentation:**
-- [DEVELOPMENT.md](DEVELOPMENT.md) - Complete workflow and explanations
-- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Common commands and troubleshooting
+- [docs/setup/DEVELOPMENT.md](docs/setup/DEVELOPMENT.md) - Complete workflow and explanations
+- [docs/QUICK_REFERENCE.md](docs/QUICK_REFERENCE.md) - Common commands and troubleshooting
 
 ### Quick Start
 

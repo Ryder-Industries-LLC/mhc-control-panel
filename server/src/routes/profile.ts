@@ -57,13 +57,13 @@ router.get('/:username', async (req: Request, res: Response) => {
     const profileResult = await query(profileSql, [person.id]);
     const profile = profileResult.rows[0] || null;
 
-    // Get recent interactions
+    // Get recent interactions (fetch more for pagination)
     const interactionsSql = `
       SELECT *
       FROM interactions
       WHERE person_id = $1
       ORDER BY timestamp DESC
-      LIMIT 50
+      LIMIT 200
     `;
     const interactionsResult = await query(interactionsSql, [person.id]);
     const interactions = interactionsResult.rows;

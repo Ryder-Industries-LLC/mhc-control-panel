@@ -149,6 +149,8 @@ const Admin: React.FC = () => {
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
   const [followerTrends, setFollowerTrends] = useState<FollowerTrendsDashboard | null>(null);
   const [trendsDays, setTrendsDays] = useState<number>(7);
+  const [recentChangesPage, setRecentChangesPage] = useState(0);
+  const RECENT_CHANGES_PER_PAGE = 20;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [configForm, setConfigForm] = useState<JobConfig>({
@@ -1153,7 +1155,14 @@ const Admin: React.FC = () => {
 
           {/* Recent Changes */}
           <CollapsibleSection
-            title="Recent Significant Changes"
+            title={
+              <div className="flex items-center gap-2">
+                <span>Recent Significant Changes</span>
+                {followerTrends.recentChanges.length > 0 && (
+                  <span className="text-xs text-white/50 font-normal">({followerTrends.recentChanges.length})</span>
+                )}
+              </div>
+            }
             defaultCollapsed={true}
             className="mb-5"
           >
@@ -1161,7 +1170,12 @@ const Admin: React.FC = () => {
               <p className="text-white/60 text-center py-4">No significant changes recorded yet.</p>
             ) : (
               <div className="overflow-x-auto">
-                <div className="text-white/60 text-sm mb-3">Changes of 50+ followers</div>
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-white/60 text-sm">Changes of 50+ followers</span>
+                  <span className="text-white/50 text-xs">
+                    Showing {Math.min((recentChangesPage + 1) * RECENT_CHANGES_PER_PAGE, followerTrends.recentChanges.length)} of {followerTrends.recentChanges.length}
+                  </span>
+                </div>
                 <table className="w-full">
                   <thead>
                     <tr className="text-left border-b border-white/10">
@@ -1173,34 +1187,58 @@ const Admin: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {followerTrends.recentChanges.map(change => (
-                      <tr key={change.id} className="border-b border-white/5 hover:bg-white/5">
-                        <td className="py-3">
-                          <a
-                            href={`/profile/${change.username}`}
-                            className="text-mhc-primary hover:text-mhc-primary-light"
-                          >
-                            {change.username}
-                          </a>
-                        </td>
-                        <td className="py-3 text-right text-white/80">
-                          {change.follower_count.toLocaleString()}
-                        </td>
-                        <td className={`py-3 text-right font-bold ${change.delta > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {change.delta > 0 ? '+' : ''}{change.delta.toLocaleString()}
-                        </td>
-                        <td className="py-3 text-right">
-                          <span className="px-2 py-0.5 rounded text-xs bg-white/10 text-white/70">
-                            {change.source}
-                          </span>
-                        </td>
-                        <td className="py-3 text-right text-white/60 text-sm">
-                          {new Date(change.recorded_at).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
+                    {followerTrends.recentChanges
+                      .slice(recentChangesPage * RECENT_CHANGES_PER_PAGE, (recentChangesPage + 1) * RECENT_CHANGES_PER_PAGE)
+                      .map(change => (
+                        <tr key={change.id} className="border-b border-white/5 hover:bg-white/5">
+                          <td className="py-3">
+                            <a
+                              href={`/profile/${change.username}`}
+                              className="text-mhc-primary hover:text-mhc-primary-light"
+                            >
+                              {change.username}
+                            </a>
+                          </td>
+                          <td className="py-3 text-right text-white/80">
+                            {change.follower_count.toLocaleString()}
+                          </td>
+                          <td className={`py-3 text-right font-bold ${change.delta > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {change.delta > 0 ? '+' : ''}{change.delta.toLocaleString()}
+                          </td>
+                          <td className="py-3 text-right">
+                            <span className="px-2 py-0.5 rounded text-xs bg-white/10 text-white/70">
+                              {change.source}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right text-white/60 text-sm">
+                            {new Date(change.recorded_at).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
+                {/* Pagination Controls */}
+                {followerTrends.recentChanges.length > RECENT_CHANGES_PER_PAGE && (
+                  <div className="flex justify-center items-center gap-4 mt-4">
+                    <button
+                      onClick={() => setRecentChangesPage(prev => Math.max(0, prev - 1))}
+                      disabled={recentChangesPage === 0}
+                      className="px-3 py-1.5 rounded-md text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-white/10 text-white hover:bg-mhc-primary"
+                    >
+                      ← Previous
+                    </button>
+                    <span className="text-white/60 text-xs">
+                      Page {recentChangesPage + 1} of {Math.ceil(followerTrends.recentChanges.length / RECENT_CHANGES_PER_PAGE)}
+                    </span>
+                    <button
+                      onClick={() => setRecentChangesPage(prev => Math.min(Math.ceil(followerTrends.recentChanges.length / RECENT_CHANGES_PER_PAGE) - 1, prev + 1))}
+                      disabled={recentChangesPage >= Math.ceil(followerTrends.recentChanges.length / RECENT_CHANGES_PER_PAGE) - 1}
+                      className="px-3 py-1.5 rounded-md text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-white/10 text-white hover:bg-mhc-primary"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </CollapsibleSection>
