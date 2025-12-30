@@ -70,6 +70,15 @@ interface BannedUser extends PersonWithSource {
   active_sub: boolean;
 }
 
+interface DomUser extends PersonWithSource {
+  service_level: string;
+  service_types: string[];
+  dom_started_at: string | null;
+  dom_ended_at: string | null;
+  dom_notes: string | null;
+  friend_tier: number | null;
+}
+
 interface PriorityLookup {
   id: string;
   username: string;
@@ -90,7 +99,7 @@ interface FeedCacheStatus {
   totalCount: number;
 }
 
-type TabType = 'directory' | 'following' | 'followers' | 'unfollowed' | 'subs' | 'friends' | 'bans' | 'watchlist';
+type TabType = 'directory' | 'following' | 'followers' | 'unfollowed' | 'subs' | 'doms' | 'friends' | 'bans' | 'watchlist';
 type StatFilter = 'all' | 'live' | 'priority2' | 'priority1' | 'with_image' | 'models' | 'viewers';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
@@ -103,6 +112,13 @@ const isPersonLive = (person: PersonWithSource): boolean => {
   return observedAt > thirtyMinutesAgo;
 };
 
+// Get the best "last active on Chaturbate" time - prioritize session_observed_at (actual CB activity)
+const getLastActiveTime = (person: PersonWithSource): string | null => {
+  // session_observed_at is when we saw them live on CB (actual activity)
+  // last_seen_at is just when our system last touched the record
+  return person.session_observed_at || null;
+};
+
 const Users: React.FC = () => {
   const location = useLocation();
   const [activeTab, setActiveTab] = useState<TabType>('following');
@@ -113,7 +129,7 @@ const Users: React.FC = () => {
   const [cacheStatus, setCacheStatus] = useState<FeedCacheStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sortField, setSortField] = useState<keyof PersonWithSource>('last_seen_at');
+  const [sortField, setSortField] = useState<keyof PersonWithSource>('session_observed_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -166,6 +182,11 @@ const Users: React.FC = () => {
   const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([]);
   const [bansLoading, setBansLoading] = useState(false);
 
+  // Doms tab state
+  const [domUsers, setDomUsers] = useState<DomUser[]>([]);
+  const [domsLoading, setDomsLoading] = useState(false);
+  const [domsFilter, setDomsFilter] = useState<string>('all');
+
   // Watchlist tab state
   const [watchlistUsers, setWatchlistUsers] = useState<PersonWithSource[]>([]);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
@@ -192,6 +213,8 @@ const Users: React.FC = () => {
       loadUnfollowed();
     } else if (activeTab === 'subs') {
       loadSubs();
+    } else if (activeTab === 'doms') {
+      loadDoms();
     } else if (activeTab === 'friends') {
       loadFriends();
     } else if (activeTab === 'bans') {
@@ -215,6 +238,13 @@ const Users: React.FC = () => {
     }
   }, [friendTierFilter]);
 
+  // Reload doms when filter changes
+  useEffect(() => {
+    if (activeTab === 'doms') {
+      loadDoms();
+    }
+  }, [domsFilter]);
+
   // Handle URL query parameters (username, tab, role)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -229,7 +259,7 @@ const Users: React.FC = () => {
     }
 
     // Handle tab navigation from System Stats
-    if (tabParam && ['directory', 'following', 'followers', 'unfollowed', 'subs', 'friends', 'bans', 'watchlist'].includes(tabParam)) {
+    if (tabParam && ['directory', 'following', 'followers', 'unfollowed', 'subs', 'doms', 'friends', 'bans', 'watchlist'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
 
@@ -391,6 +421,24 @@ const Users: React.FC = () => {
       console.error(err);
     } finally {
       setBansLoading(false);
+    }
+  };
+
+  const loadDoms = async () => {
+    try {
+      setDomsLoading(true);
+      setError(null);
+      const url = domsFilter !== 'all'
+        ? `http://localhost:3000/api/followers/doms?filter=${domsFilter}`
+        : 'http://localhost:3000/api/followers/doms';
+      const response = await fetch(url);
+      const data = await response.json();
+      setDomUsers(data.doms || []);
+    } catch (err) {
+      setError('Failed to load doms');
+      console.error(err);
+    } finally {
+      setDomsLoading(false);
     }
   };
 
@@ -613,7 +661,7 @@ const Users: React.FC = () => {
     let comparison = 0;
 
     // Handle date fields (ISO strings)
-    if (sortField === 'last_seen_at' || sortField === 'first_seen_at') {
+    if (sortField === 'last_seen_at' || sortField === 'first_seen_at' || sortField === 'session_observed_at') {
       const aDate = new Date(aValue as string).getTime();
       const bDate = new Date(bValue as string).getTime();
       comparison = aDate - bDate;
@@ -825,10 +873,10 @@ const Users: React.FC = () => {
           <Link to={`/profile/${person.username}`} className="block font-semibold text-white truncate hover:text-mhc-primary transition-colors no-underline">
             {person.username}
           </Link>
-          {/* Last seen (left) + Image count (right) */}
+          {/* Last active on CB (left) + Image count (right) */}
           <div className="flex items-center justify-between mt-1.5 text-xs">
             <span className="text-white/50">
-              {formatDate(person.last_seen_at, { relative: true })}
+              {getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}
             </span>
             {person.image_count > 1 && (
               <Link
@@ -1113,8 +1161,8 @@ const Users: React.FC = () => {
               }}
               className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white text-sm cursor-pointer focus:outline-none focus:border-mhc-primary"
             >
-              <option value="last_seen_at-desc" className="bg-mhc-surface">Last Seen (Newest)</option>
-              <option value="last_seen_at-asc" className="bg-mhc-surface">Last Seen (Oldest)</option>
+              <option value="session_observed_at-desc" className="bg-mhc-surface">Last Active (Newest)</option>
+              <option value="session_observed_at-asc" className="bg-mhc-surface">Last Active (Oldest)</option>
               <option value="username-asc" className="bg-mhc-surface">Username (A-Z)</option>
               <option value="username-desc" className="bg-mhc-surface">Username (Z-A)</option>
               <option value="interaction_count-desc" className="bg-mhc-surface">Most Interactions</option>
@@ -1173,10 +1221,10 @@ const Users: React.FC = () => {
                 Snapshots {sortField === 'snapshot_count' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
               <th
-                onClick={() => handleSort('last_seen_at')}
+                onClick={() => handleSort('session_observed_at')}
                 className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30 cursor-pointer select-none hover:bg-white/8"
               >
-                Last Seen {sortField === 'last_seen_at' && (sortDirection === 'asc' ? '↑' : '↓')}
+                Last Active {sortField === 'session_observed_at' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
               <th className="w-[150px] px-4 py-4 text-center font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Actions</th>
             </tr>
@@ -1258,7 +1306,7 @@ const Users: React.FC = () => {
                   </td>
                   <td className="px-4 py-4 text-center font-mono text-white/60">{person.interaction_count}</td>
                   <td className="px-4 py-4 text-center font-mono text-white/60">{person.snapshot_count}</td>
-                  <td className="px-4 py-4 text-white/80">{formatDate(person.last_seen_at, { relative: true })}</td>
+                  <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
                   <td className="px-4 py-4 text-center">
                     <div className="flex gap-2 justify-center">
                       {!priority && (
@@ -1449,7 +1497,7 @@ const Users: React.FC = () => {
               <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Age</th>
               <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Tags</th>
               <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Following Since</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Seen</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
               <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Actions</th>
             </tr>
           </thead>
@@ -1486,7 +1534,7 @@ const Users: React.FC = () => {
                   ) : <span className="text-white/30">—</span>}
                 </td>
                 <td className="px-4 py-4 text-white/80">{person.following_since ? formatDate(person.following_since, { includeTime: false }) : '—'}</td>
-                <td className="px-4 py-4 text-white/80">{formatDate(person.last_seen_at, { relative: true })}</td>
+                <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
                 <td className="px-4 py-4 text-center">
                   <button
                     className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-blue-500/20 hover:border-blue-500/30 hover:scale-110"
@@ -1654,7 +1702,7 @@ const Users: React.FC = () => {
               <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
               <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Age</th>
               <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Follower Since</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Seen</th>
+              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
               <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Actions</th>
             </tr>
           </thead>
@@ -1681,7 +1729,7 @@ const Users: React.FC = () => {
                 </td>
                 <td className="px-4 py-4 text-white/80">{person.age || '—'}</td>
                 <td className="px-4 py-4 text-white/80">{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '—'}</td>
-                <td className="px-4 py-4 text-white/80">{formatDate(person.last_seen_at, { relative: true })}</td>
+                <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
                 <td className="px-4 py-4 text-center">
                   <button
                     className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-blue-500/20 hover:border-blue-500/30 hover:scale-110"
@@ -1793,7 +1841,7 @@ const Users: React.FC = () => {
                 <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Followed On</th>
                 <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Unfollowed On</th>
                 <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Days Followed</th>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Seen</th>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
                 <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Actions</th>
               </tr>
             </thead>
@@ -1822,7 +1870,7 @@ const Users: React.FC = () => {
                   <td className="px-4 py-4 text-white/80">{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '—'}</td>
                   <td className="px-4 py-4 text-white/80">{person.unfollower_at ? formatDate(person.unfollower_at, { includeTime: false }) : '—'}</td>
                   <td className="px-4 py-4 text-white/80">{person.days_followed !== null ? `${person.days_followed} days` : '—'}</td>
-                  <td className="px-4 py-4 text-white/80">{formatDate(person.last_seen_at, { relative: true })}</td>
+                  <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
                   <td className="px-4 py-4 text-center">
                     <button
                       className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-blue-500/20 hover:border-blue-500/30 hover:scale-110"
@@ -1974,6 +2022,138 @@ const Users: React.FC = () => {
     );
   };
 
+  const renderDomsTab = () => {
+    const domLevels = ['all', 'Potential', 'Actively Serving', 'Ended', 'Paused'];
+
+    return (
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Doms ({domUsers.length})</h2>
+          <div className="flex gap-2">
+            {domLevels.map(level => (
+              <button
+                key={level}
+                className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                  domsFilter === level
+                    ? 'bg-gradient-primary text-white border-transparent'
+                    : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
+                }`}
+                onClick={() => setDomsFilter(level)}
+              >
+                {level === 'all' ? 'All' : level}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {domsLoading ? (
+          <div className="p-12 text-center text-white/50">Loading doms...</div>
+        ) : (
+          <>
+            {/* View Mode Toggle */}
+            <div className="flex items-center justify-between mt-4 mb-4">
+              {renderViewModeToggle()}
+              <span className="text-white/50 text-sm">{domUsers.length} doms</span>
+            </div>
+
+            {viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {domUsers.map(person => renderUserGridCard(person))}
+              </div>
+            ) : (
+              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Username</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Image</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Service Level</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Types</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Started</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Ended</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {domUsers.map((person) => {
+                      const getLevelBadge = (level: string) => {
+                        switch (level) {
+                          case 'Actively Serving':
+                            return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
+                          case 'Potential':
+                            return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+                          case 'Ended':
+                            return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+                          case 'Paused':
+                            return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
+                          default:
+                            return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+                        }
+                      };
+
+                      return (
+                        <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
+                          <td className="px-4 py-4">
+                            <div className="flex items-center gap-2">
+                              <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
+                              <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
+                              {person.banned_me && (
+                                <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-2 py-2">
+                            {person.image_url && (
+                              <img
+                                src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                                alt={person.username}
+                                className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
+                              />
+                            )}
+                          </td>
+                          <td className="px-4 py-4">
+                            <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide border ${getLevelBadge(person.service_level)}`}>
+                              {person.service_level}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4">
+                            <div className="flex flex-wrap gap-1">
+                              {person.service_types && person.service_types.length > 0 ? (
+                                person.service_types.map((type, idx) => (
+                                  <span key={idx} className="inline-block px-2 py-0.5 rounded text-xs bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                                    {type}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-white/50">—</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-4 text-white/80">{person.dom_started_at ? formatDate(person.dom_started_at, { includeTime: false }) : '—'}</td>
+                          <td className="px-4 py-4 text-white/80">{person.dom_ended_at ? formatDate(person.dom_ended_at, { includeTime: false }) : '—'}</td>
+                          <td className="px-4 py-4 text-white/70 max-w-[200px] truncate" title={person.dom_notes || ''}>
+                            {person.dom_notes || '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+
+                {domUsers.length === 0 && (
+                  <div className="p-12 text-center text-white/50">
+                    <p>No doms found.</p>
+                    <p className="mt-2 text-sm">Add Dom relationships from the profile page.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
   const renderFriendsTab = () => {
     return (
       <>
@@ -2056,7 +2236,7 @@ const Users: React.FC = () => {
                       <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
                       <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Friend Tier</th>
                       <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Active Sub</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Seen</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
                       <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Notes</th>
                     </tr>
                   </thead>
@@ -2093,7 +2273,7 @@ const Users: React.FC = () => {
                               <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Yes</span>
                             ) : '—'}
                           </td>
-                          <td className="px-4 py-4 text-white/80">{formatDate(person.last_seen_at, { relative: true })}</td>
+                          <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
                           <td className="px-4 py-4 text-white/70 max-w-[200px] truncate" title={person.notes || ''}>
                             {person.notes || '—'}
                           </td>
@@ -2232,7 +2412,7 @@ const Users: React.FC = () => {
                     <tr>
                       <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
                       <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Seen</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
                       <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Friend Tier</th>
                       <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Is Sub</th>
                       <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Notes</th>
@@ -2259,7 +2439,7 @@ const Users: React.FC = () => {
                               />
                             )}
                           </td>
-                          <td className="px-4 py-4 text-white/80">{person.last_seen_at ? formatDate(person.last_seen_at, { includeTime: false }) : '—'}</td>
+                          <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
                           <td className="px-4 py-4">
                             {tierBadge ? (
                               <span className={tierBadge.class}>Tier {person.friend_tier} - {tierBadge.label}</span>
@@ -2317,29 +2497,8 @@ const Users: React.FC = () => {
           </div>
         )}
 
-        {/* Tabs - Reordered: Relationships first, then Directory, then Service, then Monitoring */}
+        {/* Tabs - Order: Directory | Following | Friends | Subs | Doms | Watchlist | Followers | Unfollowed | Bans */}
         <div className="flex gap-2 mt-6 border-b-2 border-white/10 flex-wrap">
-          {/* Following/Followers - Primary relationship tabs */}
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'following'
-                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('following')}
-          >
-            Following
-          </button>
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'followers'
-                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('followers')}
-          >
-            Followers
-          </button>
           {/* Directory - All users */}
           <button
             className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
@@ -2351,17 +2510,18 @@ const Users: React.FC = () => {
           >
             Directory
           </button>
-          {/* Service tabs */}
+          {/* Following */}
           <button
             className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'subs'
-                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500 font-semibold'
+              activeTab === 'following'
+                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary font-semibold'
                 : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
             }`}
-            onClick={() => setActiveTab('subs')}
+            onClick={() => setActiveTab('following')}
           >
-            Subs
+            Following
           </button>
+          {/* Friends */}
           <button
             className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
               activeTab === 'friends'
@@ -2372,7 +2532,29 @@ const Users: React.FC = () => {
           >
             Friends
           </button>
-          {/* Monitoring tabs */}
+          {/* Subs */}
+          <button
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'subs'
+                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500 font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
+            onClick={() => setActiveTab('subs')}
+          >
+            Subs
+          </button>
+          {/* Doms */}
+          <button
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'doms'
+                ? 'bg-purple-500/15 text-purple-400 border-purple-500 font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
+            onClick={() => setActiveTab('doms')}
+          >
+            Doms
+          </button>
+          {/* Watchlist */}
           <button
             className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
               activeTab === 'watchlist'
@@ -2383,6 +2565,18 @@ const Users: React.FC = () => {
           >
             Watchlist
           </button>
+          {/* Followers */}
+          <button
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'followers'
+                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
+            onClick={() => setActiveTab('followers')}
+          >
+            Followers
+          </button>
+          {/* Unfollowed */}
           <button
             className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
               activeTab === 'unfollowed'
@@ -2393,6 +2587,7 @@ const Users: React.FC = () => {
           >
             Unfollowed
           </button>
+          {/* Bans */}
           <button
             className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
               activeTab === 'bans'
@@ -2412,6 +2607,7 @@ const Users: React.FC = () => {
       {activeTab === 'followers' && renderFollowersTab()}
       {activeTab === 'unfollowed' && renderUnfollowedTab()}
       {activeTab === 'subs' && renderSubsTab()}
+      {activeTab === 'doms' && renderDomsTab()}
       {activeTab === 'friends' && renderFriendsTab()}
       {activeTab === 'bans' && renderBansTab()}
       {activeTab === 'watchlist' && renderWatchlistTab()}

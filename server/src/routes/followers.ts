@@ -180,6 +180,22 @@ router.get('/watchlist', async (_req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/followers/doms
+ * Get list of users who are my Doms (from service_relationships)
+ * Query param: filter = service level (Potential, Actively Serving, Ended, Paused)
+ */
+router.get('/doms', async (req: Request, res: Response) => {
+  try {
+    const { filter = 'all' } = req.query;
+    const doms = await FollowerScraperService.getDoms(filter as string);
+    res.json({ doms, total: doms.length });
+  } catch (error) {
+    logger.error('Error getting doms list', { error });
+    res.status(500).json({ error: 'Failed to get doms list' });
+  }
+});
+
+/**
  * DELETE /api/followers/clear-following
  * Clear all following records (for debugging/reset)
  */

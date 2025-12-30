@@ -453,4 +453,47 @@ export class FollowerScraperService {
     );
     return result.rows;
   }
+
+  /**
+   * Get all users who are Doms (from service_relationships table)
+   * filter: 'all' | service level filter
+   */
+  static async getDoms(filter: string = 'all'): Promise<any[]> {
+    let whereClause = `sr.service_role = 'dom'`;
+    if (filter !== 'all') {
+      whereClause += ` AND sr.service_level = $1`;
+    }
+
+    const queryParams = filter !== 'all' ? [filter] : [];
+
+    const result = await query(
+      `SELECT
+        p.*,
+        pr.following,
+        pr.follower,
+        pr.banned_me,
+        pr.active_sub,
+        pr.friend_tier,
+        pr.watch_list,
+        pr.notes,
+        sr.service_level,
+        sr.service_types,
+        sr.started_at as dom_started_at,
+        sr.ended_at as dom_ended_at,
+        sr.notes as dom_notes,
+        (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
+        (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL) as image_count,
+        (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,
+        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+       FROM persons p
+       INNER JOIN profiles pr ON pr.person_id = p.id
+       INNER JOIN service_relationships sr ON sr.profile_id = pr.id
+       WHERE ${whereClause}
+       ORDER BY sr.started_at DESC NULLS LAST, p.last_seen_at DESC`,
+      queryParams
+    );
+    return result.rows;
+  }
 }

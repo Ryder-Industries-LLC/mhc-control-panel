@@ -121,6 +121,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
   // Top mover badge state
   const [topMoverStatus, setTopMoverStatus] = useState<'gainer' | 'loser' | null>(null);
 
+  // Image preview modal state
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+
   // Auto-load profile if username in URL
   useEffect(() => {
     if (urlUsername) {
@@ -564,13 +567,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
             <div className="flex gap-5 items-center flex-wrap md:flex-nowrap">
               {(imageHistory.length > 0 || getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile?.photos && profileData.profile.photos.length > 0)) && (
                 <div className="flex-shrink-0 flex flex-col items-center gap-3">
-                  {isSessionLive(profileData.latestSession) && (
-                    <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-5 py-2 rounded-full font-bold text-sm uppercase tracking-wider shadow-lg animate-pulse border-2 border-white/50">
-                      ● LIVE
-                    </div>
-                  )}
                   {/* Image with navigation arrows */}
                   <div className="relative group">
+                    {/* LIVE indicator - overlaid on image */}
+                    {isSessionLive(profileData.latestSession) && (
+                      <div className="absolute top-2 left-2 z-10 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-3 py-1 rounded-full font-bold text-xs uppercase tracking-wider shadow-lg animate-pulse border border-white/50">
+                        ● LIVE
+                      </div>
+                    )}
                     <img
                       src={
                         imageHistory.length > 0
@@ -1191,32 +1195,26 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       </div>
                     )}
 
-                    {/* Metadata Section */}
+                    {/* Data Sources Section */}
                     <div>
                       <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">Data Sources</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {profileData.latestSession && (
                           <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-gray-500">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Observed:</span>
+                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Affiliate API:</span>
                             <span className="block text-mhc-text text-sm">{new Date(profileData.latestSession.observed_at).toLocaleString()}</span>
                           </div>
                         )}
                         {profileData.latestSnapshot && (
                           <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-gray-500">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Snapshot Captured:</span>
+                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Statbate:</span>
                             <span className="block text-mhc-text text-sm">{new Date(profileData.latestSnapshot.captured_at).toLocaleDateString()}</span>
                           </div>
                         )}
-                        {profileData.latestSnapshot?.source && (
+                        {profileData.profile?.scraped_at && (
                           <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-gray-500">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Snapshot Source:</span>
-                            <span className="block text-mhc-text text-sm capitalize">{profileData.latestSnapshot.source}</span>
-                          </div>
-                        )}
-                        {profileData.latestSession && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-gray-500">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">HD Stream:</span>
-                            <span className="block text-mhc-text text-sm">{profileData.latestSession.is_hd ? 'Yes' : 'No'}</span>
+                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Profile Scraper:</span>
+                            <span className="block text-mhc-text text-sm">{new Date(profileData.profile.scraped_at).toLocaleString()}</span>
                           </div>
                         )}
                       </div>
@@ -1432,6 +1430,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
                           currentImageIndex === index ? 'border-mhc-primary ring-2 ring-mhc-primary/50' : 'border-white/10'
                         }`}
                         onClick={() => setCurrentImageIndex(index)}
+                        onMouseEnter={() => setPreviewImageUrl(`http://localhost:3000/images/${image.image_url}`)}
+                        onMouseLeave={() => setPreviewImageUrl(null)}
                       >
                         <div className="aspect-[4/3]">
                           <img
@@ -1647,6 +1647,21 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Full-size Image Preview - Fixed position on right side */}
+      {previewImageUrl && (
+        <div
+          className="fixed top-20 right-4 z-50 pointer-events-none"
+        >
+          <div className="bg-black/95 rounded-lg shadow-2xl border border-white/20 p-2">
+            <img
+              src={previewImageUrl}
+              alt="Full size preview"
+              className="max-w-[600px] max-h-[80vh] object-contain rounded-lg"
+            />
           </div>
         </div>
       )}

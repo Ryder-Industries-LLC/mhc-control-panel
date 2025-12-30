@@ -1165,6 +1165,165 @@ const Jobs: React.FC = () => {
         </div>
       )}
 
+      {/* Job Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {/* Affiliate API Card */}
+        <div
+          className={`p-4 rounded-lg border cursor-pointer transition-all hover:scale-[1.02] ${
+            activeTab === 'affiliate' ? 'border-mhc-primary bg-mhc-primary/10' : 'border-white/10 bg-mhc-surface-light/60'
+          }`}
+          onClick={() => setActiveTab('affiliate')}
+        >
+          <div className="flex justify-between items-start mb-2">
+            <span className="text-sm font-medium text-white/70">Affiliate</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (affiliateStatus?.isRunning) {
+                  handleJobControl('affiliate', 'stop', setAffiliateStatus);
+                } else if (affiliateStatus?.config.enabled) {
+                  handleJobControl('affiliate', 'start', setAffiliateStatus);
+                }
+              }}
+              className={`w-3 h-3 rounded-full transition-all ${
+                affiliateStatus?.isProcessing
+                  ? 'bg-blue-500 animate-pulse'
+                  : affiliateStatus?.isRunning && !affiliateStatus?.isPaused
+                  ? 'bg-emerald-500 hover:bg-red-500'
+                  : affiliateStatus?.isPaused
+                  ? 'bg-amber-500 hover:bg-emerald-500'
+                  : 'bg-gray-500 hover:bg-emerald-500'
+              }`}
+              title={affiliateStatus?.isRunning ? 'Click to stop' : 'Click to start'}
+            />
+          </div>
+          <div className="text-xs text-white/50">
+            {affiliateStatus?.isProcessing
+              ? `${affiliateStatus.stats.progress}/${affiliateStatus.stats.total}`
+              : affiliateStatus?.stats.totalEnriched.toLocaleString() + ' enriched'}
+          </div>
+        </div>
+
+        {/* Profile Scraper Card */}
+        <div
+          className={`p-4 rounded-lg border cursor-pointer transition-all hover:scale-[1.02] ${
+            activeTab === 'profile-scrape' ? 'border-mhc-primary bg-mhc-primary/10' : 'border-white/10 bg-mhc-surface-light/60'
+          }`}
+          onClick={() => setActiveTab('profile-scrape')}
+        >
+          <div className="flex justify-between items-start mb-2">
+            <span className="text-sm font-medium text-white/70">Scraper</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (profileScrapeStatus?.isRunning) {
+                  handleJobControl('profile-scrape', 'stop', setProfileScrapeStatus);
+                } else if (profileScrapeStatus?.config.enabled) {
+                  handleJobControl('profile-scrape', 'start', setProfileScrapeStatus);
+                }
+              }}
+              className={`w-3 h-3 rounded-full transition-all ${
+                profileScrapeStatus?.isProcessing
+                  ? 'bg-blue-500 animate-pulse'
+                  : profileScrapeStatus?.isRunning && !profileScrapeStatus?.isPaused
+                  ? 'bg-emerald-500 hover:bg-red-500'
+                  : profileScrapeStatus?.isPaused
+                  ? 'bg-amber-500 hover:bg-emerald-500'
+                  : 'bg-gray-500 hover:bg-emerald-500'
+              }`}
+              title={profileScrapeStatus?.isRunning ? 'Click to stop' : 'Click to start'}
+            />
+          </div>
+          <div className="text-xs text-white/50">
+            {profileScrapeStatus?.isProcessing
+              ? `${profileScrapeStatus.stats.progress}/${profileScrapeStatus.stats.total}`
+              : profileScrapeStatus?.stats.totalScraped.toLocaleString() + ' scraped'}
+          </div>
+        </div>
+
+        {/* CBHours Card */}
+        <div
+          className={`p-4 rounded-lg border cursor-pointer transition-all hover:scale-[1.02] ${
+            activeTab === 'cbhours' ? 'border-mhc-primary bg-mhc-primary/10' : 'border-white/10 bg-mhc-surface-light/60'
+          }`}
+          onClick={() => setActiveTab('cbhours')}
+        >
+          <div className="flex justify-between items-start mb-2">
+            <span className="text-sm font-medium text-white/70">CBHours</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (cbhoursStatus?.isRunning) {
+                  handleJobControl('cbhours', 'stop', setCbhoursStatus);
+                } else if (cbhoursStatus?.config.enabled) {
+                  handleJobControl('cbhours', 'start', setCbhoursStatus);
+                }
+              }}
+              className={`w-3 h-3 rounded-full transition-all ${
+                cbhoursStatus?.isProcessing
+                  ? 'bg-blue-500 animate-pulse'
+                  : cbhoursStatus?.isRunning && !cbhoursStatus?.isPaused
+                  ? 'bg-emerald-500 hover:bg-red-500'
+                  : cbhoursStatus?.isPaused
+                  ? 'bg-amber-500 hover:bg-emerald-500'
+                  : 'bg-gray-500 hover:bg-emerald-500'
+              }`}
+              title={cbhoursStatus?.isRunning ? 'Click to stop' : 'Click to start'}
+            />
+          </div>
+          <div className="text-xs text-white/50">
+            {cbhoursStatus?.isProcessing
+              ? `${cbhoursStatus.stats.progress}/${cbhoursStatus.stats.total}`
+              : cbhoursStatus?.stats.totalRecorded.toLocaleString() + ' recorded'}
+          </div>
+        </div>
+
+        {/* Statbate Card */}
+        <div
+          className={`p-4 rounded-lg border cursor-pointer transition-all hover:scale-[1.02] ${
+            activeTab === 'statbate' ? 'border-mhc-primary bg-mhc-primary/10' : 'border-white/10 bg-mhc-surface-light/60'
+          }`}
+          onClick={() => setActiveTab('statbate')}
+        >
+          <div className="flex justify-between items-start mb-2">
+            <span className="text-sm font-medium text-white/70">Statbate</span>
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                try {
+                  setLoading(true);
+                  if (statbateStatus?.isRunning) {
+                    await fetch('/api/job/stop', { method: 'POST' });
+                  } else {
+                    await fetch('/api/job/start', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ intervalMinutes: statbateIntervalMinutes }),
+                    });
+                  }
+                  await fetchAllStatuses();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : 'Unknown error');
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              className={`w-3 h-3 rounded-full transition-all ${
+                statbateStatus?.isRunning && !statbateStatus?.isPaused
+                  ? 'bg-emerald-500 hover:bg-red-500'
+                  : statbateStatus?.isPaused
+                  ? 'bg-amber-500 hover:bg-emerald-500'
+                  : 'bg-gray-500 hover:bg-emerald-500'
+              }`}
+              title={statbateStatus?.isRunning ? 'Click to stop' : 'Click to start'}
+            />
+          </div>
+          <div className="text-xs text-white/50">
+            {statbateStatus?.intervalMinutes} min interval
+          </div>
+        </div>
+      </div>
+
       {/* Tab Navigation */}
       <div className="flex gap-1 mb-6 border-b border-white/10 overflow-x-auto">
         <button
