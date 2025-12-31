@@ -121,7 +121,7 @@ const getLastActiveTime = (person: PersonWithSource): string | null => {
 
 const Users: React.FC = () => {
   const location = useLocation();
-  const [activeTab, setActiveTab] = useState<TabType>('following');
+  const [activeTab, setActiveTab] = useState<TabType>('directory');
 
   // Directory tab state
   const [persons, setPersons] = useState<PersonWithSource[]>([]);

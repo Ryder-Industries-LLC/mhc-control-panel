@@ -4,6 +4,8 @@ import { logger } from '../../config/logger.js';
 import { PersonService } from '../../services/person.service.js';
 import { InteractionService } from '../../services/interaction.service.js';
 import { SessionService } from '../../services/session.service.js';
+import { RoomVisitsService } from '../../services/room-visits.service.js';
+import { RoomPresenceService } from '../../services/room-presence.service.js';
 import { query } from '../../db/client.js';
 
 // Event type definitions based on CHATURBATE_EVENTS_API.md
@@ -251,6 +253,9 @@ export class ChaturbateEventsClient {
     const session = await SessionService.start(env.CHATURBATE_USERNAME);
     this.currentSessionId = session.id;
     logger.info(`Session auto-started: ${session.id}`);
+
+    // Start room presence tracking for this session
+    RoomPresenceService.startSession(session.id);
   }
 
   private async handleBroadcastStop(_event: ChaturbateEvent) {
@@ -259,6 +264,9 @@ export class ChaturbateEventsClient {
       await SessionService.end(this.currentSessionId);
       logger.info(`Session auto-ended: ${this.currentSessionId}`);
       this.currentSessionId = null;
+
+      // End room presence tracking
+      RoomPresenceService.endSession();
     }
   }
 
@@ -387,6 +395,20 @@ export class ChaturbateEventsClient {
         broadcaster: this.username,
       },
     });
+
+    // Record room visit (this is your room, so track visits)
+    try {
+      await RoomVisitsService.recordVisit(person.id, new Date());
+    } catch (error) {
+      logger.error('Failed to record room visit', { error, username });
+    }
+
+    // Update room presence (for live monitor)
+    try {
+      await RoomPresenceService.userEnter(person.id, username, event.object.user);
+    } catch (error) {
+      logger.error('Failed to update room presence on enter', { error, username });
+    }
   }
 
   private async handleUserLeave(event: ChaturbateEvent) {
@@ -406,6 +428,13 @@ export class ChaturbateEventsClient {
         broadcaster: this.username,
       },
     });
+
+    // Update room presence (for live monitor)
+    try {
+      await RoomPresenceService.userLeave(person.id);
+    } catch (error) {
+      logger.error('Failed to update room presence on leave', { error, username });
+    }
   }
 
   private async handleFanclubJoin(event: ChaturbateEvent) {

@@ -17,6 +17,7 @@ import affiliateRoutes from './routes/affiliate.js';
 import followersRoutes from './routes/followers.js';
 import systemRoutes from './routes/system.js';
 import broadcastsRoutes from './routes/broadcasts.js';
+import roomPresenceRoutes from './routes/room-presence.js';
 
 export function createApp() {
   const app = express();
@@ -64,6 +65,7 @@ export function createApp() {
   app.use('/api/followers', followersRoutes);
   app.use('/api/system', systemRoutes);
   app.use('/api/broadcasts', broadcastsRoutes);
+  app.use('/api/room/presence', roomPresenceRoutes);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

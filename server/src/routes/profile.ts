@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
 import { ProfileScraperService } from '../services/profile-scraper.service.js';
 import { ChaturbateScraperService } from '../services/chaturbate-scraper.service.js';
 import { ProfileService } from '../services/profile.service.js';
@@ -7,9 +8,32 @@ import { ProfileEnrichmentService } from '../services/profile-enrichment.service
 import { BroadcastSessionService } from '../services/broadcast-session.service.js';
 import { ServiceRelationshipService } from '../services/service-relationship.service.js';
 import { ProfileNotesService } from '../services/profile-notes.service.js';
+import { ProfileImagesService } from '../services/profile-images.service.js';
+import { SocialLinksService, type SocialPlatform } from '../services/social-links.service.js';
+import { SnapshotService } from '../services/snapshot.service.js';
+import { RoomVisitsService } from '../services/room-visits.service.js';
 import { statbateClient } from '../api/statbate/client.js';
+import { normalizeModelInfo, normalizeMemberInfo } from '../api/statbate/normalizer.js';
+import { cbhoursClient, type CBHoursLiveModel } from '../api/cbhours/cbhours-client.js';
+import { SOCIAL_PLATFORMS, normalizeSocialUrl } from '../constants/social-platforms.js';
 import { logger } from '../config/logger.js';
 import { query } from '../db/client.js';
+
+// Configure multer for memory storage (we handle file saving ourselves)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed.'));
+    }
+  },
+});
 
 const router = Router();
 
@@ -100,6 +124,7 @@ router.get('/:username', async (req: Request, res: Response) => {
 /**
  * POST /api/profile/:username/scrape
  * Force scrape profile data (bypasses cache)
+ * Also checks Affiliate API for current online status and images
  */
 router.post('/:username/scrape', async (req: Request, res: Response) => {
   try {
@@ -131,10 +156,127 @@ router.post('/:username/scrape', async (req: Request, res: Response) => {
     // Save to database
     const profile = await ProfileService.upsertProfile(person.id, scrapedData);
 
+    // Check CBHours first - this is the authoritative source for online status if available
+    // Also provides rich data: rank, grank, viewers, followers, current_show, room_subject, tags
+    let cbhoursData: CBHoursLiveModel | null = null;
+    let cbhoursOnline: boolean | null = null;
+    try {
+      const cbhoursResponse = await cbhoursClient.getLiveStats([username]);
+      if (cbhoursResponse.data && cbhoursResponse.data[username.toLowerCase()]) {
+        cbhoursData = cbhoursResponse.data[username.toLowerCase()];
+        cbhoursOnline = cbhoursData.room_status === 'Online';
+        logger.info(`CBHours status: ${cbhoursData.room_status}`, {
+          username,
+          viewers: cbhoursData.viewers,
+          rank: cbhoursData.rank,
+          grank: cbhoursData.grank,
+        });
+
+        // Save CBHours data as a snapshot if online (rich data worth tracking)
+        if (cbhoursOnline && cbhoursData.viewers !== undefined) {
+          await SnapshotService.create({
+            personId: person.id,
+            source: 'cbhours',
+            rawPayload: cbhoursData as unknown as Record<string, unknown>,
+            normalizedMetrics: {
+              viewers: cbhoursData.viewers,
+              followers: cbhoursData.followers,
+              rank: cbhoursData.rank,
+              genderRank: cbhoursData.grank,
+              currentShow: cbhoursData.current_show,
+              roomSubject: cbhoursData.room_subject,
+              tags: cbhoursData.tags,
+              isNew: cbhoursData.is_new,
+              gender: cbhoursData.gender,
+            },
+          });
+          logger.info(`Saved CBHours snapshot`, { username, rank: cbhoursData.rank });
+        }
+      }
+    } catch (cbhoursError) {
+      // Non-fatal - user may not be in CBHours trophy database
+      logger.debug(`CBHours fetch skipped`, { username });
+    }
+
+    // Also check Affiliate API for current online status and latest image
+    let affiliateData = null;
+    try {
+      affiliateData = await ProfileEnrichmentService.enrichFromAffiliateAPI(username);
+      if (affiliateData) {
+        logger.info(`Also enriched from Affiliate API - user is LIVE`, { username });
+      }
+    } catch (affiliateError) {
+      // Non-fatal - user may just be offline
+      logger.debug(`Affiliate API enrichment skipped (user likely offline)`, { username });
+    }
+
+    // Also fetch Statbate data (try model first, then member)
+    let statbateData = null;
+    let statbateSource = null;
+    try {
+      // Try as model first
+      const modelData = await statbateClient.getModelInfo('chaturbate', username);
+      if (modelData) {
+        const normalized = normalizeModelInfo(modelData.data);
+        await SnapshotService.create({
+          personId: person.id,
+          source: 'statbate_model',
+          rawPayload: modelData.data as unknown as Record<string, unknown>,
+          normalizedMetrics: normalized,
+        });
+        statbateData = modelData.data;
+        statbateSource = 'model';
+
+        // Update RID if available
+        if (modelData.data.rid && !person.rid) {
+          await PersonService.update(person.id, {
+            rid: modelData.data.rid,
+            role: 'MODEL'
+          });
+        }
+        logger.info(`Fetched Statbate model data`, { username, rid: modelData.data.rid });
+      } else {
+        // Try as member if not found as model
+        const memberData = await statbateClient.getMemberInfo('chaturbate', username);
+        if (memberData) {
+          const normalized = normalizeMemberInfo(memberData.data);
+          await SnapshotService.create({
+            personId: person.id,
+            source: 'statbate_member',
+            rawPayload: memberData.data as unknown as Record<string, unknown>,
+            normalizedMetrics: normalized,
+          });
+          statbateData = memberData.data;
+          statbateSource = 'member';
+
+          // Update DID if available
+          if (memberData.data.did && !person.did) {
+            await PersonService.update(person.id, {
+              did: memberData.data.did,
+              role: 'VIEWER'
+            });
+          }
+          logger.info(`Fetched Statbate member data`, { username, did: memberData.data.did });
+        }
+      }
+    } catch (statbateError) {
+      // Non-fatal - user may not exist in Statbate
+      logger.debug(`Statbate fetch skipped`, { username, error: (statbateError as Error).message });
+    }
+
+    // Determine online status with priority: CBHours > Affiliate API > fallback to false
+    const isLive = cbhoursOnline !== null ? cbhoursOnline : !!affiliateData;
+    const onlineSource = cbhoursOnline !== null ? 'cbhours' : (affiliateData ? 'affiliate_api' : null);
+
     res.json({
       person,
       profile,
       scraped: true,
+      isLive,
+      onlineSource,
+      cbhours: cbhoursData,
+      affiliateSession: affiliateData?.session || null,
+      statbate: statbateData ? { source: statbateSource, data: statbateData } : null,
     });
   } catch (error) {
     logger.error('Error scraping profile', { error });
@@ -187,13 +329,117 @@ router.post('/:username/scrape-authenticated', async (req: Request, res: Respons
     // Merge scraped data with existing profile
     const profile = await ProfileService.mergeScrapedProfile(person.id, scrapedData);
 
+    // Check CBHours first - this is the authoritative source for online status if available
+    // Also provides rich data: rank, grank, viewers, followers, current_show, room_subject, tags
+    let cbhoursData: CBHoursLiveModel | null = null;
+    let cbhoursOnline: boolean | null = null;
+    try {
+      const cbhoursResponse = await cbhoursClient.getLiveStats([username]);
+      if (cbhoursResponse.data && cbhoursResponse.data[username.toLowerCase()]) {
+        cbhoursData = cbhoursResponse.data[username.toLowerCase()];
+        cbhoursOnline = cbhoursData.room_status === 'Online';
+        logger.info(`CBHours status: ${cbhoursData.room_status}`, {
+          username,
+          viewers: cbhoursData.viewers,
+          rank: cbhoursData.rank,
+          grank: cbhoursData.grank,
+        });
+
+        // Save CBHours data as a snapshot if online (rich data worth tracking)
+        if (cbhoursOnline && cbhoursData.viewers !== undefined) {
+          await SnapshotService.create({
+            personId: person.id,
+            source: 'cbhours',
+            rawPayload: cbhoursData as unknown as Record<string, unknown>,
+            normalizedMetrics: {
+              viewers: cbhoursData.viewers,
+              followers: cbhoursData.followers,
+              rank: cbhoursData.rank,
+              genderRank: cbhoursData.grank,
+              currentShow: cbhoursData.current_show,
+              roomSubject: cbhoursData.room_subject,
+              tags: cbhoursData.tags,
+              isNew: cbhoursData.is_new,
+              gender: cbhoursData.gender,
+            },
+          });
+          logger.info(`Saved CBHours snapshot`, { username, rank: cbhoursData.rank });
+        }
+      }
+    } catch (cbhoursError) {
+      logger.debug(`CBHours fetch skipped`, { username });
+    }
+
+    // Also check Affiliate API for current online status and latest image
+    let affiliateData = null;
+    try {
+      affiliateData = await ProfileEnrichmentService.enrichFromAffiliateAPI(username);
+      if (affiliateData) {
+        logger.info(`Also enriched from Affiliate API - user is LIVE`, { username });
+      }
+    } catch (affiliateError) {
+      logger.debug(`Affiliate API enrichment skipped (user likely offline)`, { username });
+    }
+
+    // Also fetch Statbate data (try model first, then member)
+    let statbateData = null;
+    let statbateSource = null;
+    try {
+      const modelData = await statbateClient.getModelInfo('chaturbate', username);
+      if (modelData) {
+        const normalized = normalizeModelInfo(modelData.data);
+        await SnapshotService.create({
+          personId: person.id,
+          source: 'statbate_model',
+          rawPayload: modelData.data as unknown as Record<string, unknown>,
+          normalizedMetrics: normalized,
+        });
+        statbateData = modelData.data;
+        statbateSource = 'model';
+
+        if (modelData.data.rid && !person.rid) {
+          await PersonService.update(person.id, { rid: modelData.data.rid, role: 'MODEL' });
+        }
+        logger.info(`Fetched Statbate model data`, { username });
+      } else {
+        const memberData = await statbateClient.getMemberInfo('chaturbate', username);
+        if (memberData) {
+          const normalized = normalizeMemberInfo(memberData.data);
+          await SnapshotService.create({
+            personId: person.id,
+            source: 'statbate_member',
+            rawPayload: memberData.data as unknown as Record<string, unknown>,
+            normalizedMetrics: normalized,
+          });
+          statbateData = memberData.data;
+          statbateSource = 'member';
+
+          if (memberData.data.did && !person.did) {
+            await PersonService.update(person.id, { did: memberData.data.did, role: 'VIEWER' });
+          }
+          logger.info(`Fetched Statbate member data`, { username });
+        }
+      }
+    } catch (statbateError) {
+      logger.debug(`Statbate fetch skipped`, { username });
+    }
+
+    // Determine online status with priority: CBHours > Affiliate API > scraped isOnline
+    const isLive = cbhoursOnline !== null ? cbhoursOnline : (affiliateData ? true : scrapedData.isOnline);
+    const onlineSource = cbhoursOnline !== null ? 'cbhours' : (affiliateData ? 'affiliate_api' : 'scrape');
+
     res.json({
       person,
       profile,
       scraped: true,
       isOnline: scrapedData.isOnline,
+      isLive,
+      onlineSource,
       photoCount: scrapedData.photos.length,
       hasBio: !!scrapedData.bio,
+      cbhours: cbhoursData,
+      affiliateSession: affiliateData?.session || null,
+      statbate: statbateData ? { source: statbateSource, data: statbateData } : null,
     });
   } catch (error) {
     logger.error('Error in authenticated profile scrape', { error });
@@ -613,18 +859,37 @@ router.post('/:username/notes', async (req: Request, res: Response) => {
 
 /**
  * PATCH /api/profile/:username/notes/:noteId
- * Update an existing note
+ * Update an existing note (content and/or created_at date)
  */
 router.patch('/:username/notes/:noteId', async (req: Request, res: Response) => {
   try {
     const { noteId } = req.params;
-    const { content } = req.body;
+    const { content, created_at } = req.body;
 
-    if (!content || typeof content !== 'string' || content.trim().length === 0) {
-      return res.status(400).json({ error: 'Note content is required' });
+    // At least one field must be provided
+    if (!content && !created_at) {
+      return res.status(400).json({ error: 'At least content or created_at is required' });
     }
 
-    const note = await ProfileNotesService.updateNote(noteId, content.trim());
+    // Validate content if provided
+    if (content !== undefined && (typeof content !== 'string' || content.trim().length === 0)) {
+      return res.status(400).json({ error: 'Note content cannot be empty' });
+    }
+
+    // Validate created_at if provided
+    let parsedDate: Date | undefined;
+    if (created_at) {
+      parsedDate = new Date(created_at);
+      if (isNaN(parsedDate.getTime())) {
+        return res.status(400).json({ error: 'Invalid date format for created_at' });
+      }
+    }
+
+    const note = await ProfileNotesService.updateNote(noteId, {
+      content: content?.trim(),
+      created_at: parsedDate,
+    });
+
     if (!note) {
       return res.status(404).json({ error: 'Note not found' });
     }
@@ -792,6 +1057,537 @@ router.delete('/:username/service-relationships/:role', async (req: Request, res
       username: req.params.username,
       role: req.params.role,
     });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// PROFILE IMAGES ENDPOINTS
+// ============================================================
+
+/**
+ * GET /api/profile/:username/images
+ * Get all images for a profile (uploaded + affiliate)
+ */
+router.get('/:username/images', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { limit, offset = '0' } = req.query;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    // Get uploaded images from profile_images table
+    const uploadedResult = await ProfileImagesService.getByPersonId(
+      person.id,
+      limit ? parseInt(limit as string, 10) : undefined,
+      parseInt(offset as string, 10)
+    );
+
+    // Get affiliate API images from affiliate_api_snapshots
+    const affiliateImagesSql = `
+      SELECT DISTINCT ON (image_path)
+        id,
+        image_path as file_path,
+        'affiliate_api' as source,
+        observed_at as captured_at,
+        num_users as viewers
+      FROM affiliate_api_snapshots
+      WHERE person_id = $1
+        AND image_path IS NOT NULL
+      ORDER BY image_path, observed_at DESC
+      LIMIT 50
+    `;
+    const affiliateResult = await query(affiliateImagesSql, [person.id]);
+    const affiliateImages = affiliateResult.rows.map(row => ({
+      id: row.id,
+      person_id: person.id,
+      file_path: row.file_path,
+      original_filename: null,
+      source: 'affiliate_api',
+      description: null,
+      captured_at: row.captured_at,
+      uploaded_at: row.captured_at,
+      viewers: row.viewers,
+    }));
+
+    // Combine and sort by date
+    const allImages = [...uploadedResult.images, ...affiliateImages].sort((a, b) => {
+      const dateA = new Date(a.captured_at || a.uploaded_at).getTime();
+      const dateB = new Date(b.captured_at || b.uploaded_at).getTime();
+      return dateB - dateA;
+    });
+
+    res.json({
+      images: allImages,
+      uploadedCount: uploadedResult.total,
+      affiliateCount: affiliateImages.length,
+      total: uploadedResult.total + affiliateImages.length,
+    });
+  } catch (error) {
+    logger.error('Error getting profile images', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/:username/images
+ * Upload a new image for a profile
+ */
+router.post('/:username/images', upload.single('image'), async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { source = 'manual_upload', description, captured_at } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Image file is required' });
+    }
+
+    // Validate source
+    const validSources = ['manual_upload', 'screensnap', 'external', 'imported'];
+    if (!validSources.includes(source)) {
+      return res.status(400).json({
+        error: `Invalid source. Valid options: ${validSources.join(', ')}`,
+      });
+    }
+
+    // Get or create person
+    const person = await PersonService.findOrCreate({ username, role: 'MODEL' });
+    if (!person) {
+      return res.status(500).json({ error: 'Failed to get person record' });
+    }
+
+    // Initialize storage if needed
+    await ProfileImagesService.init();
+
+    // Save the uploaded file
+    const image = await ProfileImagesService.saveUploadedFile(
+      {
+        buffer: req.file.buffer,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+      },
+      person.id,
+      {
+        source: source as 'manual_upload' | 'screensnap' | 'external' | 'imported',
+        description: description || undefined,
+        capturedAt: captured_at ? new Date(captured_at) : undefined,
+      }
+    );
+
+    logger.info('Profile image uploaded', {
+      username,
+      imageId: image.id,
+      source,
+      size: req.file.size,
+    });
+
+    res.status(201).json(image);
+  } catch (error: any) {
+    if (error.message?.includes('Invalid file type')) {
+      return res.status(400).json({ error: error.message });
+    }
+    logger.error('Error uploading profile image', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PATCH /api/profile/:username/images/:imageId
+ * Update image metadata
+ */
+router.patch('/:username/images/:imageId', async (req: Request, res: Response) => {
+  try {
+    const { imageId } = req.params;
+    const { description, source, captured_at } = req.body;
+
+    // Validate source if provided
+    if (source) {
+      const validSources = ['manual_upload', 'screensnap', 'external', 'imported'];
+      if (!validSources.includes(source)) {
+        return res.status(400).json({
+          error: `Invalid source. Valid options: ${validSources.join(', ')}`,
+        });
+      }
+    }
+
+    const image = await ProfileImagesService.update(imageId, {
+      description,
+      source,
+      capturedAt: captured_at ? new Date(captured_at) : undefined,
+    });
+
+    if (!image) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    res.json(image);
+  } catch (error) {
+    logger.error('Error updating profile image', { error, imageId: req.params.imageId });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/profile/:username/images/:imageId
+ * Delete an uploaded image
+ */
+router.delete('/:username/images/:imageId', async (req: Request, res: Response) => {
+  try {
+    const { imageId } = req.params;
+
+    // First check if this is an uploaded image (not affiliate API)
+    const image = await ProfileImagesService.getById(imageId);
+    if (!image) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    const deleted = await ProfileImagesService.delete(imageId);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error deleting profile image', { error, imageId: req.params.imageId });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// SOCIAL LINKS ENDPOINTS
+// ============================================================
+
+/**
+ * GET /api/profile/:username/social-links
+ * Get all social links for a profile
+ */
+router.get('/:username/social-links', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const links = await SocialLinksService.getByPersonId(person.id);
+
+    res.json({
+      links,
+      platforms: SOCIAL_PLATFORMS,
+    });
+  } catch (error) {
+    logger.error('Error getting social links', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PUT /api/profile/:username/social-links
+ * Update all social links (replaces entire object)
+ */
+router.put('/:username/social-links', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { links } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    if (!links || typeof links !== 'object') {
+      return res.status(400).json({ error: 'Links object is required' });
+    }
+
+    // Validate all platforms
+    for (const platform of Object.keys(links)) {
+      if (!SocialLinksService.isValidPlatform(platform)) {
+        return res.status(400).json({
+          error: `Invalid platform: ${platform}. Valid options: ${Object.keys(SOCIAL_PLATFORMS).join(', ')}`,
+        });
+      }
+    }
+
+    // Normalize URLs
+    const normalizedLinks: Record<string, string> = {};
+    for (const [platform, url] of Object.entries(links)) {
+      if (url && typeof url === 'string' && url.trim()) {
+        normalizedLinks[platform] = normalizeSocialUrl(platform, url.trim());
+      }
+    }
+
+    // Get or create person
+    const person = await PersonService.findOrCreate({ username, role: 'MODEL' });
+    if (!person) {
+      return res.status(500).json({ error: 'Failed to get person record' });
+    }
+
+    const updatedLinks = await SocialLinksService.update(person.id, normalizedLinks);
+
+    logger.info('Social links updated', {
+      username,
+      platforms: Object.keys(normalizedLinks),
+    });
+
+    res.json({ links: updatedLinks });
+  } catch (error) {
+    logger.error('Error updating social links', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PATCH /api/profile/:username/social-links
+ * Add or update a single social link
+ */
+router.patch('/:username/social-links', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { platform, url } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    if (!platform) {
+      return res.status(400).json({ error: 'Platform is required' });
+    }
+
+    if (!SocialLinksService.isValidPlatform(platform)) {
+      return res.status(400).json({
+        error: `Invalid platform: ${platform}. Valid options: ${Object.keys(SOCIAL_PLATFORMS).join(', ')}`,
+      });
+    }
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+
+    // Get or create person
+    const person = await PersonService.findOrCreate({ username, role: 'MODEL' });
+    if (!person) {
+      return res.status(500).json({ error: 'Failed to get person record' });
+    }
+
+    // Normalize the URL
+    const normalizedUrl = normalizeSocialUrl(platform, url.trim());
+
+    const updatedLinks = await SocialLinksService.addLink(
+      person.id,
+      platform as SocialPlatform,
+      normalizedUrl
+    );
+
+    logger.info('Social link added', { username, platform });
+
+    res.json({ links: updatedLinks });
+  } catch (error) {
+    logger.error('Error adding social link', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/profile/:username/social-links/:platform
+ * Remove a single social link
+ */
+router.delete('/:username/social-links/:platform', async (req: Request, res: Response) => {
+  try {
+    const { username, platform } = req.params;
+
+    if (!SocialLinksService.isValidPlatform(platform)) {
+      return res.status(400).json({
+        error: `Invalid platform: ${platform}. Valid options: ${Object.keys(SOCIAL_PLATFORMS).join(', ')}`,
+      });
+    }
+
+    // Get person
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const updatedLinks = await SocialLinksService.removeLink(person.id, platform as SocialPlatform);
+
+    logger.info('Social link removed', { username, platform });
+
+    res.json({ links: updatedLinks });
+  } catch (error) {
+    logger.error('Error removing social link', {
+      error,
+      username: req.params.username,
+      platform: req.params.platform,
+    });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================
+// Room Visits Endpoints
+// ============================================
+
+/**
+ * GET /api/profile/:username/visits
+ * Get room visit history for a user
+ */
+router.get('/:username/visits', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { limit = '50', offset = '0' } = req.query;
+
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const result = await RoomVisitsService.getVisitsByPersonId(
+      person.id,
+      parseInt(limit as string, 10),
+      parseInt(offset as string, 10)
+    );
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error getting room visits', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/profile/:username/visits/stats
+ * Get room visit statistics for a user
+ */
+router.get('/:username/visits/stats', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const stats = await RoomVisitsService.getVisitStats(person.id);
+
+    res.json({
+      ...stats,
+      visit_count: person.room_visit_count || 0,
+      last_visit_at: person.last_room_visit_at,
+    });
+  } catch (error) {
+    logger.error('Error getting room visit stats', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/:username/visits
+ * Manually record a room visit (for testing or manual entry)
+ */
+router.post('/:username/visits', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { visited_at } = req.body;
+
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const visitDate = visited_at ? new Date(visited_at) : new Date();
+    if (isNaN(visitDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format' });
+    }
+
+    const visit = await RoomVisitsService.recordVisit(person.id, visitDate);
+
+    if (!visit) {
+      return res.status(409).json({ error: 'Duplicate visit (within 5 minutes of previous visit)' });
+    }
+
+    res.status(201).json(visit);
+  } catch (error) {
+    logger.error('Error recording room visit', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/profile/visits/recent
+ * Get recent visitors across all users
+ */
+router.get('/visits/recent', async (req: Request, res: Response) => {
+  try {
+    const { days = '7', limit = '50' } = req.query;
+
+    const visitors = await RoomVisitsService.getRecentVisitors(
+      parseInt(days as string, 10),
+      parseInt(limit as string, 10)
+    );
+
+    res.json({ visitors });
+  } catch (error) {
+    logger.error('Error getting recent visitors', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/profile/visits/top
+ * Get top visitors (all time)
+ */
+router.get('/visits/top', async (req: Request, res: Response) => {
+  try {
+    const { limit = '50' } = req.query;
+
+    const visitors = await RoomVisitsService.getTopVisitors(
+      parseInt(limit as string, 10)
+    );
+
+    res.json({ visitors });
+  } catch (error) {
+    logger.error('Error getting top visitors', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/visits/backfill
+ * Backfill room visits from existing interactions
+ */
+router.post('/visits/backfill', async (req: Request, res: Response) => {
+  try {
+    const broadcasterUsername = process.env.CHATURBATE_USERNAME;
+    if (!broadcasterUsername) {
+      return res.status(500).json({ error: 'CHATURBATE_USERNAME not configured' });
+    }
+
+    const result = await RoomVisitsService.backfillFromInteractions(broadcasterUsername);
+
+    res.json({
+      message: 'Backfill complete',
+      processed: result.processed,
+      recorded: result.recorded,
+    });
+  } catch (error) {
+    logger.error('Error backfilling room visits', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

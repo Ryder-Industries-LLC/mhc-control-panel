@@ -28,7 +28,7 @@ export class AffiliatePollingJob {
   private config: AffiliatePollingConfig = {
     intervalMinutes: 5,
     gender: 'm',
-    limit: 250,
+    limit: 0, // 0 = fetch all broadcasters
     enabled: true,
   };
 

@@ -83,16 +83,40 @@ export class ProfileNotesService {
   /**
    * Update an existing note
    */
-  static async updateNote(noteId: string, content: string): Promise<ProfileNote | null> {
+  static async updateNote(
+    noteId: string,
+    data: { content?: string; created_at?: Date | string }
+  ): Promise<ProfileNote | null> {
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    if (data.content !== undefined) {
+      updates.push(`content = $${paramIndex++}`);
+      values.push(data.content);
+    }
+
+    if (data.created_at !== undefined) {
+      updates.push(`created_at = $${paramIndex++}`);
+      values.push(data.created_at);
+    }
+
+    if (updates.length === 0) {
+      return this.getById(noteId);
+    }
+
+    updates.push('updated_at = NOW()');
+    values.push(noteId);
+
     const sql = `
       UPDATE profile_notes
-      SET content = $2, updated_at = NOW()
-      WHERE id = $1
+      SET ${updates.join(', ')}
+      WHERE id = $${paramIndex}
       RETURNING *
     `;
 
     try {
-      const result = await query(sql, [noteId, content]);
+      const result = await query(sql, values);
       if (result.rows.length === 0) {
         return null;
       }

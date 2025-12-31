@@ -13,6 +13,8 @@ export interface Person {
   first_seen_at: Date;
   last_seen_at: Date;
   is_excluded: boolean;
+  room_visit_count: number;
+  last_room_visit_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -27,7 +29,7 @@ export interface PersonAlias {
   created_at: Date;
 }
 
-export type SnapshotSource = 'statbate_member' | 'statbate_model' | 'cb_stats' | 'manual';
+export type SnapshotSource = 'statbate_member' | 'statbate_model' | 'cb_stats' | 'cbhours' | 'manual';
 
 export interface Snapshot {
   id: string;

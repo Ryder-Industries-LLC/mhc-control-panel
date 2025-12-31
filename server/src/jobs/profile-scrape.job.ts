@@ -15,9 +15,9 @@ import { logger } from '../config/logger.js';
  */
 
 // Configuration
-const DELAY_BETWEEN_PROFILES = 5000; // 5 seconds between profiles (conservative)
-const MAX_PROFILES_PER_RUN = 50; // Limit per run to avoid long-running jobs
-const PROFILE_REFRESH_DAYS = 7; // Re-scrape profiles older than this
+const DELAY_BETWEEN_PROFILES = 2000; // 2 seconds between profiles
+const MAX_PROFILES_PER_RUN = 200; // Limit per run to avoid long-running jobs
+const PROFILE_REFRESH_DAYS = 30; // Re-scrape profiles older than this
 const JOB_NAME = 'profile-scrape';
 
 export interface ProfileScrapeConfig {
@@ -36,7 +36,7 @@ export class ProfileScrapeJob {
   private intervalId: NodeJS.Timeout | null = null;
   private config: ProfileScrapeConfig = {
     intervalMinutes: 15,
-    maxProfilesPerRun: 50,
+    maxProfilesPerRun: MAX_PROFILES_PER_RUN,
     delayBetweenProfiles: DELAY_BETWEEN_PROFILES,
     refreshDays: PROFILE_REFRESH_DAYS,
     enabled: true,

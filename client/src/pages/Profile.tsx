@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import { formatDuration, formatGender } from '../utils/formatting';
 import { CollapsibleSection } from '../components/CollapsibleSection';
+import { SocialLinksEditor } from '../components/SocialLinksEditor';
+import { ServiceRelationshipEditor, type ServiceRelationship } from '../components/ServiceRelationshipEditor';
 // Profile.css removed - fully migrated to Tailwind CSS
 
 interface ProfilePageProps {}
@@ -106,15 +108,13 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [newNoteContent, setNewNoteContent] = useState('');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteContent, setEditingNoteContent] = useState('');
+  const [editingNoteDate, setEditingNoteDate] = useState('');
   const [notesSaving, setNotesSaving] = useState(false);
   const [notesMessage, setNotesMessage] = useState<string | null>(null);
 
   // Profile attributes state
   const [bannedMe, setBannedMe] = useState(false);
   const [watchList, setWatchList] = useState(false);
-  const [activeSub, setActiveSub] = useState(false);
-  const [firstServiceDate, setFirstServiceDate] = useState('');
-  const [lastServiceDate, setLastServiceDate] = useState('');
   const [friendTier, setFriendTier] = useState<number | null>(null);
 
 
@@ -123,6 +123,31 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
   // Image preview modal state
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+
+  // Image upload state
+  const [uploadedImages, setUploadedImages] = useState<any[]>([]);
+  const [imageUploadLoading, setImageUploadLoading] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+  const [selectedImageSource, setSelectedImageSource] = useState<'manual_upload' | 'screensnap' | 'external'>('manual_upload');
+  const [imageDescription, setImageDescription] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Social links state
+  const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
+  const [socialLinksLoading, setSocialLinksLoading] = useState(false);
+
+  // Service relationships state
+  const [serviceRelationships, setServiceRelationships] = useState<ServiceRelationship[]>([]);
+  const [serviceRelationshipsLoading, setServiceRelationshipsLoading] = useState(false);
+
+  // Room visits state
+  const [roomVisitStats, setRoomVisitStats] = useState<{
+    total_visits: number;
+    first_visit: string | null;
+    last_visit: string | null;
+    visits_this_week: number;
+    visits_this_month: number;
+  } | null>(null);
 
   // Interactions pagination state
   const [interactionsPage, setInteractionsPage] = useState(0);
@@ -184,9 +209,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
     if (profileData?.profile) {
       setBannedMe(profileData.profile.banned_me || false);
       setWatchList(profileData.profile.watch_list || false);
-      setActiveSub(profileData.profile.active_sub || false);
-      setFirstServiceDate(profileData.profile.first_service_date ? profileData.profile.first_service_date.split('T')[0] : '');
-      setLastServiceDate(profileData.profile.last_service_date ? profileData.profile.last_service_date.split('T')[0] : '');
       setFriendTier(profileData.profile.friend_tier || null);
     }
   }, [profileData?.profile]);
@@ -215,6 +237,37 @@ const Profile: React.FC<ProfilePageProps> = () => {
         }
       };
       fetchProfileNotes();
+
+      // Fetch service relationships
+      const fetchServiceRelationships = async () => {
+        setServiceRelationshipsLoading(true);
+        try {
+          const response = await fetch(`/api/profile/${profileData.person.username}/service-relationships`);
+          if (response.ok) {
+            const data = await response.json();
+            setServiceRelationships(data.relationships || []);
+          }
+        } catch (err) {
+          console.error('Error fetching service relationships:', err);
+        } finally {
+          setServiceRelationshipsLoading(false);
+        }
+      };
+      fetchServiceRelationships();
+
+      // Fetch room visit stats
+      const fetchRoomVisitStats = async () => {
+        try {
+          const response = await fetch(`/api/profile/${profileData.person.username}/visits/stats`);
+          if (response.ok) {
+            const data = await response.json();
+            setRoomVisitStats(data);
+          }
+        } catch (err) {
+          console.error('Error fetching room visit stats:', err);
+        }
+      };
+      fetchRoomVisitStats();
     }
   }, [profileData?.person?.username]);
 
@@ -260,6 +313,48 @@ const Profile: React.FC<ProfilePageProps> = () => {
         });
     }
   }, [profileData?.person?.id]);
+
+  // Extract social links from profile data
+  // Handle both array format [{platform, url}] and object format {platform: url}
+  useEffect(() => {
+    if (profileData?.profile?.social_links) {
+      const links = profileData.profile.social_links;
+      if (Array.isArray(links)) {
+        // Convert array format to object format
+        const linksObj: Record<string, string> = {};
+        links.forEach((link: { platform: string; url: string }) => {
+          if (link.platform && link.url) {
+            linksObj[link.platform] = link.url;
+          }
+        });
+        setSocialLinks(linksObj);
+      } else {
+        // Already in object format
+        setSocialLinks(links);
+      }
+    } else {
+      setSocialLinks({});
+    }
+  }, [profileData?.profile?.social_links]);
+
+  // Fetch uploaded images when Images tab is selected
+  useEffect(() => {
+    if (activeTab === 'images' && profileData?.person?.username) {
+      setImageUploadLoading(true);
+      fetch(`/api/profile/${profileData.person.username}/images`)
+        .then(response => response.json())
+        .then(data => {
+          setUploadedImages(data.images || []);
+        })
+        .catch(err => {
+          console.error('Failed to fetch profile images', err);
+          setUploadedImages([]);
+        })
+        .finally(() => {
+          setImageUploadLoading(false);
+        });
+    }
+  }, [activeTab, profileData?.person?.username]);
 
   // Fetch member info from Statbate when History tab is selected
   useEffect(() => {
@@ -371,7 +466,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
       const response = await fetch(`/api/profile/${profileData.person.username}/notes/${noteId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: editingNoteContent.trim() }),
+        body: JSON.stringify({
+          content: editingNoteContent.trim(),
+          created_at: editingNoteDate ? new Date(editingNoteDate).toISOString() : undefined,
+        }),
       });
 
       if (response.ok) {
@@ -379,6 +477,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
         setProfileNotes(prev => prev.map(n => n.id === noteId ? updatedNote : n));
         setEditingNoteId(null);
         setEditingNoteContent('');
+        setEditingNoteDate('');
         setNotesMessage('Note updated!');
         setTimeout(() => setNotesMessage(null), 3000);
       }
@@ -415,12 +514,145 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const startEditingNote = (note: ProfileNote) => {
     setEditingNoteId(note.id);
     setEditingNoteContent(note.content);
+    // Format date for datetime-local input (YYYY-MM-DDTHH:MM)
+    const date = new Date(note.created_at);
+    const localDateTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+    setEditingNoteDate(localDateTime);
   };
 
   // Cancel editing
   const cancelEditingNote = () => {
     setEditingNoteId(null);
     setEditingNoteContent('');
+    setEditingNoteDate('');
+  };
+
+  // Image upload handler
+  const handleImageUpload = async (file: File) => {
+    if (!profileData?.person?.username) return;
+
+    setImageUploadLoading(true);
+    setImageUploadError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('source', selectedImageSource);
+      if (imageDescription.trim()) {
+        formData.append('description', imageDescription.trim());
+      }
+
+      const response = await fetch(`/api/profile/${profileData.person.username}/images`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to upload image');
+      }
+
+      const newImage = await response.json();
+      setUploadedImages(prev => [newImage, ...prev]);
+      setImageDescription('');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (err: any) {
+      setImageUploadError(err.message || 'Failed to upload image');
+    } finally {
+      setImageUploadLoading(false);
+    }
+  };
+
+  // Delete uploaded image
+  const handleDeleteImage = async (imageId: string) => {
+    if (!profileData?.person?.username) return;
+    if (!window.confirm('Are you sure you want to delete this image?')) return;
+
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/images/${imageId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setUploadedImages(prev => prev.filter(img => img.id !== imageId));
+      }
+    } catch (err) {
+      console.error('Failed to delete image', err);
+    }
+  };
+
+  // Social links save handler
+  const handleSaveSocialLinks = async (links: Record<string, string>) => {
+    if (!profileData?.person?.username) return;
+
+    setSocialLinksLoading(true);
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/social-links`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ links }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save social links');
+      }
+
+      const data = await response.json();
+      setSocialLinks(data.links);
+    } finally {
+      setSocialLinksLoading(false);
+    }
+  };
+
+  // Add single social link
+  const handleAddSocialLink = async (platform: string, url: string) => {
+    if (!profileData?.person?.username) return;
+
+    setSocialLinksLoading(true);
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/social-links`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform, url }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to add social link');
+      }
+
+      const data = await response.json();
+      setSocialLinks(data.links);
+    } finally {
+      setSocialLinksLoading(false);
+    }
+  };
+
+  // Remove single social link
+  const handleRemoveSocialLink = async (platform: string) => {
+    if (!profileData?.person?.username) return;
+
+    setSocialLinksLoading(true);
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/social-links/${platform}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to remove social link');
+      }
+
+      const data = await response.json();
+      setSocialLinks(data.links);
+    } finally {
+      setSocialLinksLoading(false);
+    }
   };
 
   const handleBannedToggle = async () => {
@@ -459,44 +691,58 @@ const Profile: React.FC<ProfilePageProps> = () => {
     }
   };
 
-  const handleActiveSubToggle = async () => {
+  // Service relationship handlers
+  const handleSaveServiceRelationship = async (
+    role: 'sub' | 'dom',
+    data: {
+      serviceLevel: string;
+      serviceTypes: string[];
+      startedAt?: string | null;
+      endedAt?: string | null;
+      notes?: string | null;
+    }
+  ) => {
     if (!profileData?.person?.username) return;
 
-    const newValue = !activeSub;
-    const today = new Date().toISOString().split('T')[0];
+    const response = await fetch(`/api/profile/${profileData.person.username}/service-relationships`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        serviceRole: role,
+        serviceLevel: data.serviceLevel,
+        serviceTypes: data.serviceTypes,
+        startedAt: data.startedAt,
+        endedAt: data.endedAt,
+        notes: data.notes,
+      }),
+    });
 
-    // Auto-fill dates based on toggle
-    let newFirstServiceDate = firstServiceDate;
-    let newLastServiceDate = lastServiceDate;
-
-    if (newValue && !firstServiceDate) {
-      // Checking Active Sub: auto-fill first_service_date if empty
-      newFirstServiceDate = today;
-      setFirstServiceDate(today);
-    } else if (!newValue && !lastServiceDate) {
-      // Unchecking Active Sub: auto-fill last_service_date if empty
-      newLastServiceDate = today;
-      setLastServiceDate(today);
+    if (!response.ok) {
+      throw new Error('Failed to save service relationship');
     }
 
-    setActiveSub(newValue);
+    const result = await response.json();
 
-    try {
-      await fetch(`/api/profile/${profileData.person.username}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          active_sub: newValue,
-          first_service_date: newFirstServiceDate || null,
-          last_service_date: newLastServiceDate || null,
-        }),
-      });
-    } catch (err) {
-      // Revert on error
-      setActiveSub(!newValue);
-      setFirstServiceDate(firstServiceDate);
-      setLastServiceDate(lastServiceDate);
+    // Update local state
+    setServiceRelationships(prev => {
+      const filtered = prev.filter(r => r.service_role !== role);
+      return [...filtered, result];
+    });
+  };
+
+  const handleRemoveServiceRelationship = async (role: 'sub' | 'dom') => {
+    if (!profileData?.person?.username) return;
+
+    const response = await fetch(`/api/profile/${profileData.person.username}/service-relationships/${role}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to remove service relationship');
     }
+
+    // Update local state
+    setServiceRelationships(prev => prev.filter(r => r.service_role !== role));
   };
 
   const handleFriendTierChange = async (newTier: number | null) => {
@@ -684,12 +930,21 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       Follows You
                     </span>
                   )}
-                  {activeSub && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50" title="Active Subscriber">
+                  {/* Sub/Dom relationship badges */}
+                  {serviceRelationships.find(r => r.service_role === 'sub' && r.service_level === 'Current') && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50" title="Current Sub">
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
                       </svg>
-                      Active Sub
+                      Sub
+                    </span>
+                  )}
+                  {serviceRelationships.find(r => r.service_role === 'dom' && r.service_level === 'Actively Serving') && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-purple-500/30 border border-purple-500/50" title="Actively Serving Dom">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+                      </svg>
+                      Dom
                     </span>
                   )}
                   {bannedMe && (
@@ -726,7 +981,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   )}
                 </div>
 
-                {/* Stats row - Total Sessions & Images */}
+                {/* Stats row - Total Sessions, Images, Visits */}
                 <div className="flex gap-4 mb-3 text-white/80 text-sm">
                   {profileData.sessionStats?.totalSessions > 0 && (
                     <span title="Total broadcast sessions observed">
@@ -736,6 +991,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   {imageHistory.length > 0 && (
                     <span title="Total images captured">
                       🖼️ {imageHistory.length} images
+                    </span>
+                  )}
+                  {roomVisitStats && roomVisitStats.total_visits > 0 && (
+                    <span title={`Visited your room ${roomVisitStats.total_visits} times${roomVisitStats.last_visit ? `. Last visit: ${new Date(roomVisitStats.last_visit).toLocaleDateString()}` : ''}`}>
+                      👋 {roomVisitStats.total_visits.toLocaleString()} visits
                     </span>
                   )}
                 </div>
@@ -890,43 +1150,29 @@ const Profile: React.FC<ProfilePageProps> = () => {
             </CollapsibleSection>
           </div>
 
-          {/* Service Section (Collapsible) */}
+          {/* Service Relationships Section (Collapsible) */}
           <div className="mb-5">
-            <CollapsibleSection title="Service" defaultCollapsed={true} className="bg-mhc-surface">
-              <div className="flex flex-wrap items-center gap-6">
-                {/* Active Sub Toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={activeSub}
-                    onChange={handleActiveSubToggle}
-                    className="w-5 h-5 rounded border-2 border-emerald-500/50 bg-mhc-surface-light text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-                  />
-                  <span className="text-mhc-text font-medium">Active Sub</span>
-                </label>
-
-                {/* First Service Date */}
+            <CollapsibleSection
+              title={
                 <div className="flex items-center gap-2">
-                  <label className="text-mhc-text font-medium whitespace-nowrap">First Service:</label>
-                  <input
-                    type="date"
-                    value={firstServiceDate}
-                    onChange={(e) => setFirstServiceDate(e.target.value)}
-                    className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                  />
+                  <span>Service Relationships</span>
+                  {serviceRelationships.length > 0 && (
+                    <span className="text-xs text-white/50 font-normal">({serviceRelationships.length})</span>
+                  )}
                 </div>
-
-                {/* Last Service Date */}
-                <div className="flex items-center gap-2">
-                  <label className="text-mhc-text font-medium whitespace-nowrap">Last Service:</label>
-                  <input
-                    type="date"
-                    value={lastServiceDate}
-                    onChange={(e) => setLastServiceDate(e.target.value)}
-                    className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                  />
-                </div>
-              </div>
+              }
+              defaultCollapsed={true}
+              className="bg-mhc-surface"
+            >
+              {serviceRelationshipsLoading ? (
+                <div className="text-white/50 text-sm py-4 text-center">Loading...</div>
+              ) : (
+                <ServiceRelationshipEditor
+                  relationships={serviceRelationships}
+                  onSave={handleSaveServiceRelationship}
+                  onRemove={handleRemoveServiceRelationship}
+                />
+              )}
             </CollapsibleSection>
           </div>
 
@@ -992,6 +1238,15 @@ const Profile: React.FC<ProfilePageProps> = () => {
                             className="w-full px-4 py-2.5 bg-mhc-surface border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
                             autoFocus
                           />
+                          <div className="flex items-center gap-3">
+                            <label className="text-white/60 text-sm">Date:</label>
+                            <input
+                              type="datetime-local"
+                              value={editingNoteDate}
+                              onChange={(e) => setEditingNoteDate(e.target.value)}
+                              className="px-3 py-1.5 bg-mhc-surface border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                            />
+                          </div>
                           <div className="flex gap-2 justify-end">
                             <button
                               onClick={cancelEditingNote}
@@ -1403,6 +1658,24 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   )}
                 </div>
 
+                {/* Social Media Links Section */}
+                <div className="mt-8">
+                  <CollapsibleSection title="Social Media Links" defaultCollapsed={false}>
+                    {socialLinksLoading ? (
+                      <div className="flex items-center justify-center py-4">
+                        <div className="text-mhc-text-muted">Loading...</div>
+                      </div>
+                    ) : (
+                      <SocialLinksEditor
+                        links={socialLinks}
+                        onSave={handleSaveSocialLinks}
+                        onAddLink={handleAddSocialLink}
+                        onRemoveLink={handleRemoveSocialLink}
+                      />
+                    )}
+                  </CollapsibleSection>
+                </div>
+
                 {/* Raw Data Toggle Button */}
                 <div className="mt-8 flex justify-center">
                   <button
@@ -1483,61 +1756,158 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
             {activeTab === 'images' && (
               <div>
-                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Image History</h3>
-                {imageHistory.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {imageHistory.map((image, index) => (
-                      <div
-                        key={image.image_url}
-                        className={`group relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer hover:border-mhc-primary hover:-translate-y-1 hover:shadow-lg ${
-                          currentImageIndex === index ? 'border-mhc-primary ring-2 ring-mhc-primary/50' : 'border-white/10'
-                        }`}
-                        onClick={() => setCurrentImageIndex(index)}
-                        onMouseEnter={() => setPreviewImageUrl(`http://localhost:3000/images/${image.image_url}`)}
-                        onMouseLeave={() => setPreviewImageUrl(null)}
+                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Images</h3>
+
+                {/* Upload Image Section */}
+                <CollapsibleSection title="Upload Image" defaultCollapsed={true} className="mb-6">
+                  {imageUploadError && (
+                    <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm mb-4">
+                      {imageUploadError}
+                    </div>
+                  )}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/gif,image/webp"
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) handleImageUpload(file);
+                        }}
+                        disabled={imageUploadLoading}
+                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-mhc-primary file:text-white file:cursor-pointer disabled:opacity-50"
+                      />
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <select
+                        value={selectedImageSource}
+                        onChange={e => setSelectedImageSource(e.target.value as 'manual_upload' | 'screensnap' | 'external')}
+                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-mhc-primary"
                       >
-                        <div className="aspect-[4/3]">
-                          <img
-                            src={`http://localhost:3000/images/${image.image_url}`}
-                            alt={`${profileData.person.username} - ${new Date(image.observed_at).toLocaleDateString()}`}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                          />
-                        </div>
-                        {/* Overlay with info */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                          <div className="absolute bottom-0 left-0 right-0 p-2 text-white text-xs">
-                            <div className="font-semibold">
-                              {new Date(image.observed_at).toLocaleDateString('en-US', {
-                                month: 'short',
-                                day: 'numeric',
-                                year: 'numeric'
-                              })}
-                            </div>
-                            <div className="text-white/70">
-                              {new Date(image.observed_at).toLocaleTimeString('en-US', {
-                                hour: 'numeric',
-                                minute: '2-digit'
-                              })}
-                            </div>
-                            {image.num_users > 0 && (
-                              <div className="text-white/70 mt-1">
-                                {image.num_users.toLocaleString()} viewers
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        {/* Current indicator */}
-                        {currentImageIndex === index && (
-                          <div className="absolute top-1 right-1 bg-mhc-primary text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
-                            Current
-                          </div>
-                        )}
+                        <option value="manual_upload">Manual Upload</option>
+                        <option value="screensnap">Screen Capture</option>
+                        <option value="external">External Source</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={imageDescription}
+                        onChange={e => setImageDescription(e.target.value)}
+                        placeholder="Description (optional)"
+                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 focus:outline-none focus:border-mhc-primary"
+                      />
+                    </div>
+                    {imageUploadLoading && (
+                      <div className="flex items-center gap-2 text-mhc-text-muted text-sm">
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Uploading...
                       </div>
-                    ))}
+                    )}
+                  </div>
+                </CollapsibleSection>
+
+                {/* Image Grid - combines uploaded and affiliate images */}
+                {uploadedImages.length > 0 ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                    {uploadedImages.map((image, index) => {
+                      const imageUrl = image.source === 'affiliate_api'
+                        ? `http://localhost:3000/images/${image.file_path}`
+                        : `http://localhost:3000/images/profiles/${image.file_path}`;
+                      const imageDate = image.captured_at || image.uploaded_at;
+                      const isUploaded = image.source !== 'affiliate_api';
+
+                      return (
+                        <div
+                          key={image.id}
+                          className={`group relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer hover:border-mhc-primary hover:-translate-y-1 hover:shadow-lg ${
+                            currentImageIndex === index ? 'border-mhc-primary ring-2 ring-mhc-primary/50' : 'border-white/10'
+                          }`}
+                          onClick={() => setCurrentImageIndex(index)}
+                          onMouseEnter={() => setPreviewImageUrl(imageUrl)}
+                          onMouseLeave={() => setPreviewImageUrl(null)}
+                        >
+                          <div className="aspect-[4/3]">
+                            <img
+                              src={imageUrl}
+                              alt={`${profileData.person.username} - ${new Date(imageDate).toLocaleDateString()}`}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                          </div>
+                          {/* Overlay with info */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="absolute bottom-0 left-0 right-0 p-2 text-white text-xs">
+                              <div className="font-semibold">
+                                {new Date(imageDate).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
+                              </div>
+                              <div className="text-white/70">
+                                {new Date(imageDate).toLocaleTimeString('en-US', {
+                                  hour: 'numeric',
+                                  minute: '2-digit'
+                                })}
+                              </div>
+                              {image.viewers > 0 && (
+                                <div className="text-white/70 mt-1">
+                                  {image.viewers.toLocaleString()} viewers
+                                </div>
+                              )}
+                              {image.description && (
+                                <div className="text-white/70 mt-1 truncate">
+                                  {image.description}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {/* Source badge */}
+                          <div className={`absolute top-1 left-1 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                            image.source === 'affiliate_api' ? 'bg-blue-500/80' :
+                            image.source === 'screensnap' ? 'bg-purple-500/80' :
+                            image.source === 'external' ? 'bg-orange-500/80' :
+                            'bg-gray-500/80'
+                          }`}>
+                            {image.source === 'affiliate_api' ? 'Auto' :
+                             image.source === 'screensnap' ? 'Snap' :
+                             image.source === 'external' ? 'Ext' :
+                             'Upload'}
+                          </div>
+                          {/* Delete button for uploaded images */}
+                          {isUploaded && (
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                handleDeleteImage(image.id);
+                              }}
+                              className="absolute top-1 right-1 p-1 bg-red-500/80 hover:bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Delete image"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                          {/* Current indicator */}
+                          {currentImageIndex === index && (
+                            <div className="absolute bottom-1 right-1 bg-mhc-primary text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                              Current
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : imageUploadLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="text-mhc-text-muted">Loading images...</div>
                   </div>
                 ) : (
-                  <p className="text-mhc-text-muted">No images saved yet. Images are captured when the user broadcasts.</p>
+                  <p className="text-mhc-text-muted">No images saved yet. Images are captured when the user broadcasts, or you can upload them above.</p>
                 )}
               </div>
             )}

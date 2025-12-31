@@ -7,6 +7,7 @@ import EventsFeed from './pages/EventsFeed';
 import Admin from './pages/Admin';
 import Profile from './pages/Profile';
 import MyBroadcasts from './pages/MyBroadcasts';
+import LiveMonitor from './pages/LiveMonitor';
 import { useTheme, ThemeName } from './context/ThemeContext';
 
 const themeLabels: Record<ThemeName, string> = {
@@ -46,6 +47,9 @@ function App() {
               <Link to="/events" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Events
               </Link>
+              <Link to="/live" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
+                Live
+              </Link>
               <Link to="/admin" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Admin
               </Link>
@@ -74,6 +78,7 @@ function App() {
             <Route path="/hudson" element={<BroadcasterDashboard />} /> {/* Alias for backwards compatibility */}
             <Route path="/broadcasts" element={<MyBroadcasts />} />
             <Route path="/events" element={<EventsFeed />} />
+            <Route path="/live" element={<LiveMonitor />} />
             <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>
