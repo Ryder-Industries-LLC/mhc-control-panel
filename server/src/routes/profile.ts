@@ -1116,6 +1116,7 @@ router.get('/:username/images', async (req: Request, res: Response) => {
       captured_at: row.captured_at,
       uploaded_at: row.captured_at,
       viewers: row.viewers,
+      is_current: false, // Affiliate images cannot be set as current
     }));
 
     // Combine and sort by date
@@ -1236,6 +1237,27 @@ router.patch('/:username/images/:imageId', async (req: Request, res: Response) =
     res.json(image);
   } catch (error) {
     logger.error('Error updating profile image', { error, imageId: req.params.imageId });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/:username/images/:imageId/set-current
+ * Set an image as the current/primary image for a profile
+ */
+router.post('/:username/images/:imageId/set-current', async (req: Request, res: Response) => {
+  try {
+    const { imageId } = req.params;
+
+    const image = await ProfileImagesService.setAsCurrent(imageId);
+    if (!image) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    logger.info('Image set as current', { imageId, personId: image.person_id });
+    res.json(image);
+  } catch (error) {
+    logger.error('Error setting image as current', { error, imageId: req.params.imageId });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -17,6 +17,7 @@ export interface ProfileImage {
   mime_type: string | null;
   width: number | null;
   height: number | null;
+  is_current: boolean;
   created_at: Date;
 }
 
@@ -350,6 +351,71 @@ export class ProfileImagesService {
   }
 
   /**
+   * Set an image as the current/primary image for a person
+   * This will unset any previous current image
+   */
+  static async setAsCurrent(imageId: string): Promise<ProfileImage | null> {
+    try {
+      // First get the image to know which person it belongs to
+      const image = await this.getById(imageId);
+      if (!image) {
+        return null;
+      }
+
+      // Unset any current image for this person and set the new one
+      // Using a transaction to ensure atomicity
+      await query('BEGIN');
+
+      try {
+        // Unset all current images for this person
+        await query(
+          `UPDATE profile_images SET is_current = FALSE WHERE person_id = $1`,
+          [image.person_id]
+        );
+
+        // Set the specified image as current
+        const result = await query(
+          `UPDATE profile_images SET is_current = TRUE WHERE id = $1 RETURNING *`,
+          [imageId]
+        );
+
+        await query('COMMIT');
+
+        if (result.rows.length === 0) {
+          return null;
+        }
+
+        logger.info('Profile image set as current', { imageId, personId: image.person_id });
+        return this.mapRowToImage(result.rows[0]);
+      } catch (error) {
+        await query('ROLLBACK');
+        throw error;
+      }
+    } catch (error) {
+      logger.error('Error setting image as current', { error, imageId });
+      throw error;
+    }
+  }
+
+  /**
+   * Get the current image for a person
+   */
+  static async getCurrentByPersonId(personId: string): Promise<ProfileImage | null> {
+    const sql = `SELECT * FROM profile_images WHERE person_id = $1 AND is_current = TRUE`;
+
+    try {
+      const result = await query(sql, [personId]);
+      if (result.rows.length === 0) {
+        return null;
+      }
+      return this.mapRowToImage(result.rows[0]);
+    } catch (error) {
+      logger.error('Error getting current image', { error, personId });
+      throw error;
+    }
+  }
+
+  /**
    * Map database row to ProfileImage object
    */
   private static mapRowToImage(row: any): ProfileImage {
@@ -366,6 +432,7 @@ export class ProfileImagesService {
       mime_type: row.mime_type,
       width: row.width,
       height: row.height,
+      is_current: row.is_current || false,
       created_at: row.created_at,
     };
   }

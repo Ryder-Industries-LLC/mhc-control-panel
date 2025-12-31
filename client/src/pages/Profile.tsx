@@ -127,10 +127,13 @@ const Profile: React.FC<ProfilePageProps> = () => {
   // Image upload state
   const [uploadedImages, setUploadedImages] = useState<any[]>([]);
   const [imageUploadLoading, setImageUploadLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const [selectedImageSource, setSelectedImageSource] = useState<'manual_upload' | 'screensnap' | 'external'>('manual_upload');
   const [imageDescription, setImageDescription] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
 
   // Social links state
   const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
@@ -529,41 +532,123 @@ const Profile: React.FC<ProfilePageProps> = () => {
     setEditingNoteDate('');
   };
 
-  // Image upload handler
-  const handleImageUpload = async (file: File) => {
-    if (!profileData?.person?.username) return;
+  // Image upload handler - supports multiple files
+  const handleImageUpload = async (files: File[]) => {
+    if (!profileData?.person?.username || files.length === 0) return;
 
     setImageUploadLoading(true);
     setImageUploadError(null);
+    setUploadProgress({ current: 0, total: files.length });
+
+    const uploadedSuccessfully: any[] = [];
+    const errors: string[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      setUploadProgress({ current: i + 1, total: files.length });
+
+      try {
+        const formData = new FormData();
+        formData.append('image', file);
+        formData.append('source', selectedImageSource);
+        if (imageDescription.trim()) {
+          formData.append('description', imageDescription.trim());
+        }
+
+        const response = await fetch(`/api/profile/${profileData.person.username}/images`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || `Failed to upload ${file.name}`);
+        }
+
+        const newImage = await response.json();
+        uploadedSuccessfully.push(newImage);
+      } catch (err: any) {
+        errors.push(`${file.name}: ${err.message}`);
+      }
+    }
+
+    // Add all successfully uploaded images to state
+    if (uploadedSuccessfully.length > 0) {
+      setUploadedImages(prev => [...uploadedSuccessfully, ...prev]);
+    }
+
+    // Show errors if any
+    if (errors.length > 0) {
+      setImageUploadError(errors.join('\n'));
+    }
+
+    setImageDescription('');
+    setUploadProgress(null);
+    setImageUploadLoading(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only set dragging to false if we're leaving the drop zone entirely
+    if (dropZoneRef.current && !dropZoneRef.current.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files).filter(file =>
+      ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)
+    );
+
+    if (files.length > 0) {
+      handleImageUpload(files);
+    } else if (e.dataTransfer.files.length > 0) {
+      setImageUploadError('Please drop valid image files (JPEG, PNG, GIF, or WebP)');
+    }
+  };
+
+  // Set image as current/primary
+  const handleSetAsCurrent = async (imageId: string) => {
+    if (!profileData?.person?.username) return;
 
     try {
-      const formData = new FormData();
-      formData.append('image', file);
-      formData.append('source', selectedImageSource);
-      if (imageDescription.trim()) {
-        formData.append('description', imageDescription.trim());
-      }
-
-      const response = await fetch(`/api/profile/${profileData.person.username}/images`, {
+      const response = await fetch(`/api/profile/${profileData.person.username}/images/${imageId}/set-current`, {
         method: 'POST',
-        body: formData,
       });
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || 'Failed to upload image');
+        throw new Error(data.error || 'Failed to set image as current');
       }
 
-      const newImage = await response.json();
-      setUploadedImages(prev => [newImage, ...prev]);
-      setImageDescription('');
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      // Refresh the images list to reflect the change
+      const imagesResponse = await fetch(`/api/profile/${profileData.person.username}/images`);
+      if (imagesResponse.ok) {
+        const data = await imagesResponse.json();
+        setUploadedImages(data.images || []);
       }
     } catch (err: any) {
-      setImageUploadError(err.message || 'Failed to upload image');
-    } finally {
-      setImageUploadLoading(false);
+      setImageUploadError(err.message || 'Failed to set image as current');
     }
   };
 
@@ -1759,26 +1844,58 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Images</h3>
 
                 {/* Upload Image Section */}
-                <CollapsibleSection title="Upload Image" defaultCollapsed={true} className="mb-6">
+                <CollapsibleSection title="Upload Images" defaultCollapsed={true} className="mb-6">
                   {imageUploadError && (
-                    <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm mb-4">
+                    <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm mb-4 whitespace-pre-line">
                       {imageUploadError}
                     </div>
                   )}
                   <div className="space-y-4">
-                    <div className="flex items-center gap-4">
+                    {/* Drag & Drop Zone */}
+                    <div
+                      ref={dropZoneRef}
+                      onDragEnter={handleDragEnter}
+                      onDragLeave={handleDragLeave}
+                      onDragOver={handleDragOver}
+                      onDrop={handleDrop}
+                      onClick={() => !imageUploadLoading && fileInputRef.current?.click()}
+                      className={`relative border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all ${
+                        isDragging
+                          ? 'border-mhc-primary bg-mhc-primary/10'
+                          : 'border-white/20 hover:border-mhc-primary/50 hover:bg-white/5'
+                      } ${imageUploadLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
                       <input
                         ref={fileInputRef}
                         type="file"
                         accept="image/jpeg,image/png,image/gif,image/webp"
+                        multiple
                         onChange={e => {
-                          const file = e.target.files?.[0];
-                          if (file) handleImageUpload(file);
+                          const files = Array.from(e.target.files || []);
+                          if (files.length > 0) handleImageUpload(files);
                         }}
                         disabled={imageUploadLoading}
-                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-mhc-primary file:text-white file:cursor-pointer disabled:opacity-50"
+                        className="hidden"
                       />
+                      <div className="flex flex-col items-center gap-2">
+                        <svg className={`w-10 h-10 ${isDragging ? 'text-mhc-primary' : 'text-white/40'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <div className="text-white/70">
+                          {isDragging ? (
+                            <span className="text-mhc-primary font-medium">Drop images here</span>
+                          ) : (
+                            <>
+                              <span className="text-mhc-primary font-medium">Click to upload</span> or drag and drop
+                            </>
+                          )}
+                        </div>
+                        <div className="text-white/40 text-sm">
+                          JPEG, PNG, GIF, or WebP (max 10MB each)
+                        </div>
+                      </div>
                     </div>
+
                     <div className="flex items-center gap-4">
                       <select
                         value={selectedImageSource}
@@ -1793,17 +1910,22 @@ const Profile: React.FC<ProfilePageProps> = () => {
                         type="text"
                         value={imageDescription}
                         onChange={e => setImageDescription(e.target.value)}
-                        placeholder="Description (optional)"
+                        placeholder="Description (optional - applies to all)"
                         className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 focus:outline-none focus:border-mhc-primary"
                       />
                     </div>
+
                     {imageUploadLoading && (
-                      <div className="flex items-center gap-2 text-mhc-text-muted text-sm">
+                      <div className="flex items-center gap-3 text-mhc-text-muted text-sm">
                         <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
-                        Uploading...
+                        {uploadProgress ? (
+                          <span>Uploading {uploadProgress.current} of {uploadProgress.total}...</span>
+                        ) : (
+                          <span>Uploading...</span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1877,24 +1999,42 @@ const Profile: React.FC<ProfilePageProps> = () => {
                              image.source === 'external' ? 'Ext' :
                              'Upload'}
                           </div>
-                          {/* Delete button for uploaded images */}
-                          {isUploaded && (
-                            <button
-                              onClick={e => {
-                                e.stopPropagation();
-                                handleDeleteImage(image.id);
-                              }}
-                              className="absolute top-1 right-1 p-1 bg-red-500/80 hover:bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                              title="Delete image"
-                            >
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          )}
+                          {/* Action buttons - show on hover */}
+                          <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {/* Set as Current button */}
+                            {!image.is_current && (
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  handleSetAsCurrent(image.id);
+                                }}
+                                className="p-1 bg-mhc-primary/80 hover:bg-mhc-primary text-white rounded"
+                                title="Set as current image"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </button>
+                            )}
+                            {/* Delete button for uploaded images */}
+                            {isUploaded && (
+                              <button
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  handleDeleteImage(image.id);
+                                }}
+                                className="p-1 bg-red-500/80 hover:bg-red-500 text-white rounded"
+                                title="Delete image"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
                           {/* Current indicator */}
-                          {currentImageIndex === index && (
-                            <div className="absolute bottom-1 right-1 bg-mhc-primary text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                          {image.is_current && (
+                            <div className="absolute bottom-1 right-1 bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
                               Current
                             </div>
                           )}
