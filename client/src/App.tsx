@@ -8,18 +8,8 @@ import Admin from './pages/Admin';
 import Profile from './pages/Profile';
 import MyBroadcasts from './pages/MyBroadcasts';
 import LiveMonitor from './pages/LiveMonitor';
-import { useTheme, ThemeName } from './context/ThemeContext';
-
-const themeLabels: Record<ThemeName, string> = {
-  midnight: 'Midnight',
-  charcoal: 'Charcoal',
-  ocean: 'Ocean',
-  forest: 'Forest',
-  ember: 'Ember',
-};
 
 function App() {
-  const { theme, setTheme, themes } = useTheme();
 
   return (
     <Router>
@@ -53,18 +43,6 @@ function App() {
               <Link to="/admin" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Admin
               </Link>
-              <div className="border-l border-mhc-surface-light h-6 mx-2" />
-              <select
-                value={theme}
-                onChange={(e) => setTheme(e.target.value as ThemeName)}
-                className="bg-mhc-surface-light text-mhc-text-muted border border-mhc-surface-lighter px-3 py-1.5 rounded-md text-sm cursor-pointer transition-all hover:border-mhc-primary focus:outline-none focus:border-mhc-primary"
-              >
-                {themes.map((t) => (
-                  <option key={t} value={t} className="bg-mhc-surface text-mhc-text">
-                    {themeLabels[t]}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
         </nav>
