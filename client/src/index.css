@@ -99,33 +99,6 @@
   --gradient-end: #d97706;
 }
 
-/* Master Hudson Cage Theme - Neon noir aesthetic */
-:root[data-theme="cage"] {
-  --mhc-bg: #000000;
-  --mhc-surface: #0a1628;
-  --mhc-surface-light: #0d1f3c;
-  --mhc-surface-lighter: #142850;
-  --mhc-primary: #0066ff;
-  --mhc-primary-dark: #0044cc;
-  --mhc-primary-light: #3399ff;
-  --mhc-text: #ffffff;
-  --mhc-text-muted: #9ca3af;
-  --mhc-text-dim: #6b7280;
-  --mhc-success: #22c55e;
-  --mhc-warning: #d4a012;
-  --mhc-danger: #ef4444;
-  --mhc-info: #00d4ff;
-  --gradient-start: #0066ff;
-  --gradient-end: #ff1493;
-
-  /* Cage theme specific variables */
-  --cage-gold: #d4a012;
-  --cage-gold-light: #f5a623;
-  --cage-neon-blue: #0066ff;
-  --cage-neon-pink: #ff1493;
-  --cage-cyan: #00d4ff;
-}
-
 /* Theme transition for smooth switching */
 :root {
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -152,71 +125,4 @@
     font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
       monospace;
   }
-}
-
-/* Cage Theme Specific Styles */
-[data-theme="cage"] {
-  /* Neon glow text effect for headings */
-  --text-glow-blue: 0 0 10px rgba(0, 102, 255, 0.8), 0 0 20px rgba(0, 102, 255, 0.5), 0 0 40px rgba(0, 102, 255, 0.3);
-  --text-glow-pink: 0 0 10px rgba(255, 20, 147, 0.8), 0 0 20px rgba(255, 20, 147, 0.5), 0 0 40px rgba(255, 20, 147, 0.3);
-  --text-glow-gold: 0 0 10px rgba(212, 160, 18, 0.8), 0 0 20px rgba(212, 160, 18, 0.5);
-}
-
-/* Cage theme gold accent text */
-[data-theme="cage"] .text-gold,
-[data-theme="cage"] h1,
-[data-theme="cage"] h2 {
-  color: var(--cage-gold);
-}
-
-/* Cage theme card styling with subtle blue glow */
-[data-theme="cage"] .mhc-card,
-[data-theme="cage"] [class*="bg-mhc-surface"] {
-  border: 1px solid rgba(0, 102, 255, 0.2);
-  box-shadow: 0 0 10px rgba(0, 102, 255, 0.1);
-}
-
-/* Cage theme hover effects */
-[data-theme="cage"] .mhc-card:hover,
-[data-theme="cage"] [class*="hover:shadow"]:hover {
-  border-color: rgba(0, 102, 255, 0.4);
-  box-shadow: 0 0 20px rgba(0, 102, 255, 0.2), 0 0 40px rgba(0, 102, 255, 0.1);
-}
-
-/* Cage theme button styling */
-[data-theme="cage"] button[class*="bg-gradient-primary"],
-[data-theme="cage"] .btn-primary {
-  background: linear-gradient(135deg, #0066ff 0%, #0044cc 100%);
-  box-shadow: 0 0 10px rgba(0, 102, 255, 0.4);
-}
-
-[data-theme="cage"] button[class*="bg-gradient-primary"]:hover,
-[data-theme="cage"] .btn-primary:hover {
-  box-shadow: 0 0 20px rgba(0, 102, 255, 0.6), 0 0 40px rgba(0, 102, 255, 0.3);
-}
-
-/* Cage theme accent borders */
-[data-theme="cage"] .border-accent {
-  border-color: var(--cage-neon-pink);
-}
-
-/* Cage theme live indicator with neon effect */
-[data-theme="cage"] .live-indicator {
-  box-shadow: 0 0 10px rgba(34, 197, 94, 0.6), 0 0 20px rgba(34, 197, 94, 0.4);
-}
-
-/* Neon text utility classes for cage theme */
-[data-theme="cage"] .neon-blue {
-  color: var(--cage-neon-blue);
-  text-shadow: var(--text-glow-blue);
-}
-
-[data-theme="cage"] .neon-pink {
-  color: var(--cage-neon-pink);
-  text-shadow: var(--text-glow-pink);
-}
-
-[data-theme="cage"] .neon-gold {
-  color: var(--cage-gold);
-  text-shadow: var(--text-glow-gold);
 }

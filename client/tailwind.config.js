@@ -47,9 +47,6 @@ module.exports = {
         'gradient-success': 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
         'gradient-warning': 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
         'gradient-live': 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-        // Cage theme gradients
-        'gradient-neon': 'linear-gradient(135deg, #0066ff 0%, #ff1493 100%)',
-        'gradient-gold': 'linear-gradient(135deg, #d4a012 0%, #f5a623 100%)',
       },
 
       fontFamily: {
@@ -70,10 +67,6 @@ module.exports = {
         'mhc-hover': '0 8px 12px rgba(102, 126, 234, 0.3)',
         'mhc-glow': '0 0 20px rgba(102, 126, 234, 0.4)',
         'mhc-live': '0 4px 12px rgba(34, 197, 94, 0.4)',
-        // Neon glow effects for cage theme
-        'neon-blue': '0 0 10px rgba(0, 102, 255, 0.5), 0 0 20px rgba(0, 102, 255, 0.3), 0 0 40px rgba(0, 102, 255, 0.2)',
-        'neon-pink': '0 0 10px rgba(255, 20, 147, 0.5), 0 0 20px rgba(255, 20, 147, 0.3), 0 0 40px rgba(255, 20, 147, 0.2)',
-        'neon-gold': '0 0 10px rgba(212, 160, 18, 0.5), 0 0 20px rgba(212, 160, 18, 0.3)',
       },
 
       animation: {

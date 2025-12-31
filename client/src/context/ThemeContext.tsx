@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-export type ThemeName = 'midnight' | 'charcoal' | 'ocean' | 'forest' | 'ember' | 'cage';
+export type ThemeName = 'midnight' | 'charcoal' | 'ocean' | 'forest' | 'ember';
 
 export interface ThemeContextType {
   theme: ThemeName;
@@ -9,8 +9,8 @@ export interface ThemeContextType {
 }
 
 const THEME_STORAGE_KEY = 'mhc-theme';
-const DEFAULT_THEME: ThemeName = 'cage';
-const AVAILABLE_THEMES: ThemeName[] = ['cage', 'midnight', 'charcoal', 'ocean', 'forest', 'ember'];
+const DEFAULT_THEME: ThemeName = 'midnight';
+const AVAILABLE_THEMES: ThemeName[] = ['midnight', 'charcoal', 'ocean', 'forest', 'ember'];
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
