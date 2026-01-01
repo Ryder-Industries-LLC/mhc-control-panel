@@ -9,15 +9,16 @@ const router = Router();
 /**
  * GET /api/broadcasts
  * Get all broadcasts with pagination
+ * Returns: { broadcasts: [], total: number, hasMore: boolean }
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { limit = '50', offset = '0' } = req.query;
-    const broadcasts = await MyBroadcastService.getAll({
+    const { limit = '20', offset = '0' } = req.query;
+    const result = await MyBroadcastService.getAllWithCount({
       limit: parseInt(limit as string, 10),
       offset: parseInt(offset as string, 10),
     });
-    res.json(broadcasts);
+    res.json(result);
   } catch (error) {
     logger.error('Error fetching broadcasts', { error });
     res.status(500).json({ error: 'Failed to fetch broadcasts' });

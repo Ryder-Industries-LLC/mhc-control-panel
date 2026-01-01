@@ -17,13 +17,16 @@ function App() {
       <div className="min-h-screen flex flex-col bg-mhc-bg text-mhc-text transition-colors duration-300">
         <nav className="bg-mhc-surface border-b-2 border-mhc-primary sticky top-0 z-50 shadow-lg transition-colors duration-300">
           <div className="max-w-6xl mx-auto px-5 flex justify-between items-center h-16">
-            <Link to="/" className="flex items-center gap-3">
-              <img
-                src="/mhc-logo.jpg"
-                alt="MHC"
-                className="h-10 w-10 rounded-full object-cover border-2 border-mhc-primary"
-              />
-            </Link>
+            <div className="flex items-center gap-4">
+              <Link to="/" className="flex items-center gap-3">
+                <img
+                  src="/mhc-logo.jpg"
+                  alt="MHC"
+                  className="h-10 w-10 rounded-full object-cover border-2 border-mhc-primary"
+                />
+              </Link>
+              <GlobalLookup inline />
+            </div>
             <div className="flex gap-6 items-center">
               <Link to="/" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Users
@@ -63,9 +66,6 @@ function App() {
             <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>
-
-        {/* Global Lookup - floating search button */}
-        <GlobalLookup />
       </div>
     </Router>
   );

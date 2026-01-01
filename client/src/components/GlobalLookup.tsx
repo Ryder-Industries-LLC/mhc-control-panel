@@ -8,8 +8,12 @@ interface UserSuggestion {
   friend_tier?: number;
 }
 
-export const GlobalLookup: React.FC = () => {
-  const [isExpanded, setIsExpanded] = useState(false);
+interface GlobalLookupProps {
+  inline?: boolean;
+}
+
+export const GlobalLookup: React.FC<GlobalLookupProps> = ({ inline = false }) => {
+  const [isExpanded, setIsExpanded] = useState(inline);
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<UserSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
@@ -18,22 +22,31 @@ export const GlobalLookup: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
-  // Focus input when expanded
+  // Focus input when expanded (only for non-inline mode)
   useEffect(() => {
-    if (isExpanded && inputRef.current) {
+    if (isExpanded && inputRef.current && !inline) {
       inputRef.current.focus();
     }
-  }, [isExpanded]);
+  }, [isExpanded, inline]);
 
-  // Keyboard shortcut: Cmd/Ctrl + K to open
+  // Keyboard shortcut: Cmd/Ctrl + K to open/focus
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setIsExpanded(true);
+        if (inline) {
+          inputRef.current?.focus();
+        } else {
+          setIsExpanded(true);
+        }
       }
-      if (e.key === 'Escape' && isExpanded) {
+      if (e.key === 'Escape' && isExpanded && !inline) {
         setIsExpanded(false);
+        setQuery('');
+        setSuggestions([]);
+      }
+      if (e.key === 'Escape' && inline) {
+        inputRef.current?.blur();
         setQuery('');
         setSuggestions([]);
       }
@@ -41,23 +54,25 @@ export const GlobalLookup: React.FC = () => {
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isExpanded]);
+  }, [isExpanded, inline]);
 
-  // Click outside to close
+  // Click outside to close suggestions (and collapse for non-inline)
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsExpanded(false);
+        if (!inline) {
+          setIsExpanded(false);
+        }
         setQuery('');
         setSuggestions([]);
       }
     };
 
-    if (isExpanded) {
+    if (isExpanded || inline) {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [isExpanded]);
+  }, [isExpanded, inline]);
 
   // Fetch suggestions with debounce
   useEffect(() => {
@@ -113,6 +128,74 @@ export const GlobalLookup: React.FC = () => {
     }
   };
 
+  // Inline mode renders search directly in header
+  if (inline) {
+    return (
+      <div ref={containerRef} className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setSelectedIndex(-1);
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder="Search users... (⌘K)"
+          className="w-48 px-3 py-1.5 bg-mhc-surface-light border border-white/20 rounded-md text-white placeholder-mhc-text-muted focus:outline-none focus:border-mhc-primary focus:w-64 transition-all text-sm"
+        />
+        {loading && (
+          <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-mhc-primary animate-spin" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+        )}
+
+        {/* Dropdown suggestions */}
+        {(suggestions.length > 0 || (query.trim() && !loading)) && (
+          <div className="absolute top-full left-0 mt-1 w-72 bg-mhc-surface border border-white/20 rounded-lg shadow-2xl overflow-hidden z-50">
+            {suggestions.length > 0 ? (
+              <div className="max-h-64 overflow-y-auto">
+                {suggestions.map((user, index) => (
+                  <button
+                    key={user.username}
+                    onClick={() => handleSelect(user.username)}
+                    className={`w-full px-4 py-2.5 flex items-center gap-3 text-left transition-colors ${
+                      index === selectedIndex
+                        ? 'bg-mhc-primary/20 text-white'
+                        : 'hover:bg-white/5 text-mhc-text'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{user.username}</div>
+                      <div className="text-xs text-mhc-text-muted flex items-center gap-2">
+                        <span>{user.role}</span>
+                        {user.following && (
+                          <span className="text-emerald-400">Following</span>
+                        )}
+                        {user.friend_tier && user.friend_tier > 0 && (
+                          <span className="text-amber-400">T{user.friend_tier}</span>
+                        )}
+                      </div>
+                    </div>
+                    <svg className="w-4 h-4 text-mhc-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="px-4 py-4 text-center text-mhc-text-muted text-sm">
+                No users found. Press Enter to search "{query}"
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Floating mode (original behavior)
   return (
     <div ref={containerRef} className="fixed bottom-6 right-6 z-50">
       {isExpanded ? (

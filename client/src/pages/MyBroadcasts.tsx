@@ -99,6 +99,12 @@ const MyBroadcasts: React.FC = () => {
   const [showNewBroadcastForm, setShowNewBroadcastForm] = useState(false);
   const [timeRange, setTimeRange] = useState<TimeRange>('this_month');
 
+  // Pagination state
+  const [hasMore, setHasMore] = useState(false);
+  const [totalBroadcasts, setTotalBroadcasts] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const PAGE_SIZE = 20;
+
   // Delete confirmation state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteBroadcastId, setDeleteBroadcastId] = useState<string | null>(null);
@@ -123,9 +129,11 @@ const MyBroadcasts: React.FC = () => {
     fetchAIStatus();
   }, [timeRange]);
 
-  const fetchData = async () => {
+  const fetchData = async (reset = true) => {
     try {
-      setLoading(true);
+      if (reset) {
+        setLoading(true);
+      }
       // Calculate the number of days for stats based on time range
       const dateRange = getDateRangeForTimeRange(timeRange);
       const statsDays = timeRange === 'all_time'
@@ -133,13 +141,16 @@ const MyBroadcasts: React.FC = () => {
         : Math.ceil((new Date().getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24));
 
       const [broadcastsRes, statsRes, currentRes] = await Promise.all([
-        fetch('/api/broadcasts'),
+        fetch(`/api/broadcasts?limit=${PAGE_SIZE}&offset=0`),
         fetch(`/api/broadcasts/stats?days=${statsDays}`),
         fetch('/api/broadcasts/current'),
       ]);
 
       if (broadcastsRes.ok) {
-        setBroadcasts(await broadcastsRes.json());
+        const data = await broadcastsRes.json();
+        setBroadcasts(data.broadcasts || []);
+        setHasMore(data.hasMore || false);
+        setTotalBroadcasts(data.total || 0);
       }
       if (statsRes.ok) {
         setStats(await statsRes.json());
@@ -153,6 +164,26 @@ const MyBroadcasts: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Failed to load broadcasts');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+
+    try {
+      setLoadingMore(true);
+      const offset = broadcasts.length;
+      const res = await fetch(`/api/broadcasts?limit=${PAGE_SIZE}&offset=${offset}`);
+
+      if (res.ok) {
+        const data = await res.json();
+        setBroadcasts(prev => [...prev, ...(data.broadcasts || [])]);
+        setHasMore(data.hasMore || false);
+      }
+    } catch (err) {
+      setError('Failed to load more broadcasts');
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -912,7 +943,9 @@ const MyBroadcasts: React.FC = () => {
         title={
           <div className="flex items-center justify-between w-full">
             <span>My Broadcasts</span>
-            <span className="text-sm text-white/50 font-normal ml-3">{filteredBroadcasts.length} broadcasts</span>
+            <span className="text-sm text-white/50 font-normal ml-3">
+              {filteredBroadcasts.length} of {totalBroadcasts} broadcasts
+            </span>
           </div>
         }
         defaultCollapsed={true}
@@ -926,7 +959,8 @@ const MyBroadcasts: React.FC = () => {
                 : 'No broadcasts in this time period.'}
             </div>
           ) : (
-            filteredBroadcasts.map(broadcast => (
+            <>
+            {filteredBroadcasts.map(broadcast => (
               <div key={broadcast.id} className="p-5">
                 {editingId === broadcast.id ? (
                   // Edit Mode
@@ -1128,7 +1162,35 @@ const MyBroadcasts: React.FC = () => {
                   </div>
                 )}
               </div>
-            ))
+            ))}
+
+            {/* Load More button */}
+            {hasMore && (
+              <div className="p-5 text-center">
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className={`px-6 py-2.5 font-medium rounded-lg transition-colors ${
+                    loadingMore
+                      ? 'bg-white/10 text-white/40 cursor-not-allowed'
+                      : 'bg-mhc-primary/20 hover:bg-mhc-primary/30 text-mhc-primary border border-mhc-primary/30'
+                  }`}
+                >
+                  {loadingMore ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Loading...
+                    </span>
+                  ) : (
+                    `Load More (${totalBroadcasts - filteredBroadcasts.length} remaining)`
+                  )}
+                </button>
+              </div>
+            )}
+            </>
           )}
         </div>
       </CollapsibleSection>

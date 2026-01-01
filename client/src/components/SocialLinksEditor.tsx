@@ -1,5 +1,33 @@
 import React, { useState, useEffect } from 'react';
 
+/**
+ * Validates a Twitter/X handle or URL
+ * Valid handles: @username or username (1-15 chars, alphanumeric + underscore)
+ * Valid URLs: twitter.com/username or x.com/username
+ */
+export const isValidTwitterHandle = (value: string): boolean => {
+  if (!value) return false;
+
+  // Check if it's a URL
+  if (value.includes('twitter.com/') || value.includes('x.com/')) {
+    // Extract username from URL
+    const urlMatch = value.match(/(?:twitter\.com|x\.com)\/([^/?#]+)/i);
+    if (urlMatch) {
+      const username = urlMatch[1];
+      // Skip special pages like /intent/, /share, etc.
+      if (['intent', 'share', 'home', 'search', 'explore', 'settings', 'notifications', 'messages', 'i'].includes(username.toLowerCase())) {
+        return false;
+      }
+      return /^[A-Za-z0-9_]{1,15}$/.test(username);
+    }
+    return false;
+  }
+
+  // Check if it's a direct handle (with or without @)
+  const cleaned = value.replace(/^@/, '');
+  return /^[A-Za-z0-9_]{1,15}$/.test(cleaned);
+};
+
 // Social platform configuration
 export const SOCIAL_PLATFORMS: Record<string, { label: string; icon: string; placeholder: string }> = {
   twitter: { label: 'X (Twitter)', icon: 'twitter', placeholder: 'username or full URL' },
@@ -118,6 +146,13 @@ export const SocialLinksEditor: React.FC<SocialLinksEditorProps> = ({
     if (!newPlatform || !newUrl.trim()) return;
 
     setError(null);
+
+    // Validate Twitter handles before adding
+    if (newPlatform === 'twitter' && !isValidTwitterHandle(newUrl.trim())) {
+      setError('Invalid Twitter/X handle. Must be 1-15 characters (letters, numbers, underscore only).');
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -156,9 +191,18 @@ export const SocialLinksEditor: React.FC<SocialLinksEditorProps> = ({
     }
   };
 
-  const sortedLinks = Object.entries(localLinks).sort((a, b) =>
-    SOCIAL_PLATFORMS[a[0]]?.label.localeCompare(SOCIAL_PLATFORMS[b[0]]?.label || b[0])
-  );
+  // Filter and sort links - skip invalid Twitter handles
+  const sortedLinks = Object.entries(localLinks)
+    .filter(([platform, url]) => {
+      // Filter out invalid Twitter/X handles
+      if (platform === 'twitter' && !isValidTwitterHandle(url)) {
+        return false;
+      }
+      return true;
+    })
+    .sort((a, b) =>
+      SOCIAL_PLATFORMS[a[0]]?.label.localeCompare(SOCIAL_PLATFORMS[b[0]]?.label || b[0])
+    );
 
   return (
     <div className="space-y-4">

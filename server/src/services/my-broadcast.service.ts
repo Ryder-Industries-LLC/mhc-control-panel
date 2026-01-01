@@ -263,6 +263,19 @@ export class MyBroadcastService {
    * Combines my_broadcasts table with stream_sessions for the broadcaster
    */
   static async getAll(options?: { limit?: number; offset?: number; broadcaster?: string }): Promise<MyBroadcast[]> {
+    const result = await this.getAllWithCount(options);
+    return result.broadcasts;
+  }
+
+  /**
+   * Get all broadcasts with pagination and total count
+   * Combines my_broadcasts table with stream_sessions for the broadcaster
+   */
+  static async getAllWithCount(options?: { limit?: number; offset?: number; broadcaster?: string }): Promise<{
+    broadcasts: MyBroadcast[];
+    total: number;
+    hasMore: boolean;
+  }> {
     const { limit = 50, offset = 0, broadcaster = 'hudson_cage' } = options || {};
 
     // Query combines my_broadcasts with stream_sessions (for the broadcaster)
@@ -312,16 +325,31 @@ export class MyBroadcastService {
           COALESCE(ended_at, started_at) as updated_at
         FROM stream_sessions
         WHERE LOWER(broadcaster) = LOWER($3)
+      ),
+      deduped AS (
+        SELECT DISTINCT ON (DATE_TRUNC('hour', started_at))
+          *
+        FROM all_broadcasts
+        ORDER BY DATE_TRUNC('hour', started_at) DESC, source = 'manual' DESC
       )
-      SELECT DISTINCT ON (DATE_TRUNC('hour', started_at))
-        *
-      FROM all_broadcasts
-      ORDER BY DATE_TRUNC('hour', started_at) DESC, source = 'manual' DESC
+      SELECT *, COUNT(*) OVER() as total_count
+      FROM deduped
+      ORDER BY started_at DESC
       LIMIT $1 OFFSET $2`,
       [limit, offset, broadcaster]
     );
 
-    return result.rows as MyBroadcast[];
+    const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count || '0') : 0;
+    const broadcasts = result.rows.map(row => {
+      const { total_count, ...broadcast } = row;
+      return broadcast;
+    }) as MyBroadcast[];
+
+    return {
+      broadcasts,
+      total,
+      hasMore: offset + broadcasts.length < total,
+    };
   }
 
   /**

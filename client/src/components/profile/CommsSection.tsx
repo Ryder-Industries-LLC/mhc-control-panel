@@ -78,26 +78,46 @@ export const CommsSection: React.FC<CommsSectionProps> = ({ username }) => {
 
     return (
       <div className="space-y-3 max-h-[400px] overflow-y-auto">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className="p-3 bg-mhc-surface-light rounded-lg border border-white/10"
-          >
-            <div className="flex justify-between items-start mb-1">
-              <span className="text-xs text-mhc-text-muted">
-                {formatTimestamp(msg.timestamp)}
-              </span>
-              {msg.broadcaster && (
-                <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded">
-                  in {msg.broadcaster}'s room
-                </span>
-              )}
+        {messages.map((msg) => {
+          const fromUser = msg.metadata?.fromUser;
+          const toUser = msg.metadata?.toUser;
+
+          return (
+            <div
+              key={msg.id}
+              className="p-3 bg-mhc-surface-light rounded-lg border border-white/10"
+            >
+              <div className="flex justify-between items-start mb-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-mhc-text-muted">
+                    {formatTimestamp(msg.timestamp)}
+                  </span>
+                  {(fromUser || toUser) && (
+                    <span className="text-xs text-mhc-text-muted">
+                      {fromUser && (
+                        <span>
+                          <span className="text-blue-400 font-medium">{fromUser}</span>
+                          {toUser && <span className="text-white/40"> → </span>}
+                        </span>
+                      )}
+                      {toUser && (
+                        <span className="text-emerald-400 font-medium">{toUser}</span>
+                      )}
+                    </span>
+                  )}
+                </div>
+                {msg.broadcaster && (
+                  <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded">
+                    in {msg.broadcaster}'s room
+                  </span>
+                )}
+              </div>
+              <div className="text-mhc-text whitespace-pre-wrap">
+                {msg.content}
+              </div>
             </div>
-            <div className="text-mhc-text whitespace-pre-wrap">
-              {msg.content}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   };
