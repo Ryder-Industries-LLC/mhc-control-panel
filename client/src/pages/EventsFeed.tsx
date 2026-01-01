@@ -54,6 +54,26 @@ const isRoomPrivateMessage = (event: EventLog): boolean => {
   return event.method.toLowerCase() === 'privatemessage' && Boolean(event.broadcaster) && event.broadcaster !== '';
 };
 
+// GUARDRAIL: Deduplicate events using strict key matching
+// Dedup only when ALL of: timestamp, fromUser, toUser, message, broadcaster match exactly
+const dedupeEvents = (events: EventLog[]): EventLog[] => {
+  const seen = new Set<string>();
+  return events.filter(e => {
+    const message = e.rawEvent?.message;
+    const fromUser = message?.fromUser || e.username || '';
+    const toUser = message?.toUser || e.broadcaster || '';
+    const msgText = message?.message || '';
+    const broadcaster = e.broadcaster || 'DM';
+
+    // Strict key: timestamp|fromUser|toUser|message|broadcaster
+    const key = `${e.timestamp}|${fromUser}|${toUser}|${msgText}|${broadcaster}`;
+
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
 const EVENT_TABS: EventTab[] = [
   { id: 'all', label: 'All Events' },
   { id: 'chat', label: 'Chat', methods: ['chatmessage'] },
@@ -76,7 +96,8 @@ const EventsFeed: React.FC = () => {
       // Fetch more events (500) for important tabs, fewer for presence events
       const response = await fetch('http://localhost:3000/api/events/recent?limit=500');
       const data = await response.json();
-      setEvents(data.events || []);
+      // Apply deduplication to prevent showing duplicate events
+      setEvents(dedupeEvents(data.events || []));
     } catch (err) {
       console.error('Failed to fetch events:', err);
     }
@@ -327,8 +348,8 @@ const EventsFeed: React.FC = () => {
                     </span>
                   )}
                   {content?.isFollower && (
-                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-500/20 text-orange-400">
-                      Follower
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400">
+                      Followed by you
                     </span>
                   )}
                 </div>

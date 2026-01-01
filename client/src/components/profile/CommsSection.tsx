@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useUser } from '../../context/UserContext';
 
 interface Message {
   id: string;
@@ -25,6 +26,7 @@ interface CommsSectionProps {
 type CommsTab = 'dm' | 'pm_my_room' | 'pm_their_room';
 
 export const CommsSection: React.FC<CommsSectionProps> = ({ username }) => {
+  const { currentUsername } = useUser();
   const [activeTab, setActiveTab] = useState<CommsTab>('pm_my_room');
   const [data, setData] = useState<CommunicationsData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -142,7 +144,7 @@ export const CommsSection: React.FC<CommsSectionProps> = ({ username }) => {
           }`}
           onClick={() => setActiveTab('pm_my_room')}
         >
-          PMs in My Room {data.pm_my_room.length > 0 && `(${data.pm_my_room.length})`}
+          PMs in {currentUsername}'s Room {data.pm_my_room.length > 0 && `(${data.pm_my_room.length})`}
         </button>
         <button
           className={`px-4 py-2 rounded-t text-sm font-medium transition-colors ${
@@ -152,7 +154,7 @@ export const CommsSection: React.FC<CommsSectionProps> = ({ username }) => {
           }`}
           onClick={() => setActiveTab('pm_their_room')}
         >
-          PMs in Their Room {data.pm_their_room.length > 0 && `(${data.pm_their_room.length})`}
+          PMs in {username}'s Room {data.pm_their_room.length > 0 && `(${data.pm_their_room.length})`}
         </button>
       </div>
 

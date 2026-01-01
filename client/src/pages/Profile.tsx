@@ -844,31 +844,31 @@ const Profile: React.FC<ProfilePageProps> = () => {
             <div className="flex gap-5 items-center flex-wrap md:flex-nowrap">
               {(imageHistory.length > 0 || getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile?.photos && profileData.profile.photos.length > 0)) && (
                 <div className="flex-shrink-0 flex flex-col items-center gap-3">
+                  {/* Badge row ABOVE image - Live, Model/Member, Followers */}
+                  <div className="flex gap-2 items-center">
+                    {/* LIVE indicator */}
+                    {isSessionLive(profileData.latestSession) && (
+                      <div className="bg-gradient-to-r from-red-500 to-red-600 text-white px-3 py-1 rounded-full font-bold text-xs uppercase tracking-wider shadow-lg animate-pulse border border-white/50">
+                        ● LIVE
+                      </div>
+                    )}
+                    {/* Role indicator */}
+                    <div className={`text-xs px-2 py-1 rounded font-semibold uppercase tracking-wider ${
+                      profileData.person.role === 'MODEL'
+                        ? 'bg-pink-500/80 text-white'
+                        : 'bg-gray-500/80 text-white'
+                    }`}>
+                      {profileData.person.role}
+                    </div>
+                    {/* Followers */}
+                    {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers) && (
+                      <div className="px-2 py-1 rounded text-xs font-semibold bg-black/60 text-white">
+                        ❤️ {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers || 0).toLocaleString()}
+                      </div>
+                    )}
+                  </div>
                   {/* Image with navigation arrows */}
                   <div className="relative group">
-                    {/* Role + Followers overlay on top-left of image */}
-                    <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
-                      {/* LIVE indicator */}
-                      {isSessionLive(profileData.latestSession) && (
-                        <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-3 py-1 rounded-full font-bold text-xs uppercase tracking-wider shadow-lg animate-pulse border border-white/50">
-                          ● LIVE
-                        </div>
-                      )}
-                      {/* Role indicator */}
-                      <div className={`text-xs px-2 py-1 rounded font-semibold uppercase tracking-wider ${
-                        profileData.person.role === 'MODEL'
-                          ? 'bg-pink-500/80 text-white'
-                          : 'bg-gray-500/80 text-white'
-                      }`}>
-                        {profileData.person.role}
-                      </div>
-                      {/* Followers */}
-                      {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers) && (
-                        <div className="px-2 py-1 rounded text-xs font-semibold bg-black/60 text-white">
-                          ❤️ {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers || 0).toLocaleString()}
-                        </div>
-                      )}
-                    </div>
                     <img
                       src={
                         imageHistory.length > 0
@@ -876,7 +876,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
                           : getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url)
                       }
                       alt={profileData.person.username}
-                      className="w-[200px] h-[150px] rounded-lg object-cover border-4 border-white/30 shadow-lg"
+                      className={`w-[200px] h-[150px] rounded-lg object-cover shadow-lg ${
+                        isSessionLive(profileData.latestSession)
+                          ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-mhc-surface border-2 border-red-400'
+                          : 'border-4 border-white/30'
+                      }`}
                       width="360"
                       height="270"
                     />
@@ -929,14 +933,13 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       {profileData.person.username}
                     </a>
                   </h2>
-                  {/* Following badge */}
-                  {profileData.profile?.following && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50" title="You follow this user">
+                  {/* Follows You badge - POSITION SWAP: condition unchanged (profileData.profile?.follower) */}
+                  {profileData.profile?.follower && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-blue-500/30 border border-blue-500/50" title="Follows you">
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
-                        <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/>
+                        <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
                       </svg>
-                      Following
+                      Follows You
                     </span>
                   )}
                   {/* Live/Offline status */}
@@ -972,12 +975,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     <option value="3">T3 Regular</option>
                     <option value="4">T4 Drive-by</option>
                   </select>
-                  {profileData.profile?.follower && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-blue-500/30 border border-blue-500/50" title="Follows you">
+                  {/* Following badge - POSITION SWAP: condition unchanged (profileData.profile?.following) */}
+                  {profileData.profile?.following && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50" title="You follow this user">
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
+                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                        <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/>
                       </svg>
-                      Follows You
+                      Following
                     </span>
                   )}
                   {/* Sub/Dom relationship badges */}
