@@ -1,6 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import CollapsibleSection from '../components/CollapsibleSection';
+import { useTheme, ThemeName } from '../context/ThemeContext';
+
+const themeLabels: Record<ThemeName, string> = {
+  midnight: 'Midnight',
+  charcoal: 'Charcoal',
+  ocean: 'Ocean',
+  forest: 'Forest',
+  ember: 'Ember',
+};
 // Admin.css removed - fully migrated to Tailwind CSS
 
 interface JobConfig {
@@ -116,7 +125,7 @@ interface SystemStats {
   };
 }
 
-type AdminTab = 'jobs' | 'system-stats' | 'follower-trends' | 'data-sources' | 'scraper' | 'profile-scrape';
+type AdminTab = 'jobs' | 'system-stats' | 'follower-trends' | 'data-sources' | 'scraper' | 'profile-scrape' | 'settings';
 
 interface FollowerMover {
   username: string;
@@ -144,6 +153,7 @@ interface FollowerTrendsDashboard {
 }
 
 const Admin: React.FC = () => {
+  const { theme, setTheme, themes } = useTheme();
   const [activeTab, setActiveTab] = useState<AdminTab>('jobs');
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
@@ -1912,6 +1922,16 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
               )
             )}
           </button>
+          <button
+            className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all ${
+              activeTab === 'settings'
+                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary border-b-mhc-primary font-semibold'
+                : 'bg-mhc-surface/60 text-white/90 hover:bg-mhc-primary/10 hover:text-mhc-primary-light hover:border-mhc-primary/40'
+            }`}
+            onClick={() => setActiveTab('settings')}
+          >
+            Settings
+          </button>
         </div>
       </div>
 
@@ -1928,6 +1948,42 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
         {activeTab === 'data-sources' && renderDataSourcesTab()}
         {activeTab === 'scraper' && renderScraperTab()}
         {activeTab === 'profile-scrape' && renderProfileScrapeTab()}
+        {activeTab === 'settings' && (
+          <div className="bg-mhc-surface-light rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-mhc-text mb-6">Settings</h2>
+
+            {/* Theme Selection */}
+            <div className="mb-8">
+              <h3 className="text-lg font-medium text-mhc-text mb-4">Theme</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                {themes.map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setTheme(t)}
+                    className={`p-4 rounded-lg border-2 transition-all text-center ${
+                      theme === t
+                        ? 'border-mhc-primary bg-mhc-primary/20 text-mhc-primary font-semibold'
+                        : 'border-white/20 hover:border-mhc-primary/50 text-mhc-text-muted hover:text-mhc-text'
+                    }`}
+                  >
+                    <div className={`w-8 h-8 rounded-full mx-auto mb-2 ${
+                      t === 'midnight' ? 'bg-gradient-to-br from-slate-800 to-slate-900' :
+                      t === 'charcoal' ? 'bg-gradient-to-br from-gray-700 to-gray-800' :
+                      t === 'ocean' ? 'bg-gradient-to-br from-blue-800 to-cyan-900' :
+                      t === 'forest' ? 'bg-gradient-to-br from-emerald-800 to-green-900' :
+                      t === 'ember' ? 'bg-gradient-to-br from-orange-700 to-red-900' :
+                      'bg-gray-600'
+                    }`} />
+                    <span className="text-sm">{themeLabels[t]}</span>
+                    {theme === t && (
+                      <div className="mt-1 text-xs text-mhc-primary">Active</div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

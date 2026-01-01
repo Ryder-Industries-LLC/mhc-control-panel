@@ -33,6 +33,7 @@ export interface ServiceRelationshipEditorProps {
   }) => Promise<void>;
   onRemove: (role: 'sub' | 'dom') => Promise<void>;
   disabled?: boolean;
+  defaultRole?: 'sub' | 'dom'; // If provided, only show that role's editor
 }
 
 interface RoleEditorProps {
@@ -343,10 +344,41 @@ export const ServiceRelationshipEditor: React.FC<ServiceRelationshipEditorProps>
   onSave,
   onRemove,
   disabled = false,
+  defaultRole,
 }) => {
   const subRelationship = relationships.find(r => r.service_role === 'sub') || null;
   const domRelationship = relationships.find(r => r.service_role === 'dom') || null;
 
+  // If defaultRole is specified, only show that role's editor
+  if (defaultRole === 'sub') {
+    return (
+      <RoleEditor
+        role="sub"
+        relationship={subRelationship}
+        levels={SUB_LEVELS}
+        types={SUB_TYPES}
+        onSave={data => onSave('sub', data)}
+        onRemove={() => onRemove('sub')}
+        disabled={disabled}
+      />
+    );
+  }
+
+  if (defaultRole === 'dom') {
+    return (
+      <RoleEditor
+        role="dom"
+        relationship={domRelationship}
+        levels={DOM_LEVELS}
+        types={DOM_TYPES}
+        onSave={data => onSave('dom', data)}
+        onRemove={() => onRemove('dom')}
+        disabled={disabled}
+      />
+    );
+  }
+
+  // Default: show both editors
   return (
     <div className="space-y-3">
       <RoleEditor

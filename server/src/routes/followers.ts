@@ -180,6 +180,34 @@ router.get('/watchlist', async (_req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/followers/tipped-me
+ * Get list of users who have tipped me (in my room)
+ */
+router.get('/tipped-me', async (_req: Request, res: Response) => {
+  try {
+    const tippers = await FollowerScraperService.getTippedMe();
+    res.json({ tippers, total: tippers.length });
+  } catch (error) {
+    logger.error('Error getting tippers list', { error });
+    res.status(500).json({ error: 'Failed to get tippers list' });
+  }
+});
+
+/**
+ * GET /api/followers/tipped-by-me
+ * Get list of users/models I have tipped (in their rooms)
+ */
+router.get('/tipped-by-me', async (_req: Request, res: Response) => {
+  try {
+    const tipped = await FollowerScraperService.getTippedByMe();
+    res.json({ tipped, total: tipped.length });
+  } catch (error) {
+    logger.error('Error getting tipped list', { error });
+    res.status(500).json({ error: 'Failed to get tipped list' });
+  }
+});
+
+/**
  * GET /api/followers/doms
  * Get list of users who are my Doms (from service_relationships)
  * Query param: filter = service level (Potential, Actively Serving, Ended, Paused)

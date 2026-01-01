@@ -496,4 +496,85 @@ export class FollowerScraperService {
     );
     return result.rows;
   }
+
+  /**
+   * Get all users who have tipped me (in my room)
+   * Returns users with aggregated tip data
+   */
+  static async getTippedMe(): Promise<any[]> {
+    const result = await query(
+      `SELECT
+        p.*,
+        pr.following,
+        pr.follower,
+        pr.banned_me,
+        pr.active_sub,
+        pr.friend_tier,
+        pr.watch_list,
+        pr.notes,
+        SUM((i.metadata->>'tokens')::int) as total_tokens_received,
+        COUNT(*) as tip_count,
+        MAX(i.timestamp) as last_tip_at,
+        MIN(i.timestamp) as first_tip_at,
+        (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
+        (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL) as image_count,
+        (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,
+        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+       FROM persons p
+       INNER JOIN profiles pr ON pr.person_id = p.id
+       INNER JOIN interactions i ON i.person_id = p.id
+       WHERE i.type = 'TIP_EVENT'
+         AND i.metadata->>'broadcaster' = 'hudson_cage'
+       GROUP BY p.id, pr.id
+       ORDER BY total_tokens_received DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get all users/models I have tipped (in their rooms)
+   * Returns models with aggregated tip data from my tipping activity
+   */
+  static async getTippedByMe(): Promise<any[]> {
+    // Find models I've tipped: TIP_EVENTs where hudson_cage is the tipper
+    // This is recorded when the person_id is MY person_id, and broadcaster is the model's room
+    const result = await query(
+      `SELECT
+        model_person.id,
+        model_person.username,
+        model_person.role,
+        model_person.last_seen_at,
+        model_person.first_seen_at,
+        model_pr.following,
+        model_pr.follower,
+        model_pr.banned_me,
+        model_pr.active_sub,
+        model_pr.friend_tier,
+        model_pr.watch_list,
+        model_pr.notes,
+        SUM((i.metadata->>'tokens')::int) as total_tokens_sent,
+        COUNT(*) as tip_count,
+        MAX(i.timestamp) as last_tip_at,
+        MIN(i.timestamp) as first_tip_at,
+        i.metadata->>'broadcaster' as broadcaster,
+        (SELECT COUNT(*) FROM interactions WHERE person_id = model_person.id) as interaction_count,
+        (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = model_person.id AND image_path_360x270 IS NOT NULL) as image_count,
+        (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = model_person.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,
+        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = model_person.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = model_person.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = model_person.id ORDER BY observed_at DESC LIMIT 1) as tags
+       FROM interactions i
+       INNER JOIN persons my_person ON my_person.id = i.person_id AND my_person.username = 'hudson_cage'
+       INNER JOIN persons model_person ON LOWER(model_person.username) = LOWER(i.metadata->>'broadcaster')
+       LEFT JOIN profiles model_pr ON model_pr.person_id = model_person.id
+       WHERE i.type = 'TIP_EVENT'
+         AND i.metadata->>'broadcaster' IS NOT NULL
+         AND i.metadata->>'broadcaster' != 'hudson_cage'
+       GROUP BY model_person.id, model_pr.id, i.metadata->>'broadcaster'
+       ORDER BY total_tokens_sent DESC`
+    );
+    return result.rows;
+  }
 }

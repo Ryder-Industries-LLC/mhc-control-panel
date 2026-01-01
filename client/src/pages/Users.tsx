@@ -99,7 +99,7 @@ interface FeedCacheStatus {
   totalCount: number;
 }
 
-type TabType = 'directory' | 'following' | 'followers' | 'unfollowed' | 'subs' | 'doms' | 'friends' | 'bans' | 'watchlist';
+type TabType = 'directory' | 'following' | 'followers' | 'unfollowed' | 'subs' | 'doms' | 'friends' | 'bans' | 'watchlist' | 'tipped-by-me' | 'tipped-me';
 type StatFilter = 'all' | 'live' | 'priority2' | 'priority1' | 'with_image' | 'models' | 'viewers';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
@@ -191,6 +191,12 @@ const Users: React.FC = () => {
   const [watchlistUsers, setWatchlistUsers] = useState<PersonWithSource[]>([]);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
 
+  // Tippers tabs state
+  const [tippedByMeUsers, setTippedByMeUsers] = useState<any[]>([]);
+  const [tippedByMeLoading, setTippedByMeLoading] = useState(false);
+  const [tippedMeUsers, setTippedMeUsers] = useState<any[]>([]);
+  const [tippedMeLoading, setTippedMeLoading] = useState(false);
+
   // View mode state (list or grid)
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
     const saved = localStorage.getItem('mhc-view-mode');
@@ -221,6 +227,10 @@ const Users: React.FC = () => {
       loadBans();
     } else if (activeTab === 'watchlist') {
       loadWatchlist();
+    } else if (activeTab === 'tipped-by-me') {
+      loadTippedByMe();
+    } else if (activeTab === 'tipped-me') {
+      loadTippedMe();
     }
   }, [activeTab]);
 
@@ -454,6 +464,36 @@ const Users: React.FC = () => {
       console.error(err);
     } finally {
       setWatchlistLoading(false);
+    }
+  };
+
+  const loadTippedByMe = async () => {
+    try {
+      setTippedByMeLoading(true);
+      setError(null);
+      const response = await fetch('/api/followers/tipped-by-me');
+      const data = await response.json();
+      setTippedByMeUsers(data.tipped || []);
+    } catch (err) {
+      setError('Failed to load users you tipped');
+      console.error(err);
+    } finally {
+      setTippedByMeLoading(false);
+    }
+  };
+
+  const loadTippedMe = async () => {
+    try {
+      setTippedMeLoading(true);
+      setError(null);
+      const response = await fetch('/api/followers/tipped-me');
+      const data = await response.json();
+      setTippedMeUsers(data.tippers || []);
+    } catch (err) {
+      setError('Failed to load users who tipped you');
+      console.error(err);
+    } finally {
+      setTippedMeLoading(false);
     }
   };
 
@@ -1900,7 +1940,7 @@ const Users: React.FC = () => {
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Subscribers ({subUsers.length})</h2>
+          <h2 className="text-2xl text-white font-semibold" title="Users you have identified as subs (not platform subscribers)">Identified Subs ({subUsers.length})</h2>
           <div className="flex gap-2">
             <button
               className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
@@ -1936,13 +1976,13 @@ const Users: React.FC = () => {
         </div>
 
         {subsLoading ? (
-          <div className="p-12 text-center text-white/50">Loading subscribers...</div>
+          <div className="p-12 text-center text-white/50">Loading identified subs...</div>
         ) : (
           <>
             {/* View Mode Toggle */}
             <div className="flex items-center justify-between mt-4 mb-4">
               {renderViewModeToggle()}
-              <span className="text-white/50 text-sm">{subUsers.length} subscribers</span>
+              <span className="text-white/50 text-sm">{subUsers.length} identified subs</span>
             </div>
 
             {viewMode === 'grid' ? (
@@ -2472,6 +2512,110 @@ const Users: React.FC = () => {
     );
   };
 
+  const renderTippedByMeTab = () => {
+    return (
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Models I've Tipped ({tippedByMeUsers.length})</h2>
+        </div>
+
+        {tippedByMeLoading ? (
+          <div className="p-12 text-center text-white/50">Loading models you've tipped...</div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mt-4 mb-4">
+              {renderViewModeToggle()}
+              <span className="text-white/50 text-sm">{tippedByMeUsers.length} models you've tipped</span>
+            </div>
+
+            {tippedByMeUsers.length > 0 ? (
+              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Username</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Total Sent</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Tips</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Last Tip</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tippedByMeUsers.map((user: any) => (
+                      <tr key={user.id || user.username} className="border-b border-white/5 transition-colors hover:bg-white/3">
+                        <td className="px-4 py-4">
+                          <Link to={`/profile/${user.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{user.username}</Link>
+                        </td>
+                        <td className="px-4 py-4 text-amber-400 font-semibold">{formatNumber(user.total_tokens_sent || 0)} tokens</td>
+                        <td className="px-4 py-4 text-white/70">{user.tip_count || 0}</td>
+                        <td className="px-4 py-4 text-white/70">{user.last_tip_at ? formatDate(user.last_tip_at) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-12 text-center text-white/50">
+                <p>No tip records found.</p>
+              </div>
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
+  const renderTippedMeTab = () => {
+    return (
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Users Who Tipped Me ({tippedMeUsers.length})</h2>
+        </div>
+
+        {tippedMeLoading ? (
+          <div className="p-12 text-center text-white/50">Loading users who tipped you...</div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mt-4 mb-4">
+              {renderViewModeToggle()}
+              <span className="text-white/50 text-sm">{tippedMeUsers.length} users have tipped you</span>
+            </div>
+
+            {tippedMeUsers.length > 0 ? (
+              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Username</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Total Received</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Tips</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Last Tip</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tippedMeUsers.map((user: any) => (
+                      <tr key={user.id || user.username} className="border-b border-white/5 transition-colors hover:bg-white/3">
+                        <td className="px-4 py-4">
+                          <Link to={`/profile/${user.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{user.username}</Link>
+                        </td>
+                        <td className="px-4 py-4 text-emerald-400 font-semibold">{formatNumber(user.total_tokens_received || 0)} tokens</td>
+                        <td className="px-4 py-4 text-white/70">{user.tip_count || 0}</td>
+                        <td className="px-4 py-4 text-white/70">{user.last_tip_at ? formatDate(user.last_tip_at) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-12 text-center text-white/50">
+                <p>No tip records found.</p>
+              </div>
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
   if (loading && activeTab === 'directory') {
     return (
       <div className="max-w-[1600px] mx-auto p-8">
@@ -2598,6 +2742,28 @@ const Users: React.FC = () => {
           >
             Bans
           </button>
+          {/* Tipped By Me */}
+          <button
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'tipped-by-me'
+                ? 'bg-amber-500/15 text-amber-400 border-amber-500 font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
+            onClick={() => setActiveTab('tipped-by-me')}
+          >
+            Tipped By Me
+          </button>
+          {/* Tipped Me */}
+          <button
+            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
+              activeTab === 'tipped-me'
+                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500 font-semibold'
+                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
+            }`}
+            onClick={() => setActiveTab('tipped-me')}
+          >
+            Tipped Me
+          </button>
         </div>
       </div>
 
@@ -2611,6 +2777,8 @@ const Users: React.FC = () => {
       {activeTab === 'friends' && renderFriendsTab()}
       {activeTab === 'bans' && renderBansTab()}
       {activeTab === 'watchlist' && renderWatchlistTab()}
+      {activeTab === 'tipped-by-me' && renderTippedByMeTab()}
+      {activeTab === 'tipped-me' && renderTippedMeTab()}
 
       {/* Add to Priority Modal */}
       {showPriorityModal && (

@@ -1,0 +1,210 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+interface UserSuggestion {
+  username: string;
+  role: string;
+  following?: boolean;
+  friend_tier?: number;
+}
+
+export const GlobalLookup: React.FC = () => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<UserSuggestion[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+
+  // Focus input when expanded
+  useEffect(() => {
+    if (isExpanded && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isExpanded]);
+
+  // Keyboard shortcut: Cmd/Ctrl + K to open
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsExpanded(true);
+      }
+      if (e.key === 'Escape' && isExpanded) {
+        setIsExpanded(false);
+        setQuery('');
+        setSuggestions([]);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isExpanded]);
+
+  // Click outside to close
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsExpanded(false);
+        setQuery('');
+        setSuggestions([]);
+      }
+    };
+
+    if (isExpanded) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isExpanded]);
+
+  // Fetch suggestions with debounce
+  useEffect(() => {
+    if (!query.trim()) {
+      setSuggestions([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const response = await fetch(`/api/person/search?q=${encodeURIComponent(query.trim())}&limit=8`);
+        if (response.ok) {
+          const data = await response.json();
+          // API returns { usernames: string[] }, convert to our format
+          const usernames = data.usernames || [];
+          setSuggestions(usernames.map((username: string) => ({
+            username,
+            role: 'USER',
+          })));
+        }
+      } catch (err) {
+        console.error('Autocomplete error:', err);
+      } finally {
+        setLoading(false);
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const handleSelect = (username: string) => {
+    navigate(`/profile/${username}`);
+    setIsExpanded(false);
+    setQuery('');
+    setSuggestions([]);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex(prev => Math.min(prev + 1, suggestions.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex(prev => Math.max(prev - 1, -1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedIndex >= 0 && suggestions[selectedIndex]) {
+        handleSelect(suggestions[selectedIndex].username);
+      } else if (query.trim()) {
+        handleSelect(query.trim().toLowerCase());
+      }
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="fixed bottom-6 right-6 z-50">
+      {isExpanded ? (
+        <div className="bg-mhc-surface border border-mhc-primary/50 rounded-lg shadow-2xl w-80 overflow-hidden">
+          {/* Search Input */}
+          <div className="p-3 border-b border-white/10">
+            <div className="relative">
+              <svg
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-mhc-text-muted"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                ref={inputRef}
+                type="text"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setSelectedIndex(-1);
+                }}
+                onKeyDown={handleKeyDown}
+                placeholder="Search users..."
+                className="w-full pl-10 pr-4 py-2 bg-mhc-surface-light border border-white/10 rounded-md text-white placeholder-mhc-text-muted focus:outline-none focus:border-mhc-primary text-sm"
+              />
+              {loading && (
+                <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-mhc-primary animate-spin" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              )}
+            </div>
+            <div className="mt-1 text-xs text-mhc-text-muted">
+              Press <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">Enter</kbd> to go or <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">Esc</kbd> to close
+            </div>
+          </div>
+
+          {/* Suggestions */}
+          {suggestions.length > 0 && (
+            <div className="max-h-64 overflow-y-auto">
+              {suggestions.map((user, index) => (
+                <button
+                  key={user.username}
+                  onClick={() => handleSelect(user.username)}
+                  className={`w-full px-4 py-2.5 flex items-center gap-3 text-left transition-colors ${
+                    index === selectedIndex
+                      ? 'bg-mhc-primary/20 text-white'
+                      : 'hover:bg-white/5 text-mhc-text'
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{user.username}</div>
+                    <div className="text-xs text-mhc-text-muted flex items-center gap-2">
+                      <span>{user.role}</span>
+                      {user.following && (
+                        <span className="text-emerald-400">Following</span>
+                      )}
+                      {user.friend_tier && user.friend_tier > 0 && (
+                        <span className="text-amber-400">T{user.friend_tier}</span>
+                      )}
+                    </div>
+                  </div>
+                  <svg className="w-4 h-4 text-mhc-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {query.trim() && !loading && suggestions.length === 0 && (
+            <div className="px-4 py-6 text-center text-mhc-text-muted text-sm">
+              No users found. Press Enter to search "{query}"
+            </div>
+          )}
+        </div>
+      ) : (
+        <button
+          onClick={() => setIsExpanded(true)}
+          className="w-14 h-14 bg-mhc-primary hover:bg-mhc-primary/90 text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+          title="Quick Lookup (Cmd+K)"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+};
+
+export default GlobalLookup;

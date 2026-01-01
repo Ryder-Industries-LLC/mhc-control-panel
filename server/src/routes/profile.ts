@@ -1614,4 +1614,166 @@ router.post('/visits/backfill', async (req: Request, res: Response) => {
   }
 });
 
+// ============================================================
+// COMMUNICATIONS ENDPOINTS
+// ============================================================
+
+/**
+ * GET /api/profile/:username/communications
+ * Get all communications (DMs, PMs) for a user
+ * Classifies messages as:
+ * - direct_messages: PRIVATE_MESSAGE where broadcaster is null/empty
+ * - pm_my_room: PRIVATE_MESSAGE where broadcaster = 'hudson_cage'
+ * - pm_their_room: PRIVATE_MESSAGE where broadcaster is set and != 'hudson_cage'
+ */
+router.get('/:username/communications', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { limit = '50', offset = '0' } = req.query;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    // Get all PRIVATE_MESSAGE interactions for this person
+    const result = await query(
+      `SELECT
+        id,
+        type,
+        content,
+        timestamp,
+        source,
+        metadata,
+        stream_session_id
+       FROM interactions
+       WHERE person_id = $1
+         AND type = 'PRIVATE_MESSAGE'
+       ORDER BY timestamp DESC
+       LIMIT $2 OFFSET $3`,
+      [person.id, parseInt(limit as string), parseInt(offset as string)]
+    );
+
+    // Get total count
+    const countResult = await query(
+      `SELECT COUNT(*) as total
+       FROM interactions
+       WHERE person_id = $1
+         AND type = 'PRIVATE_MESSAGE'`,
+      [person.id]
+    );
+
+    // Classify messages
+    const directMessages: any[] = [];
+    const pmMyRoom: any[] = [];
+    const pmTheirRoom: any[] = [];
+
+    for (const row of result.rows) {
+      const broadcaster = row.metadata?.broadcaster;
+      const message = {
+        id: row.id,
+        content: row.content,
+        timestamp: row.timestamp,
+        source: row.source,
+        metadata: row.metadata,
+        stream_session_id: row.stream_session_id,
+      };
+
+      if (!broadcaster) {
+        directMessages.push(message);
+      } else if (broadcaster === 'hudson_cage') {
+        pmMyRoom.push(message);
+      } else {
+        pmTheirRoom.push({ ...message, broadcaster });
+      }
+    }
+
+    res.json({
+      username,
+      direct_messages: directMessages,
+      pm_my_room: pmMyRoom,
+      pm_their_room: pmTheirRoom,
+      total: parseInt(countResult.rows[0].total),
+    });
+  } catch (error) {
+    logger.error('Error fetching communications', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/profile/:username/timeline
+ * Get a chronological timeline of all interactions for a user
+ * Includes: USER_ENTER, USER_LEAVE, CHAT_MESSAGE, PRIVATE_MESSAGE, TIP_EVENT, MEDIA_PURCHASE, FANCLUB_JOIN
+ */
+router.get('/:username/timeline', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { limit = '50', offset = '0' } = req.query;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    // Get timeline events - multiple interaction types
+    const result = await query(
+      `SELECT
+        id,
+        type,
+        content,
+        timestamp,
+        source,
+        metadata,
+        stream_session_id
+       FROM interactions
+       WHERE person_id = $1
+         AND type IN ('USER_ENTER', 'USER_LEAVE', 'CHAT_MESSAGE', 'PRIVATE_MESSAGE', 'TIP_EVENT', 'MEDIA_PURCHASE', 'FANCLUB_JOIN')
+       ORDER BY timestamp DESC
+       LIMIT $2 OFFSET $3`,
+      [person.id, parseInt(limit as string), parseInt(offset as string)]
+    );
+
+    // Get total count
+    const countResult = await query(
+      `SELECT COUNT(*) as total
+       FROM interactions
+       WHERE person_id = $1
+         AND type IN ('USER_ENTER', 'USER_LEAVE', 'CHAT_MESSAGE', 'PRIVATE_MESSAGE', 'TIP_EVENT', 'MEDIA_PURCHASE', 'FANCLUB_JOIN')`,
+      [person.id]
+    );
+
+    const events = result.rows.map(row => ({
+      id: row.id,
+      type: row.type,
+      content: row.content,
+      timestamp: row.timestamp,
+      source: row.source,
+      metadata: row.metadata,
+      stream_session_id: row.stream_session_id,
+    }));
+
+    res.json({
+      username,
+      events,
+      total: parseInt(countResult.rows[0].total),
+      limit: parseInt(limit as string),
+      offset: parseInt(offset as string),
+    });
+  } catch (error) {
+    logger.error('Error fetching timeline', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

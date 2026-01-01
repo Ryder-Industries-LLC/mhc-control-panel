@@ -5,29 +5,15 @@ import { formatDuration, formatGender } from '../utils/formatting';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import { SocialLinksEditor } from '../components/SocialLinksEditor';
 import { ServiceRelationshipEditor, type ServiceRelationship } from '../components/ServiceRelationshipEditor';
+import { CommsSection } from '../components/profile/CommsSection';
+import { TimelineTab } from '../components/profile/TimelineTab';
+import { InteractionsTab } from '../components/profile/InteractionsTab';
+import { HistoryTab } from '../components/profile/HistoryTab';
 // Profile.css removed - fully migrated to Tailwind CSS
 
 interface ProfilePageProps {}
 
-type TabType = 'snapshot' | 'sessions' | 'profile' | 'interactions' | 'images' | 'history';
-type HistorySubTab = 'messaged' | 'tipped';
-
-interface MemberInfo {
-  name: string;
-  did: number;
-  first_message_date: string | null;
-  first_tip_date: string | null;
-  last_tip_date: string | null;
-  last_tip_amount: number;
-  last_tip_to: string | null;
-  models_messaged_2weeks: number;
-  models_messaged_2weeks_list: string[];
-  models_tipped_2weeks: number;
-  models_tipped_2weeks_list: string[];
-  per_day_tokens: Array<{ date: string; tokens: number }>;
-  all_time_tokens: number;
-}
-
+type TabType = 'snapshot' | 'sessions' | 'profile' | 'interactions' | 'timeline' | 'images' | 'history';
 interface ProfileNote {
   id: string;
   profile_id: number;
@@ -85,7 +71,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
   const [username, setUsername] = useState(urlUsername || '');
   const [lookupCollapsed, setLookupCollapsed] = useState(!!urlUsername);
-  const [activeTab, setActiveTab] = useState<TabType>(tabFromUrl || 'snapshot');
+  const [activeTab, setActiveTab] = useState<TabType>(tabFromUrl || 'images');
   const [loading, setLoading] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,11 +82,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [imageHistory, setImageHistory] = useState<ImageHistoryItem[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  // Member info (Statbate) state
-  const [memberInfo, setMemberInfo] = useState<MemberInfo | null>(null);
-  const [memberInfoLoading, setMemberInfoLoading] = useState(false);
-  const [memberInfoError, setMemberInfoError] = useState<string | null>(null);
-  const [historySubTab, setHistorySubTab] = useState<HistorySubTab>('tipped');
+  const [relationshipTab, setRelationshipTab] = useState<'flags' | 'sub' | 'dom'>('flags');
 
   // Notes and status state
   const [profileNotes, setProfileNotes] = useState<ProfileNote[]>([]);
@@ -151,14 +133,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
     visits_this_week: number;
     visits_this_month: number;
   } | null>(null);
-
-  // Interactions pagination state
-  const [interactionsPage, setInteractionsPage] = useState(0);
-  const INTERACTIONS_PER_PAGE = 20;
-
-  // Token activity pagination state
-  const [tokenActivityPage, setTokenActivityPage] = useState(0);
-  const TOKEN_ACTIVITY_PER_PAGE = 31;
 
   // Auto-load profile if username in URL
   useEffect(() => {
@@ -358,42 +332,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
         });
     }
   }, [activeTab, profileData?.person?.username]);
-
-  // Fetch member info from Statbate when History tab is selected
-  useEffect(() => {
-    if (activeTab === 'history' && profileData?.person?.username && !memberInfo && !memberInfoLoading) {
-      setMemberInfoLoading(true);
-      setMemberInfoError(null);
-
-      fetch(`/api/profile/${profileData.person.username}/member-info`)
-        .then(response => {
-          if (!response.ok) {
-            if (response.status === 404) {
-              throw new Error('Member not found in Statbate');
-            }
-            throw new Error('Failed to fetch member info');
-          }
-          return response.json();
-        })
-        .then(data => {
-          setMemberInfo(data.data);
-        })
-        .catch(err => {
-          console.error('Failed to fetch member info', err);
-          setMemberInfoError(err.message || 'Failed to fetch member info');
-        })
-        .finally(() => {
-          setMemberInfoLoading(false);
-        });
-    }
-  }, [activeTab, profileData?.person?.username, memberInfo, memberInfoLoading]);
-
-  // Reset member info when profile changes
-  useEffect(() => {
-    setMemberInfo(null);
-    setMemberInfoError(null);
-    setHistorySubTab('tipped');
-  }, [profileData?.person?.username]);
 
   const handleLookup = async (lookupUsername?: string) => {
     const usernameToLookup = lookupUsername || username;
@@ -908,12 +846,29 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 <div className="flex-shrink-0 flex flex-col items-center gap-3">
                   {/* Image with navigation arrows */}
                   <div className="relative group">
-                    {/* LIVE indicator - overlaid on image */}
-                    {isSessionLive(profileData.latestSession) && (
-                      <div className="absolute top-2 left-2 z-10 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-3 py-1 rounded-full font-bold text-xs uppercase tracking-wider shadow-lg animate-pulse border border-white/50">
-                        ● LIVE
+                    {/* Role + Followers overlay on top-left of image */}
+                    <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
+                      {/* LIVE indicator */}
+                      {isSessionLive(profileData.latestSession) && (
+                        <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-3 py-1 rounded-full font-bold text-xs uppercase tracking-wider shadow-lg animate-pulse border border-white/50">
+                          ● LIVE
+                        </div>
+                      )}
+                      {/* Role indicator */}
+                      <div className={`text-xs px-2 py-1 rounded font-semibold uppercase tracking-wider ${
+                        profileData.person.role === 'MODEL'
+                          ? 'bg-pink-500/80 text-white'
+                          : 'bg-gray-500/80 text-white'
+                      }`}>
+                        {profileData.person.role}
                       </div>
-                    )}
+                      {/* Followers */}
+                      {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers) && (
+                        <div className="px-2 py-1 rounded text-xs font-semibold bg-black/60 text-white">
+                          ❤️ {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers || 0).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
                     <img
                       src={
                         imageHistory.length > 0
@@ -962,7 +917,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
               )}
 
               <div className="flex-1">
-                {/* Username row with role indicator, followers, and viewers */}
+                {/* Username row with Following + Live/Offline status */}
                 <div className="flex items-center gap-3 mb-3 flex-wrap">
                   <h2 className="m-0 text-3xl font-bold">
                     <a
@@ -974,30 +929,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       {profileData.person.username}
                     </a>
                   </h2>
-                  {/* Role indicator - styled differently for MODEL vs VIEWER */}
-                  <span className={`text-xs px-2 py-1 rounded font-semibold uppercase tracking-wider ${
-                    profileData.person.role === 'MODEL'
-                      ? 'bg-pink-500/30 text-pink-300 border border-pink-500/50'
-                      : 'bg-white/20 text-white/80'
-                  }`}>
-                    {profileData.person.role}
-                  </span>
-                  {/* Followers */}
-                  {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers) && (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
-                      ❤️ {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers || 0).toLocaleString()} followers
-                    </span>
-                  )}
-                  {/* Viewers (if live) */}
-                  {isSessionLive(profileData.latestSession) && profileData.latestSession?.num_users !== undefined && (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50">
-                      👁 {profileData.latestSession.num_users.toLocaleString()} viewers
-                    </span>
-                  )}
-                </div>
-
-                {/* Badges row */}
-                <div className="mb-3 flex items-center gap-2 flex-wrap">
+                  {/* Following badge */}
                   {profileData.profile?.following && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50" title="You follow this user">
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -1007,6 +939,39 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       Following
                     </span>
                   )}
+                  {/* Live/Offline status */}
+                  {isSessionLive(profileData.latestSession) ? (
+                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50">
+                      👁 {(profileData.latestSession?.num_users || 0).toLocaleString()} viewers
+                    </span>
+                  ) : (
+                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-gray-500/30 border border-gray-500/50 text-white/80">
+                      Offline
+                    </span>
+                  )}
+                </div>
+
+                {/* Badges row */}
+                <div className="mb-3 flex items-center gap-2 flex-wrap">
+                  {/* Friend Tier - compact dropdown */}
+                  <select
+                    value={friendTier || ''}
+                    onChange={(e) => handleFriendTierChange(e.target.value ? parseInt(e.target.value, 10) : null)}
+                    className={`px-2 py-1 rounded-full text-sm font-semibold border cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/30 ${
+                      friendTier === 1 ? 'bg-amber-500/30 border-amber-500/50 text-amber-300' :
+                      friendTier === 2 ? 'bg-orange-500/30 border-orange-500/50 text-orange-300' :
+                      friendTier === 3 ? 'bg-blue-500/30 border-blue-500/50 text-blue-300' :
+                      friendTier === 4 ? 'bg-gray-500/30 border-gray-500/50 text-gray-300' :
+                      'bg-white/10 border-white/20 text-white/60'
+                    }`}
+                    title="Friend Tier"
+                  >
+                    <option value="">No Tier</option>
+                    <option value="1">T1 Special</option>
+                    <option value="2">T2 Tipper</option>
+                    <option value="3">T3 Regular</option>
+                    <option value="4">T4 Drive-by</option>
+                  </select>
                   {profileData.profile?.follower && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-blue-500/30 border border-blue-500/50" title="Follows you">
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -1122,42 +1087,36 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       Rank #{Math.round(profileData.latestSnapshot.normalized_metrics.rank).toLocaleString()}
                     </span>
                   )}
-
-                  {/* Offline status */}
-                  {!isSessionLive(profileData.latestSession) && (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-gray-500/30 border border-gray-500/50 text-white/80">
-                      Offline
-                    </span>
-                  )}
-
-                  {/* Last Seen (if offline) - prioritize most recent data source */}
-                  {!isSessionLive(profileData.latestSession) && (
-                    profileData.latestSession?.observed_at ||
-                    profileData.profile?.last_seen_online ||
-                    profileData.person?.last_seen_at
-                  ) && (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
-                      Last Seen: {new Date(
-                        // Prioritize most accurate last seen data:
-                        // 1. Session observed_at (model was broadcasting)
-                        // 2. Profile last_seen_online (scraped data)
-                        // 3. Person last_seen_at (any interaction)
-                        profileData.latestSession?.observed_at ||
-                        profileData.profile?.last_seen_online ||
-                        profileData.person?.last_seen_at
-                      ).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'short', timeStyle: 'short' })} ET
-                    </span>
-                  )}
                 </div>
+
+                {/* Last Seen (if offline) - right-aligned plain text */}
+                {!isSessionLive(profileData.latestSession) && (
+                  profileData.latestSession?.observed_at ||
+                  profileData.profile?.last_seen_online ||
+                  profileData.person?.last_seen_at
+                ) && (
+                  <div className="mt-3 text-right text-white/80 text-sm">
+                    Last Seen: {new Date(
+                      // Prioritize most accurate last seen data:
+                      // 1. Session observed_at (model was broadcasting)
+                      // 2. Profile last_seen_online (scraped data)
+                      // 3. Person last_seen_at (any interaction)
+                      profileData.latestSession?.observed_at ||
+                      profileData.profile?.last_seen_online ||
+                      profileData.person?.last_seen_at
+                    ).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'short', timeStyle: 'short' })} ET
+                  </div>
+                )}
 
                 {/* Room Subject with extracted tags (when live) */}
                 {profileData.latestSession?.room_subject && (
                   <div className="mt-4">
                     <div className="px-4 py-3 bg-white/15 rounded-lg text-base leading-relaxed border-l-4 border-white/40">
-                      {profileData.latestSession.room_subject}
+                      {/* Remove hashtags from display text */}
+                      {profileData.latestSession.room_subject.replace(/#\w+/g, '').trim()}
                     </div>
-                    {/* Extract hashtags from room subject */}
-                    {isSessionLive(profileData.latestSession) && (() => {
+                    {/* Extract hashtags from room subject and show as pills */}
+                    {(() => {
                       const hashtags = profileData.latestSession.room_subject.match(/#\w+/g);
                       if (hashtags && hashtags.length > 0) {
                         return (
@@ -1190,73 +1149,107 @@ const Profile: React.FC<ProfilePageProps> = () => {
             </div>
           </div>
 
-          {/* Attributes Section (Collapsible) */}
-          <div className="mb-5">
-            <CollapsibleSection title="Attributes" defaultCollapsed={false} className="bg-mhc-surface">
-              <div className="flex flex-wrap items-center gap-6">
-                {/* Friend Tier Dropdown */}
-                <div className="flex items-center gap-2">
-                  <label className="text-mhc-text font-medium whitespace-nowrap">Friend Tier:</label>
-                  <select
-                    value={friendTier || ''}
-                    onChange={(e) => handleFriendTierChange(e.target.value ? parseInt(e.target.value, 10) : null)}
-                    className="px-3 py-1.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20 min-w-[150px]"
-                  >
-                    <option value="">None</option>
-                    <option value="1">Tier 1 - Special</option>
-                    <option value="2">Tier 2 - Tipper</option>
-                    <option value="3">Tier 3 - Regular</option>
-                    <option value="4">Tier 4 - Drive-by</option>
-                  </select>
-                </div>
-
-                {/* Banned Toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={bannedMe}
-                    onChange={handleBannedToggle}
-                    className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
-                  />
-                  <span className="text-mhc-text font-medium">Banned Me</span>
-                </label>
-
-                {/* Watchlist Toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={watchList}
-                    onChange={handleWatchListToggle}
-                    className="w-5 h-5 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
-                  />
-                  <span className="text-mhc-text font-medium">Watchlist</span>
-                </label>
-              </div>
-            </CollapsibleSection>
-          </div>
-
-          {/* Service Relationships Section (Collapsible) */}
+          {/* Relationships Section (Collapsible) - Consolidated Flags/Sub/Dom */}
           <div className="mb-5">
             <CollapsibleSection
               title={
                 <div className="flex items-center gap-2">
-                  <span>Service Relationships</span>
+                  <span>Relationships</span>
                   {serviceRelationships.length > 0 && (
                     <span className="text-xs text-white/50 font-normal">({serviceRelationships.length})</span>
                   )}
                 </div>
               }
-              defaultCollapsed={true}
+              defaultCollapsed={false}
               className="bg-mhc-surface"
             >
-              {serviceRelationshipsLoading ? (
-                <div className="text-white/50 text-sm py-4 text-center">Loading...</div>
-              ) : (
-                <ServiceRelationshipEditor
-                  relationships={serviceRelationships}
-                  onSave={handleSaveServiceRelationship}
-                  onRemove={handleRemoveServiceRelationship}
-                />
+              {/* Tab buttons */}
+              <div className="flex gap-1 mb-4 border-b border-white/10 pb-2">
+                <button
+                  className={`px-4 py-2 rounded-t text-sm font-medium transition-colors ${
+                    relationshipTab === 'flags'
+                      ? 'bg-mhc-primary text-white'
+                      : 'text-mhc-text-muted hover:bg-white/5'
+                  }`}
+                  onClick={() => setRelationshipTab('flags')}
+                >
+                  Profile Flags
+                </button>
+                <button
+                  className={`px-4 py-2 rounded-t text-sm font-medium transition-colors ${
+                    relationshipTab === 'sub'
+                      ? 'bg-mhc-primary text-white'
+                      : 'text-mhc-text-muted hover:bg-white/5'
+                  }`}
+                  onClick={() => setRelationshipTab('sub')}
+                >
+                  Sub {serviceRelationships.filter(r => r.service_role === 'sub').length > 0 &&
+                    `(${serviceRelationships.filter(r => r.service_role === 'sub').length})`}
+                </button>
+                <button
+                  className={`px-4 py-2 rounded-t text-sm font-medium transition-colors ${
+                    relationshipTab === 'dom'
+                      ? 'bg-mhc-primary text-white'
+                      : 'text-mhc-text-muted hover:bg-white/5'
+                  }`}
+                  onClick={() => setRelationshipTab('dom')}
+                >
+                  Dom {serviceRelationships.filter(r => r.service_role === 'dom').length > 0 &&
+                    `(${serviceRelationships.filter(r => r.service_role === 'dom').length})`}
+                </button>
+              </div>
+
+              {/* Tab content */}
+              {relationshipTab === 'flags' && (
+                <div className="flex flex-wrap items-center gap-6">
+                  {/* Banned Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={bannedMe}
+                      onChange={handleBannedToggle}
+                      className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
+                    />
+                    <span className="text-mhc-text font-medium">Banned Me</span>
+                  </label>
+
+                  {/* Watchlist Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={watchList}
+                      onChange={handleWatchListToggle}
+                      className="w-5 h-5 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
+                    />
+                    <span className="text-mhc-text font-medium">Watchlist</span>
+                  </label>
+                </div>
+              )}
+
+              {relationshipTab === 'sub' && (
+                serviceRelationshipsLoading ? (
+                  <div className="text-white/50 text-sm py-4 text-center">Loading...</div>
+                ) : (
+                  <ServiceRelationshipEditor
+                    relationships={serviceRelationships.filter(r => r.service_role === 'sub')}
+                    onSave={handleSaveServiceRelationship}
+                    onRemove={handleRemoveServiceRelationship}
+                    defaultRole="sub"
+                  />
+                )
+              )}
+
+              {relationshipTab === 'dom' && (
+                serviceRelationshipsLoading ? (
+                  <div className="text-white/50 text-sm py-4 text-center">Loading...</div>
+                ) : (
+                  <ServiceRelationshipEditor
+                    relationships={serviceRelationships.filter(r => r.service_role === 'dom')}
+                    onSave={handleSaveServiceRelationship}
+                    onRemove={handleRemoveServiceRelationship}
+                    defaultRole="dom"
+                  />
+                )
               )}
             </CollapsibleSection>
           </div>
@@ -1392,8 +1385,25 @@ const Profile: React.FC<ProfilePageProps> = () => {
             </CollapsibleSection>
           </div>
 
+          {/* Communications Section (Collapsible) */}
+          <div className="mb-5">
+            <CollapsibleSection title="Communications" defaultCollapsed={true} className="bg-mhc-surface">
+              <CommsSection username={profileData.person.username} />
+            </CollapsibleSection>
+          </div>
+
           {/* Tabs */}
           <div className="flex gap-1 bg-mhc-surface rounded-t-lg pt-2.5 px-2.5 shadow-lg flex-wrap">
+            <button
+              className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
+                activeTab === 'images'
+                  ? 'bg-mhc-primary text-white'
+                  : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
+              }`}
+              onClick={() => setActiveTab('images')}
+            >
+              Images ({uploadedImages.length + imageHistory.length})
+            </button>
             <button
               className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
                 activeTab === 'snapshot'
@@ -1402,7 +1412,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
               }`}
               onClick={() => setActiveTab('snapshot')}
             >
-              Latest Snapshot
+              Snapshot
             </button>
             <button
               className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
@@ -1412,7 +1422,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
               }`}
               onClick={() => setActiveTab('sessions')}
             >
-              Broadcast Sessions
+              Sessions
             </button>
             <button
               className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
@@ -1422,7 +1432,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
               }`}
               onClick={() => setActiveTab('profile')}
             >
-              Profile Details
+              Profile
             </button>
             <button
               className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
@@ -1436,13 +1446,13 @@ const Profile: React.FC<ProfilePageProps> = () => {
             </button>
             <button
               className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
-                activeTab === 'images'
+                activeTab === 'timeline'
                   ? 'bg-mhc-primary text-white'
                   : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
               }`}
-              onClick={() => setActiveTab('images')}
+              onClick={() => setActiveTab('timeline')}
             >
-              Images {imageHistory.length > 0 && `(${imageHistory.length})`}
+              Timeline
             </button>
             <button
               className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
@@ -1784,59 +1794,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
             )}
 
             {activeTab === 'interactions' && (
-              <div>
-                <div className="flex justify-between items-center mb-5">
-                  <h3 className="m-0 text-mhc-text text-2xl font-semibold">Interactions</h3>
-                  {profileData.interactions && profileData.interactions.length > 0 && (
-                    <span className="text-mhc-text-muted text-sm">
-                      Showing {Math.min((interactionsPage + 1) * INTERACTIONS_PER_PAGE, profileData.interactions.length)} of {profileData.interactions.length}
-                    </span>
-                  )}
-                </div>
-                {profileData.interactions && profileData.interactions.length > 0 ? (
-                  <>
-                    <div className="flex flex-col gap-4">
-                      {profileData.interactions
-                        .slice(interactionsPage * INTERACTIONS_PER_PAGE, (interactionsPage + 1) * INTERACTIONS_PER_PAGE)
-                        .map((interaction: any) => (
-                          <div key={interaction.id} className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                            <div className="flex justify-between items-center mb-3">
-                              <span className="font-semibold text-mhc-primary text-sm uppercase">{interaction.type.replace(/_/g, ' ')}</span>
-                              <span className="text-mhc-text-muted text-sm">{new Date(interaction.timestamp).toLocaleString()}</span>
-                            </div>
-                            {interaction.content && (
-                              <div className="p-3 bg-mhc-surface rounded-md text-mhc-text leading-relaxed">{interaction.content}</div>
-                            )}
-                          </div>
-                        ))}
-                    </div>
-                    {/* Pagination Controls */}
-                    {profileData.interactions.length > INTERACTIONS_PER_PAGE && (
-                      <div className="flex justify-center items-center gap-4 mt-6">
-                        <button
-                          onClick={() => setInteractionsPage(prev => Math.max(0, prev - 1))}
-                          disabled={interactionsPage === 0}
-                          className="px-4 py-2 rounded-md text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-mhc-surface-light text-white hover:bg-mhc-primary"
-                        >
-                          ← Previous
-                        </button>
-                        <span className="text-mhc-text-muted text-sm">
-                          Page {interactionsPage + 1} of {Math.ceil(profileData.interactions.length / INTERACTIONS_PER_PAGE)}
-                        </span>
-                        <button
-                          onClick={() => setInteractionsPage(prev => Math.min(Math.ceil(profileData.interactions.length / INTERACTIONS_PER_PAGE) - 1, prev + 1))}
-                          disabled={interactionsPage >= Math.ceil(profileData.interactions.length / INTERACTIONS_PER_PAGE) - 1}
-                          className="px-4 py-2 rounded-md text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-mhc-surface-light text-white hover:bg-mhc-primary"
-                        >
-                          Next →
-                        </button>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-mhc-text-muted">No interactions found.</p>
-                )}
-              </div>
+              <InteractionsTab interactions={profileData.interactions || []} />
             )}
 
             {activeTab === 'images' && (
@@ -2052,201 +2010,17 @@ const Profile: React.FC<ProfilePageProps> = () => {
               </div>
             )}
 
+            {activeTab === 'timeline' && (
+              <div>
+                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Activity Timeline</h3>
+                <TimelineTab username={profileData.person.username} />
+              </div>
+            )}
+
             {activeTab === 'history' && (
               <div>
                 <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Member History</h3>
-
-                {memberInfoLoading && (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="text-mhc-text-muted">Loading member info from Statbate...</div>
-                  </div>
-                )}
-
-                {memberInfoError && (
-                  <div className="bg-red-500/20 border-l-4 border-red-500 text-red-300 px-4 py-3 rounded-md mb-5">
-                    <strong className="font-bold mr-1">Error:</strong> {memberInfoError}
-                  </div>
-                )}
-
-                {memberInfo && (
-                  <div className="space-y-6">
-                    {/* Overview Stats - Reordered: All-Time | Models Tipped | Last Tip | First Tip | First Message */}
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-emerald-500">
-                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">All-Time Tokens</span>
-                        <span className="block text-emerald-400 text-base font-semibold">
-                          {memberInfo.all_time_tokens.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-blue-500">
-                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Models Tipped</span>
-                        <span className="block text-blue-400 text-base font-semibold">
-                          {memberInfo.models_tipped_2weeks}
-                        </span>
-                      </div>
-                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-yellow-500">
-                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Tip</span>
-                        <span className="block text-yellow-400 text-base font-semibold">
-                          {memberInfo.last_tip_amount > 0 ? (
-                            <>
-                              {memberInfo.last_tip_amount.toLocaleString()} tokens
-                              {memberInfo.last_tip_to && (
-                                <a
-                                  href={`/profile/${memberInfo.last_tip_to}`}
-                                  className="block text-mhc-primary text-sm mt-1 hover:underline"
-                                >
-                                  to {memberInfo.last_tip_to}
-                                </a>
-                              )}
-                              {memberInfo.last_tip_date && (
-                                <span className="block text-mhc-text-muted text-xs mt-0.5">
-                                  {Math.floor((Date.now() - new Date(memberInfo.last_tip_date).getTime()) / (1000 * 60 * 60 * 24))} days ago
-                                </span>
-                              )}
-                            </>
-                          ) : 'Never'}
-                        </span>
-                      </div>
-                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">First Tip</span>
-                        <span className="block text-mhc-text text-base">
-                          {memberInfo.first_tip_date
-                            ? new Date(memberInfo.first_tip_date).toLocaleDateString('en-US', { dateStyle: 'medium' })
-                            : 'Never'}
-                        </span>
-                      </div>
-                      <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
-                        <span className="block font-semibold text-mhc-text-muted text-sm mb-1">First Message</span>
-                        <span className="block text-mhc-text text-base">
-                          {memberInfo.first_message_date
-                            ? new Date(memberInfo.first_message_date).toLocaleDateString('en-US', { dateStyle: 'medium' })
-                            : 'Never'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Sub-tab navigation - default to tipped */}
-                    <div className="flex gap-2 border-b border-gray-700 pb-2">
-                      <button
-                        onClick={() => setHistorySubTab('tipped')}
-                        className={`px-4 py-2 rounded-t-md font-medium transition-all ${
-                          historySubTab === 'tipped'
-                            ? 'bg-mhc-primary text-white'
-                            : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
-                        }`}
-                      >
-                        Models Tipped ({memberInfo.models_tipped_2weeks})
-                      </button>
-                      <button
-                        onClick={() => setHistorySubTab('messaged')}
-                        className={`px-4 py-2 rounded-t-md font-medium transition-all ${
-                          historySubTab === 'messaged'
-                            ? 'bg-mhc-primary text-white'
-                            : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
-                        }`}
-                      >
-                        Models Messaged ({memberInfo.models_messaged_2weeks})
-                      </button>
-                    </div>
-
-                    {/* Sub-tab content */}
-                    <div className="mt-4">
-                      {historySubTab === 'messaged' && (
-                        <div>
-                          {memberInfo.models_messaged_2weeks_list.length > 0 ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                              {memberInfo.models_messaged_2weeks_list.map((modelUsername) => (
-                                <a
-                                  key={modelUsername}
-                                  href={`/profile/${modelUsername}`}
-                                  className="px-3 py-2 bg-mhc-surface-light rounded-md text-mhc-primary hover:bg-mhc-primary hover:text-white transition-colors text-center truncate"
-                                  title={modelUsername}
-                                >
-                                  {modelUsername}
-                                </a>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-mhc-text-muted">No models messaged in the last 2 weeks.</p>
-                          )}
-                        </div>
-                      )}
-
-                      {historySubTab === 'tipped' && (
-                        <div>
-                          {memberInfo.models_tipped_2weeks_list.length > 0 ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                              {memberInfo.models_tipped_2weeks_list.map((modelUsername) => (
-                                <a
-                                  key={modelUsername}
-                                  href={`/profile/${modelUsername}`}
-                                  className="px-3 py-2 bg-mhc-surface-light rounded-md text-mhc-primary hover:bg-mhc-primary hover:text-white transition-colors text-center truncate"
-                                  title={modelUsername}
-                                >
-                                  {modelUsername}
-                                </a>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-mhc-text-muted">No models tipped in the last 2 weeks.</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Token Activity */}
-                    {memberInfo.per_day_tokens && memberInfo.per_day_tokens.length > 0 && (
-                      <div className="mt-6">
-                        <div className="flex justify-between items-center mb-3">
-                          <h4 className="text-mhc-text text-lg font-semibold m-0">Token Activity</h4>
-                          <span className="text-mhc-text-muted text-sm">
-                            {memberInfo.per_day_tokens.length} days total
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-2">
-                          {memberInfo.per_day_tokens
-                            .slice(tokenActivityPage * TOKEN_ACTIVITY_PER_PAGE, (tokenActivityPage + 1) * TOKEN_ACTIVITY_PER_PAGE)
-                            .map((day) => (
-                              <div key={day.date} className="p-2 bg-mhc-surface-light rounded-md text-center">
-                                <div className="text-xs text-mhc-text-muted">
-                                  {new Date(day.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                </div>
-                                <div className={`text-sm font-semibold ${day.tokens > 0 ? 'text-yellow-400' : 'text-mhc-text-muted'}`}>
-                                  {day.tokens > 0 ? day.tokens.toLocaleString() : '-'}
-                                </div>
-                              </div>
-                            ))}
-                        </div>
-                        {/* Pagination Controls */}
-                        {memberInfo.per_day_tokens.length > TOKEN_ACTIVITY_PER_PAGE && (
-                          <div className="flex justify-center items-center gap-4 mt-4">
-                            <button
-                              onClick={() => setTokenActivityPage(prev => Math.max(0, prev - 1))}
-                              disabled={tokenActivityPage === 0}
-                              className="px-3 py-1.5 rounded-md text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-mhc-surface-light text-white hover:bg-mhc-primary"
-                            >
-                              ← Newer
-                            </button>
-                            <span className="text-mhc-text-muted text-xs">
-                              Page {tokenActivityPage + 1} of {Math.ceil(memberInfo.per_day_tokens.length / TOKEN_ACTIVITY_PER_PAGE)}
-                            </span>
-                            <button
-                              onClick={() => setTokenActivityPage(prev => Math.min(Math.ceil(memberInfo.per_day_tokens.length / TOKEN_ACTIVITY_PER_PAGE) - 1, prev + 1))}
-                              disabled={tokenActivityPage >= Math.ceil(memberInfo.per_day_tokens.length / TOKEN_ACTIVITY_PER_PAGE) - 1}
-                              className="px-3 py-1.5 rounded-md text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-mhc-surface-light text-white hover:bg-mhc-primary"
-                            >
-                              Older →
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {!memberInfoLoading && !memberInfoError && !memberInfo && (
-                  <p className="text-mhc-text-muted">Click on a user profile to load their member history from Statbate.</p>
-                )}
+                <HistoryTab username={profileData.person.username} />
               </div>
             )}
           </div>

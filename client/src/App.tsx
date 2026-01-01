@@ -8,29 +8,22 @@ import Admin from './pages/Admin';
 import Profile from './pages/Profile';
 import MyBroadcasts from './pages/MyBroadcasts';
 import LiveMonitor from './pages/LiveMonitor';
-import { useTheme, ThemeName } from './context/ThemeContext';
-
-const themeLabels: Record<ThemeName, string> = {
-  midnight: 'Midnight',
-  charcoal: 'Charcoal',
-  ocean: 'Ocean',
-  forest: 'Forest',
-  ember: 'Ember',
-};
+import GlobalLookup from './components/GlobalLookup';
 
 function App() {
-  const { theme, setTheme, themes } = useTheme();
 
   return (
     <Router>
       <div className="min-h-screen flex flex-col bg-mhc-bg text-mhc-text transition-colors duration-300">
         <nav className="bg-mhc-surface border-b-2 border-mhc-primary sticky top-0 z-50 shadow-lg transition-colors duration-300">
           <div className="max-w-6xl mx-auto px-5 flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <span className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-                MHC Control Panel
-              </span>
-            </div>
+            <Link to="/" className="flex items-center gap-3">
+              <img
+                src="/mhc-logo.jpg"
+                alt="MHC"
+                className="h-10 w-10 rounded-full object-cover border-2 border-mhc-primary"
+              />
+            </Link>
             <div className="flex gap-6 items-center">
               <Link to="/" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Users
@@ -53,18 +46,6 @@ function App() {
               <Link to="/admin" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Admin
               </Link>
-              <div className="border-l border-mhc-surface-light h-6 mx-2" />
-              <select
-                value={theme}
-                onChange={(e) => setTheme(e.target.value as ThemeName)}
-                className="bg-mhc-surface-light text-mhc-text-muted border border-mhc-surface-lighter px-3 py-1.5 rounded-md text-sm cursor-pointer transition-all hover:border-mhc-primary focus:outline-none focus:border-mhc-primary"
-              >
-                {themes.map((t) => (
-                  <option key={t} value={t} className="bg-mhc-surface text-mhc-text">
-                    {themeLabels[t]}
-                  </option>
-                ))}
-              </select>
             </div>
           </div>
         </nav>
@@ -82,6 +63,9 @@ function App() {
             <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>
+
+        {/* Global Lookup - floating search button */}
+        <GlobalLookup />
       </div>
     </Router>
   );
