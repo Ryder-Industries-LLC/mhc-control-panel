@@ -44,8 +44,9 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ username }) => {
         }
         return response.json();
       })
-      .then(data => {
-        setMemberInfo(data);
+      .then(response => {
+        // API returns { data: {...}, meta: {...} }
+        setMemberInfo(response.data);
       })
       .catch(err => {
         setError(err.message || 'Failed to load member info');
@@ -84,21 +85,21 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ username }) => {
         <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-emerald-500">
           <span className="block font-semibold text-mhc-text-muted text-sm mb-1">All-Time Tokens</span>
           <span className="block text-emerald-400 text-base font-semibold">
-            {memberInfo.all_time_tokens.toLocaleString()}
+            {(memberInfo.all_time_tokens ?? 0).toLocaleString()}
           </span>
         </div>
         <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-blue-500">
           <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Models Tipped</span>
           <span className="block text-blue-400 text-base font-semibold">
-            {memberInfo.models_tipped_2weeks}
+            {memberInfo.models_tipped_2weeks ?? 0}
           </span>
         </div>
         <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-yellow-500">
           <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Tip</span>
           <span className="block text-yellow-400 text-base font-semibold">
-            {memberInfo.last_tip_amount > 0 ? (
+            {(memberInfo.last_tip_amount ?? 0) > 0 ? (
               <>
-                {memberInfo.last_tip_amount.toLocaleString()} tokens
+                {(memberInfo.last_tip_amount ?? 0).toLocaleString()} tokens
                 {memberInfo.last_tip_to && (
                   <a
                     href={`/profile/${memberInfo.last_tip_to}`}
@@ -144,7 +145,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ username }) => {
               : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
           }`}
         >
-          Models Tipped ({memberInfo.models_tipped_2weeks})
+          Models Tipped ({memberInfo.models_tipped_2weeks ?? 0})
         </button>
         <button
           onClick={() => setHistorySubTab('messaged')}
@@ -154,7 +155,7 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ username }) => {
               : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
           }`}
         >
-          Models Messaged ({memberInfo.models_messaged_2weeks})
+          Models Messaged ({memberInfo.models_messaged_2weeks ?? 0})
         </button>
       </div>
 
@@ -162,9 +163,9 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ username }) => {
       <div className="mt-4">
         {historySubTab === 'messaged' && (
           <div>
-            {memberInfo.models_messaged_2weeks_list.length > 0 ? (
+            {(memberInfo.models_messaged_2weeks_list ?? []).length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                {memberInfo.models_messaged_2weeks_list.map((modelUsername) => (
+                {(memberInfo.models_messaged_2weeks_list ?? []).map((modelUsername) => (
                   <a
                     key={modelUsername}
                     href={`/profile/${modelUsername}`}
@@ -183,9 +184,9 @@ export const HistoryTab: React.FC<HistoryTabProps> = ({ username }) => {
 
         {historySubTab === 'tipped' && (
           <div>
-            {memberInfo.models_tipped_2weeks_list.length > 0 ? (
+            {(memberInfo.models_tipped_2weeks_list ?? []).length > 0 ? (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                {memberInfo.models_tipped_2weeks_list.map((modelUsername) => (
+                {(memberInfo.models_tipped_2weeks_list ?? []).map((modelUsername) => (
                   <a
                     key={modelUsername}
                     href={`/profile/${modelUsername}`}

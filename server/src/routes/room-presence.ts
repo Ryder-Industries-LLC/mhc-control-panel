@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { RoomPresenceService, roomPresenceEmitter, RoomEvent } from '../services/room-presence.service.js';
+import { PersonService } from '../services/person.service.js';
 import { logger } from '../config/logger.js';
 
 const router = Router();
@@ -232,6 +233,53 @@ router.get('/session', async (_req: Request, res: Response) => {
     res.json(sessionInfo);
   } catch (error) {
     logger.error('Error getting session info', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/room/presence/seed
+ * Manually seed room presence with usernames
+ * Useful for adding users who joined before the events client started
+ */
+router.post('/seed', async (req: Request, res: Response) => {
+  try {
+    const { usernames } = req.body;
+
+    if (!Array.isArray(usernames) || usernames.length === 0) {
+      return res.status(400).json({ error: 'usernames array is required' });
+    }
+
+    const results: { username: string; success: boolean; error?: string }[] = [];
+
+    for (const username of usernames) {
+      try {
+        // Find or create the person
+        const person = await PersonService.findOrCreate({ username });
+
+        // Add to room presence
+        await RoomPresenceService.userEnter(person.id, person.username, {});
+
+        results.push({ username, success: true });
+        logger.info('Seeded user into room presence', { username, personId: person.id });
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        results.push({ username, success: false, error: errorMessage });
+        logger.error('Failed to seed user', { username, error: err });
+      }
+    }
+
+    // Trigger a sync to update all clients
+    await RoomPresenceService.syncPresence();
+
+    res.json({
+      success: true,
+      seeded: results.filter(r => r.success).length,
+      failed: results.filter(r => !r.success).length,
+      results,
+    });
+  } catch (error) {
+    logger.error('Error seeding room presence', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

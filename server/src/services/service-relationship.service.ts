@@ -3,7 +3,7 @@ import { logger } from '../config/logger.js';
 
 export type ServiceRole = 'sub' | 'dom';
 
-export type SubServiceLevel = 'Current' | 'Potential' | 'Decommissioned' | 'Banished' | 'Paused';
+export type SubServiceLevel = 'Current' | 'Occasional' | 'Potential' | 'Decommissioned' | 'Banished' | 'Paused';
 export type DomServiceLevel = 'Potential' | 'Actively Serving' | 'Ended' | 'Paused';
 export type ServiceLevel = SubServiceLevel | DomServiceLevel;
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // Service configuration
-export const SUB_LEVELS = ['Current', 'Potential', 'Decommissioned', 'Banished', 'Paused'] as const;
+export const SUB_LEVELS = ['Current', 'Occasional', 'Potential', 'Decommissioned', 'Banished', 'Paused'] as const;
 export const DOM_LEVELS = ['Potential', 'Actively Serving', 'Ended', 'Paused'] as const;
 
 export const SUB_TYPES = ['pup', 'boi', 'brat', 'slave', 'servant', 'pet'] as const;

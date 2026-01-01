@@ -81,13 +81,12 @@ router.get('/:username', async (req: Request, res: Response) => {
     const profileResult = await query(profileSql, [person.id]);
     const profile = profileResult.rows[0] || null;
 
-    // Get recent interactions (fetch more for pagination)
+    // Get all interactions for this person
     const interactionsSql = `
       SELECT *
       FROM interactions
       WHERE person_id = $1
       ORDER BY timestamp DESC
-      LIMIT 200
     `;
     const interactionsResult = await query(interactionsSql, [person.id]);
     const interactions = interactionsResult.rows;
@@ -980,7 +979,7 @@ router.put('/:username/service-relationships', async (req: Request, res: Respons
     }
 
     // Validate service level based on role
-    const subLevels = ['Current', 'Potential', 'Decommissioned', 'Banished', 'Paused'];
+    const subLevels = ['Current', 'Occasional', 'Potential', 'Decommissioned', 'Banished', 'Paused'];
     const domLevels = ['Potential', 'Actively Serving', 'Ended', 'Paused'];
     const validLevels = serviceRole === 'sub' ? subLevels : domLevels;
 
