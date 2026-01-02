@@ -55,7 +55,9 @@ router.get('/stats', async (_req: Request, res: Response) => {
           COUNT(*) FILTER (WHERE follower = true) as follower_count,
           COUNT(*) FILTER (WHERE active_sub = true) as subs_count,
           COUNT(*) FILTER (WHERE banned_me = true) as banned_count,
-          COUNT(*) FILTER (WHERE friend_tier IS NOT NULL) as friends_count
+          COUNT(*) FILTER (WHERE friend_tier IS NOT NULL) as friends_count,
+          COUNT(*) FILTER (WHERE watch_list = true) as watchlist_count,
+          (SELECT COUNT(DISTINCT profile_id) FROM service_relationships WHERE service_role = 'dom' AND service_level = 'Actively Serving') as active_doms_count
         FROM profiles
       `),
 
@@ -157,6 +159,8 @@ router.get('/stats', async (_req: Request, res: Response) => {
         subsCount: parseInt(followingStats.rows[0]?.subs_count || '0'),
         bannedCount: parseInt(followingStats.rows[0]?.banned_count || '0'),
         friendsCount: parseInt(followingStats.rows[0]?.friends_count || '0'),
+        watchlistCount: parseInt(followingStats.rows[0]?.watchlist_count || '0'),
+        activeDomsCount: parseInt(followingStats.rows[0]?.active_doms_count || '0'),
       },
       activity: {
         snapshotsLast24h: parseInt(recentActivity.rows[0]?.snapshots_24h || '0'),

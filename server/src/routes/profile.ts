@@ -1548,11 +1548,12 @@ router.get('/:username/visits/stats', async (req: Request, res: Response) => {
 /**
  * POST /api/profile/:username/visits
  * Manually record a room visit (for testing or manual entry)
+ * @param is_broadcasting - Whether the broadcaster was live during this visit (default: false for manual entries)
  */
 router.post('/:username/visits', async (req: Request, res: Response) => {
   try {
     const { username } = req.params;
-    const { visited_at } = req.body;
+    const { visited_at, is_broadcasting = false } = req.body;
 
     const person = await PersonService.findByUsername(username);
     if (!person) {
@@ -1564,7 +1565,13 @@ router.post('/:username/visits', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid date format' });
     }
 
-    const visit = await RoomVisitsService.recordVisit(person.id, visitDate);
+    const visit = await RoomVisitsService.recordVisit(
+      person.id,
+      visitDate,
+      undefined, // eventId
+      is_broadcasting,
+      undefined  // sessionId
+    );
 
     if (!visit) {
       return res.status(409).json({ error: 'Duplicate visit (within 5 minutes of previous visit)' });

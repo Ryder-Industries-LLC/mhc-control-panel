@@ -420,6 +420,7 @@ const Visitors: React.FC = () => {
                 { field: 'last_visit' as SortField, label: 'Last Visit' },
                 { field: 'username' as SortField, label: 'Name' },
                 { field: viewMode === 'recent' ? 'visit_count' as SortField : 'total_visit_count' as SortField, label: 'Visits' },
+                ...(viewMode === 'recent' ? [{ field: 'offline_visit_count' as SortField, label: 'Offline' }] : []),
                 { field: 'total_tips' as SortField, label: 'Tips' },
               ].map(({ field, label }) => (
                 <button
@@ -427,7 +428,7 @@ const Visitors: React.FC = () => {
                   onClick={() => handleSort(field)}
                   className={`px-2 py-1 rounded text-sm ${
                     sortField === field
-                      ? 'bg-mhc-primary text-white'
+                      ? field === 'offline_visit_count' ? 'bg-orange-500 text-white' : 'bg-mhc-primary text-white'
                       : 'bg-mhc-surface text-mhc-text-muted hover:bg-mhc-surface-light'
                   }`}
                 >

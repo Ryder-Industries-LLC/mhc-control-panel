@@ -13,7 +13,7 @@ import { HistoryTab } from '../components/profile/HistoryTab';
 
 interface ProfilePageProps {}
 
-type TabType = 'snapshot' | 'sessions' | 'profile' | 'interactions' | 'timeline' | 'images' | 'history';
+type TabType = 'snapshot' | 'sessions' | 'interactions' | 'timeline' | 'images';
 interface ProfileNote {
   id: string;
   profile_id: number;
@@ -872,7 +872,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
           <div className="bg-gradient-primary text-white rounded-lg p-8 mb-5 shadow-lg">
             <div className="flex gap-5 items-center flex-wrap md:flex-nowrap">
               {(imageHistory.length > 0 || getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile?.photos && profileData.profile.photos.length > 0)) && (
-                <div className="flex-shrink-0 flex flex-col items-center gap-3">
+                <div className="flex-shrink-0 flex flex-col items-start gap-3">
                   {/* Badge row ABOVE image - Live, Model/Member, Followers */}
                   <div className="flex gap-2 items-center">
                     {/* LIVE indicator */}
@@ -1448,7 +1448,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
               }`}
               onClick={() => setActiveTab('snapshot')}
             >
-              Snapshot
+              Profile
             </button>
             <button
               className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
@@ -1459,16 +1459,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
               onClick={() => setActiveTab('sessions')}
             >
               Sessions
-            </button>
-            <button
-              className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
-                activeTab === 'profile'
-                  ? 'bg-mhc-primary text-white'
-                  : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
-              }`}
-              onClick={() => setActiveTab('profile')}
-            >
-              Profile
             </button>
             <button
               className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
@@ -1490,16 +1480,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
             >
               Timeline
             </button>
-            <button
-              className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
-                activeTab === 'history'
-                  ? 'bg-mhc-primary text-white'
-                  : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
-              }`}
-              onClick={() => setActiveTab('history')}
-            >
-              History
-            </button>
           </div>
 
           {/* Tab Content */}
@@ -1511,7 +1491,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   <div className="space-y-6">
                     {/* Basic Info Section */}
                     <div>
-                      <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">Live Session</h4>
+                      <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">
+                        {isSessionLive(profileData.latestSession) ? 'LIVE SESSION' : 'LAST SESSION'}
+                      </h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         {profileData.latestSession && (
                           <>
@@ -1635,6 +1617,115 @@ const Profile: React.FC<ProfilePageProps> = () => {
                         )}
                       </div>
                     </div>
+
+                    {/* Profile Details Section - merged from old Profile tab */}
+                    <div>
+                      <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">Profile Details</h4>
+                      <p className="text-mhc-text-muted text-xs mb-4">Static bio from Chaturbate profile</p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Display Name:</span>
+                          <span className={`block text-base ${profileData.profile?.display_name ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.display_name || 'Not set'}
+                          </span>
+                        </div>
+                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Age:</span>
+                          <span className={`block text-base ${profileData.profile?.age ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.age || 'Not set'}
+                          </span>
+                        </div>
+                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Gender:</span>
+                          <span className={`block text-base ${profileData.profile?.gender ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.gender ? formatGender(profileData.profile.gender) : 'Not set'}
+                          </span>
+                        </div>
+                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Location:</span>
+                          <span className={`block text-base ${profileData.profile?.location ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.location || 'Not set'}
+                          </span>
+                        </div>
+                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Country:</span>
+                          <span className={`block text-base ${profileData.profile?.country ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.country || 'Not set'}
+                          </span>
+                        </div>
+                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Languages:</span>
+                          <span className={`block text-base ${profileData.profile?.spoken_languages ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.spoken_languages || 'Not set'}
+                          </span>
+                        </div>
+                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">New Model:</span>
+                          <span className={`block text-base ${profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined
+                              ? (profileData.profile.is_new ? 'Yes' : 'No')
+                              : 'Unknown'}
+                          </span>
+                        </div>
+                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Broadcast:</span>
+                          <span className={`block text-base ${profileData.profile?.last_broadcast ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.last_broadcast
+                              ? new Date(profileData.profile.last_broadcast).toLocaleDateString()
+                              : 'Not set'}
+                          </span>
+                        </div>
+                      </div>
+                      {profileData.profile?.bio && (
+                        <div className="mt-4 p-4 bg-mhc-surface-light rounded-md">
+                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Bio:</span>
+                          <p className="mt-2 mb-0 leading-relaxed text-mhc-text">
+                            {profileData.profile.bio}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Social Media Links Section */}
+                    <CollapsibleSection title="Social Media Links" defaultCollapsed={true}>
+                      {socialLinksLoading ? (
+                        <div className="flex items-center justify-center py-4">
+                          <div className="text-mhc-text-muted">Loading...</div>
+                        </div>
+                      ) : (
+                        <SocialLinksEditor
+                          links={socialLinks}
+                          onSave={handleSaveSocialLinks}
+                          onAddLink={handleAddSocialLink}
+                          onRemoveLink={handleRemoveSocialLink}
+                        />
+                      )}
+                    </CollapsibleSection>
+
+                    {/* Member History Section - merged from old History tab */}
+                    <CollapsibleSection title="Member History (Statbate)" defaultCollapsed={true}>
+                      <HistoryTab username={profileData.person.username} />
+                    </CollapsibleSection>
+
+                    {/* Raw Data Toggle */}
+                    <div className="flex justify-center">
+                      <button
+                        onClick={() => setShowRawData(!showRawData)}
+                        className="px-8 py-3 bg-gray-600 text-white border-none rounded-md text-base font-semibold cursor-pointer transition-all hover:bg-gray-500"
+                      >
+                        {showRawData ? 'Hide Raw Data' : 'Show Raw Data'}
+                      </button>
+                    </div>
+
+                    {/* Raw Data Display */}
+                    {showRawData && (
+                      <div>
+                        <h4 className="text-mhc-text-muted text-xl font-semibold mb-4">Raw Profile Data</h4>
+                        <pre className="bg-black text-emerald-400 p-4 rounded-md overflow-auto text-sm leading-relaxed min-h-[600px] whitespace-pre-wrap break-words border border-gray-700">
+                          {JSON.stringify(profileData, null, 2)}
+                        </pre>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <p className="text-mhc-text-muted">No recent snapshot data available.</p>
@@ -1706,125 +1797,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   </div>
                 ) : (
                   <p className="text-mhc-text-muted">No session statistics available.</p>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'profile' && (
-              <div>
-                <h3 className="m-0 mb-2 text-mhc-text text-2xl font-semibold">Profile Details</h3>
-                <p className="text-mhc-text-muted text-sm mb-5">Static bio from Chaturbate profile</p>
-                <div className="flex gap-8 flex-wrap lg:flex-nowrap">
-                  {/* Left side - Profile details */}
-                  <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 bg-mhc-surface-light rounded-md">
-                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Display Name:</span>
-                      <span className={`block text-base ${profileData.profile?.display_name ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                        {profileData.profile?.display_name || 'Not set'}
-                      </span>
-                    </div>
-                    <div className="p-4 bg-mhc-surface-light rounded-md">
-                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Age:</span>
-                      <span className={`block text-base ${profileData.profile?.age ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                        {profileData.profile?.age || 'Not set'}
-                      </span>
-                    </div>
-                    <div className="p-4 bg-mhc-surface-light rounded-md">
-                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Gender:</span>
-                      <span className={`block text-base ${profileData.profile?.gender ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                        {profileData.profile?.gender ? formatGender(profileData.profile.gender) : 'Not set'}
-                      </span>
-                    </div>
-                    <div className="p-4 bg-mhc-surface-light rounded-md">
-                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Location:</span>
-                      <span className={`block text-base ${profileData.profile?.location ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                        {profileData.profile?.location || 'Not set'}
-                      </span>
-                    </div>
-                    <div className="p-4 bg-mhc-surface-light rounded-md">
-                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Country:</span>
-                      <span className={`block text-base ${profileData.profile?.country ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                        {profileData.profile?.country || 'Not set'}
-                      </span>
-                    </div>
-                    <div className="p-4 bg-mhc-surface-light rounded-md">
-                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Languages:</span>
-                      <span className={`block text-base ${profileData.profile?.spoken_languages ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                        {profileData.profile?.spoken_languages || 'Not set'}
-                      </span>
-                    </div>
-                    <div className="p-4 bg-mhc-surface-light rounded-md">
-                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">New Model:</span>
-                      <span className={`block text-base ${profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                        {profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined
-                          ? (profileData.profile.is_new ? 'Yes' : 'No')
-                          : 'Unknown'}
-                      </span>
-                    </div>
-                    <div className="p-4 bg-mhc-surface-light rounded-md">
-                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Broadcast:</span>
-                      <span className={`block text-base ${profileData.profile?.last_broadcast ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                        {profileData.profile?.last_broadcast
-                          ? new Date(profileData.profile.last_broadcast).toLocaleDateString()
-                          : 'Not set'}
-                      </span>
-                    </div>
-                    <div className="p-4 bg-mhc-surface-light rounded-md col-span-1 md:col-span-2">
-                      <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Bio:</span>
-                      <p className={`mt-2 mb-0 leading-relaxed ${profileData.profile?.bio ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                        {profileData.profile?.bio || 'No bio set'}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Right side - Profile image */}
-                  {profileData.profile?.photos && profileData.profile.photos.length > 0 && (
-                    <div className="flex-shrink-0">
-                      <img
-                        src={profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url}
-                        alt={profileData.person.username}
-                        className="max-w-[400px] h-auto rounded-lg"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Social Media Links Section */}
-                <div className="mt-8">
-                  <CollapsibleSection title="Social Media Links" defaultCollapsed={false}>
-                    {socialLinksLoading ? (
-                      <div className="flex items-center justify-center py-4">
-                        <div className="text-mhc-text-muted">Loading...</div>
-                      </div>
-                    ) : (
-                      <SocialLinksEditor
-                        links={socialLinks}
-                        onSave={handleSaveSocialLinks}
-                        onAddLink={handleAddSocialLink}
-                        onRemoveLink={handleRemoveSocialLink}
-                      />
-                    )}
-                  </CollapsibleSection>
-                </div>
-
-                {/* Raw Data Toggle Button */}
-                <div className="mt-8 flex justify-center">
-                  <button
-                    onClick={() => setShowRawData(!showRawData)}
-                    className="px-8 py-3 bg-gray-600 text-white border-none rounded-md text-base font-semibold cursor-pointer transition-all hover:bg-gray-500"
-                  >
-                    {showRawData ? 'Hide Raw Data' : 'Show Raw Data'}
-                  </button>
-                </div>
-
-                {/* Raw Data Display */}
-                {showRawData && (
-                  <div className="mt-8">
-                    <h4 className="text-mhc-text-muted text-xl font-semibold mb-4">Raw Profile Data</h4>
-                    <pre className="bg-black text-emerald-400 p-4 rounded-md overflow-auto text-sm leading-relaxed min-h-[600px] whitespace-pre-wrap break-words border border-gray-700">
-                      {JSON.stringify(profileData, null, 2)}
-                    </pre>
-                  </div>
                 )}
               </div>
             )}
@@ -2053,12 +2025,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
               </div>
             )}
 
-            {activeTab === 'history' && (
-              <div>
-                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Member History</h3>
-                <HistoryTab username={profileData.person.username} />
-              </div>
-            )}
           </div>
         </div>
       )}

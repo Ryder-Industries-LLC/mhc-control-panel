@@ -85,6 +85,8 @@ interface SystemStats {
     subsCount: number;
     bannedCount: number;
     friendsCount: number;
+    watchlistCount: number;
+    activeDomsCount: number;
   };
   activity: {
     snapshotsLast24h: number;
@@ -1244,7 +1246,7 @@ const Admin: React.FC = () => {
             defaultCollapsed={false}
             className="mb-5"
           >
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
               <Link
                 to="/?tab=following"
                 className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
@@ -1267,11 +1269,25 @@ const Admin: React.FC = () => {
                 <div className="text-xs opacity-90 uppercase tracking-wide">Active Subs</div>
               </Link>
               <Link
+                to="/?tab=doms"
+                className="text-center p-4 bg-gradient-to-br from-pink-600 to-pink-800 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
+              >
+                <div className="text-2xl font-bold mb-1">{systemStats.following.activeDomsCount || 0}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Active Doms</div>
+              </Link>
+              <Link
                 to="/?tab=friends"
                 className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
               >
                 <div className="text-2xl font-bold mb-1">{systemStats.following.friendsCount}</div>
                 <div className="text-xs opacity-90 uppercase tracking-wide">Friends</div>
+              </Link>
+              <Link
+                to="/?tab=watchlist"
+                className="text-center p-4 bg-gradient-to-br from-yellow-600 to-yellow-800 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
+              >
+                <div className="text-2xl font-bold mb-1">{systemStats.following.watchlistCount || 0}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Watchlist</div>
               </Link>
               <Link
                 to="/?tab=bans"

@@ -1,9 +1,40 @@
 # Session Summary
 
 **Date**: 2026-01-02
-**Version**: 1.17.1
+**Version**: 1.18.0
 
 ## What Was Accomplished
+
+### v1.18.0 - Phase 1 Quick Wins
+
+Implemented Phase 1 TODO items from the prioritized backlog:
+
+**1. Fix Offline Visitors**
+- Updated `server/src/routes/profile.ts` to accept `is_broadcasting` parameter
+- Default to `false` for manual visit entries (offline by default)
+- Added offline sort button to Visitors page UI
+
+**2. Profile Page Improvements**
+- Snapshot header now shows "LIVE SESSION" vs "LAST SESSION" based on actual status
+- Left-aligned Model/Follower badges above profile image
+
+**3. Communications Tab**
+- Added "Show Raw" toggle to view raw JSON message data for debugging
+
+**4. Admin Page Stats**
+- Added Active Doms count card (pink gradient)
+- Added Watchlist count card (yellow gradient)
+- Updated grid to 7 columns for all stat cards
+
+**5. Profile Tab Merge**
+- Combined Snapshot + Profile + History tabs into single "Profile" tab
+- Removed redundant Profile and History tab buttons
+- Merged content includes:
+  - Latest session/snapshot data
+  - Profile details (bio, age, location, etc.)
+  - Social Media Links (collapsible)
+  - Member History from Statbate (collapsible)
+  - Raw Data toggle
 
 ### v1.17.1 - UI Cleanup
 

@@ -31,6 +31,7 @@ export const CommsSection: React.FC<CommsSectionProps> = ({ username }) => {
   const [data, setData] = useState<CommunicationsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showRawData, setShowRawData] = useState(false);
 
   useEffect(() => {
     if (!username) return;
@@ -142,6 +143,14 @@ export const CommsSection: React.FC<CommsSectionProps> = ({ username }) => {
     return null;
   }
 
+  const getCurrentMessages = (): Message[] => {
+    switch (activeTab) {
+      case 'dm': return data.direct_messages;
+      case 'pm_my_room': return data.pm_my_room;
+      case 'pm_their_room': return data.pm_their_room;
+    }
+  };
+
   return (
     <div>
       {/* Tab buttons */}
@@ -176,12 +185,34 @@ export const CommsSection: React.FC<CommsSectionProps> = ({ username }) => {
         >
           PMs in {username}'s Room {data.pm_their_room.length > 0 && `(${data.pm_their_room.length})`}
         </button>
+
+        {/* Show Raw Data toggle */}
+        <button
+          className={`ml-auto px-3 py-1 text-xs font-medium rounded transition-colors ${
+            showRawData
+              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50'
+              : 'text-mhc-text-muted hover:bg-white/5 border border-transparent'
+          }`}
+          onClick={() => setShowRawData(!showRawData)}
+        >
+          {showRawData ? 'Hide Raw' : 'Show Raw'}
+        </button>
       </div>
 
       {/* Tab content */}
-      {activeTab === 'dm' && renderMessages(data.direct_messages)}
-      {activeTab === 'pm_my_room' && renderMessages(data.pm_my_room)}
-      {activeTab === 'pm_their_room' && renderMessages(data.pm_their_room)}
+      {showRawData ? (
+        <div className="bg-mhc-surface-light rounded-lg p-4 max-h-[400px] overflow-auto">
+          <pre className="text-xs text-mhc-text-muted whitespace-pre-wrap font-mono">
+            {JSON.stringify(getCurrentMessages(), null, 2)}
+          </pre>
+        </div>
+      ) : (
+        <>
+          {activeTab === 'dm' && renderMessages(data.direct_messages)}
+          {activeTab === 'pm_my_room' && renderMessages(data.pm_my_room)}
+          {activeTab === 'pm_their_room' && renderMessages(data.pm_their_room)}
+        </>
+      )}
     </div>
   );
 };

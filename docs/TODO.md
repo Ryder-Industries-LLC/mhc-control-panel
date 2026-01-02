@@ -11,25 +11,27 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 ### /visitors
 
 - [ ] Review new /visitors page
-- [ ] Fix offline visitors
+- [x] Fix offline visitors *(v1.18.0)*
 
 ### /profile - Info Card
+
 - [ ] If DOM or SUB, add a badge to the user profile overview card
-- [ ] Instead of centering Model and Follower count on profile overview card, make it left aligned
+- [x] Instead of centering Model and Follower count on profile overview card, make it left aligned *(v1.18.0)*
 
 ### /profile - Snapshot
-- [ ] Latest snapshot should not say "LIVE SESSION" if the user is not live, use "LAST SESSION" instead
-- [ ] Combine snapshot and profile tabs
 
-### /profile - History
-- [ ] Rename "History" to something that makes more sense (it's about last 2 weeks, but also has some historical facts like all-time tokens)
+- [x] Latest snapshot should not say "LIVE SESSION" if the user is not live, use "LAST SESSION" instead *(v1.18.0)*
+- [x] Combine snapshot and profile tabs *(v1.18.0 - merged Snapshot + Profile + History into "Profile" tab)*
+- [x] Rename "History" tab *(v1.18.0 - merged into collapsible "Member History" section)*
 
 ### /profile - Communications
-- [ ] Add "Show Raw Data" toggle on Communications tab
+
+- [x] Add "Show Raw Data" toggle on Communications tab *(v1.18.0)*
 
 ### /admin
-- [ ] Add Active Doms as a stat card for user segments
-- [ ] Add Watchlist as a user segment stat
+
+- [x] Add Active Doms as a stat card for user segments *(v1.18.0)*
+- [x] Add Watchlist as a user segment stat *(v1.18.0)*
 - [ ] Add image storage size as well as database size to Admin page
 
 ---

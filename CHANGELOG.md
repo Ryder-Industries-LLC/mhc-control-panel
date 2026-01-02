@@ -2,6 +2,29 @@
 
 All notable changes to MHC Control Panel will be documented in this file.
 
+## [1.18.0] - 2026-01-02
+
+### Added
+
+- Admin page: Active Doms and Watchlist stat cards in User Segments section
+- Communications tab: "Show Raw" toggle to view raw JSON message data
+- Visitors page: Offline sort button (sort by offline visit count)
+- Profile tab merge: Combined Snapshot + Profile + History tabs into single "Profile" tab
+  - Profile Details section with bio, age, location, etc.
+  - Social Media Links section (collapsible)
+  - Member History section (collapsible, Statbate data)
+  - Raw Data toggle
+
+### Changed
+
+- Profile page: "LIVE SESSION" header now shows "LAST SESSION" when user is offline
+- Profile page: Left-aligned Model/Follower badges above profile image
+- Visitors: Manual visit recording now defaults to `is_broadcasting=false` (offline)
+
+### Fixed
+
+- Offline visitors tracking: POST `/api/profile/:username/visits` now properly accepts `is_broadcasting` parameter
+
 ## [1.17.1] - 2026-01-02
 
 ### Changed
