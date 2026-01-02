@@ -8,6 +8,11 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 
 ## Quick Wins (Low Effort / Low Risk)
 
+### /visitors
+
+- [ ] Review new /visitors page
+- [ ] Fix offline visitors
+
 ### /profile - Info Card
 - [ ] If DOM or SUB, add a badge to the user profile overview card
 - [ ] Instead of centering Model and Follower count on profile overview card, make it left aligned

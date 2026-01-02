@@ -2,6 +2,16 @@
 
 All notable changes to MHC Control Panel will be documented in this file.
 
+## [1.17.1] - 2026-01-02
+
+### Changed
+
+- Renamed "My Broadcasts" to "Broadcasts" in navigation bar
+
+### Documentation
+
+- Added /visitors review and offline visitors fix to TODO.md
+
 ## [1.17.0] - 2026-01-02
 
 ### Added

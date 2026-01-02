@@ -39,7 +39,7 @@ function App() {
                 Dashboard
               </Link>
               <Link to="/broadcasts" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
-                My Broadcasts
+                Broadcasts
               </Link>
               <Link to="/events" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Events

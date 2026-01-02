@@ -1,9 +1,14 @@
 # Session Summary
 
 **Date**: 2026-01-02
-**Version**: 1.17.0
+**Version**: 1.17.1
 
 ## What Was Accomplished
+
+### v1.17.1 - UI Cleanup
+
+- Renamed "My Broadcasts" to "Broadcasts" in navigation bar
+- Added /visitors review tasks to TODO.md
 
 ### New Visitors Page with Offline Tracking
 
