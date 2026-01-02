@@ -140,8 +140,13 @@ const MyBroadcasts: React.FC = () => {
         ? 365 // Default to 1 year for all time
         : Math.ceil((new Date().getTime() - dateRange.start.getTime()) / (1000 * 60 * 60 * 24));
 
+      // Build date filter params for API (server-side filtering is more reliable)
+      const dateParams = timeRange === 'all_time'
+        ? ''
+        : `&startDate=${dateRange.start.toISOString()}&endDate=${dateRange.end.toISOString()}`;
+
       const [broadcastsRes, statsRes, currentRes] = await Promise.all([
-        fetch(`/api/broadcasts?limit=${PAGE_SIZE}&offset=0`),
+        fetch(`/api/broadcasts?limit=${PAGE_SIZE}&offset=0${dateParams}`),
         fetch(`/api/broadcasts/stats?days=${statsDays}`),
         fetch('/api/broadcasts/current'),
       ]);
@@ -173,7 +178,12 @@ const MyBroadcasts: React.FC = () => {
     try {
       setLoadingMore(true);
       const offset = broadcasts.length;
-      const res = await fetch(`/api/broadcasts?limit=${PAGE_SIZE}&offset=${offset}`);
+      // Include date filters when loading more
+      const dateRange = getDateRangeForTimeRange(timeRange);
+      const dateParams = timeRange === 'all_time'
+        ? ''
+        : `&startDate=${dateRange.start.toISOString()}&endDate=${dateRange.end.toISOString()}`;
+      const res = await fetch(`/api/broadcasts?limit=${PAGE_SIZE}&offset=${offset}${dateParams}`);
 
       if (res.ok) {
         const data = await res.json();
@@ -426,16 +436,9 @@ const MyBroadcasts: React.FC = () => {
     return formatDuration(minutes);
   };
 
-  // Filter broadcasts by selected time range
-  const filteredBroadcasts = React.useMemo(() => {
-    if (timeRange === 'all_time') return broadcasts;
-
-    const dateRange = getDateRangeForTimeRange(timeRange);
-    return broadcasts.filter(b => {
-      const startedAt = new Date(b.started_at);
-      return startedAt >= dateRange.start && startedAt <= dateRange.end;
-    });
-  }, [broadcasts, timeRange]);
+  // Server now handles date filtering, so just use broadcasts directly
+  // This alias keeps backwards compatibility with the rest of the component
+  const filteredBroadcasts = broadcasts;
 
   if (loading && broadcasts.length === 0) {
     return (

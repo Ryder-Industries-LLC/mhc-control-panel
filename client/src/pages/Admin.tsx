@@ -73,6 +73,7 @@ interface SystemStats {
     byRole: Record<string, number>;
     bySource: Record<string, number>;
     imagesStored: number;
+    imageSizeBytes: number;
   };
   queue: {
     priority1Pending: number;
@@ -1320,6 +1321,9 @@ const Admin: React.FC = () => {
               <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
                 <div className="text-3xl font-bold mb-2">{systemStats.database.imagesStored.toLocaleString()}</div>
                 <div className="text-sm opacity-90 uppercase tracking-wide">Images Stored</div>
+                {systemStats.database.imageSizeBytes > 0 && (
+                  <div className="text-xs opacity-70 mt-1">{formatBytes(systemStats.database.imageSizeBytes)}</div>
+                )}
               </div>
             </div>
 

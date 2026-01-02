@@ -32,7 +32,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 
 - [x] Add Active Doms as a stat card for user segments *(v1.18.0)*
 - [x] Add Watchlist as a user segment stat *(v1.18.0)*
-- [ ] Add image storage size as well as database size to Admin page
+- [x] Add image storage size as well as database size to Admin page *(v1.19.0)*
 
 ---
 
@@ -42,7 +42,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [ ] The Communications direction is backwards - PMs in "hudson_cage's Room" are actually PMs in "username's room"
   - [ ] Create test cases to verify correct behavior
   - [ ] PMs in Hudson_cage's room are also showing direct messages in PMs - needs fix
-- [ ] Investigate why there are duplicate messages in Communications PMs
+- [x] Investigate why there are duplicate messages in Communications PMs *(v1.19.0 - added deduplication to InteractionService)*
 
 ### /profile - Images
 - [ ] `/profile/mrleather` Images tab says (6) but only 3 images are showing - investigate mismatch
@@ -51,9 +51,9 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [ ] Fix Interactions messages to be more like the PMs in hudson_cage's Room (See profile/danbury44)
 
 ### /broadcasts
-- [ ] My Broadcasts is missing January 1 broadcast - investigate missing data
-- [ ] Total Broadcasts says 3 for this month but only 2 are showing
-- [ ] Total Tokens, Avg Viewers, Peak Viewers and Followers are showing zero/non-zero data incorrectly
+- [x] My Broadcasts is missing January 1 broadcast - investigate missing data *(v1.19.0 - added server-side date filtering)*
+- [x] Total Broadcasts says 3 for this month but only 2 are showing *(v1.19.0 - changed from hourly to 10-minute dedup buckets)*
+- [x] Total Tokens, Avg Viewers, Peak Viewers and Followers are showing zero/non-zero data incorrectly *(v1.19.0 - excluded zeros from averages)*
 
 ---
 
@@ -61,7 +61,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 
 ### /profile - Timeline
 - [ ] Fix/add Private Message From/To indicator (like on Communications)
-- [ ] Add ability to filter the Activity timeline by Event Type
+- [x] Add ability to filter the Activity timeline by Event Type *(v1.19.0)*
 
 ### /profile - Communications
 - [ ] Add ability to add manual DM or PMs in each tab in Communications
@@ -73,7 +73,8 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
     - Add Notes Field
 
 ### /broadcasts
-- [ ] If Broadcasts are within 10 minutes of each other, merge those together
+
+- [x] If Broadcasts are within 10 minutes of each other, merge those together *(v1.19.0 - auto-merges in 10-minute buckets)*
 - [ ] Should be able to expand Broadcasts and see the full history and chat threads
 - [ ] Fix auto-generated summaries
 

@@ -1,117 +1,83 @@
 # Session Summary
 
 **Date**: 2026-01-02
-**Version**: 1.18.0
+**Version**: 1.19.0
 
 ## What Was Accomplished
 
-### v1.18.0 - Phase 1 Quick Wins
+### v1.19.0 - Bug Fixes & Enhancements
 
-Implemented Phase 1 TODO items from the prioritized backlog:
+Implemented multiple fixes and enhancements from the TODO backlog:
 
-**1. Fix Offline Visitors**
-- Updated `server/src/routes/profile.ts` to accept `is_broadcasting` parameter
-- Default to `false` for manual visit entries (offline by default)
-- Added offline sort button to Visitors page UI
+**1. Admin Page - Image Storage Size**
+- Added image storage size calculation from `profile_images` table
+- Displays total bytes alongside image count in Admin page
+- Uses `formatBytes()` for human-readable display (KB, MB, GB)
 
-**2. Profile Page Improvements**
-- Snapshot header now shows "LIVE SESSION" vs "LAST SESSION" based on actual status
-- Left-aligned Model/Follower badges above profile image
+**2. Duplicate Messages Fix (Communications PMs)**
+- Added `createIfNotDuplicate()` method to InteractionService
+- Checks for existing messages within configurable time window (default 1 minute)
+- Applied to private message handling in events-client.ts
+- Prevents duplicate storage from event retries
 
-**3. Communications Tab**
-- Added "Show Raw" toggle to view raw JSON message data for debugging
+**3. My Broadcasts - Missing January 1 Data**
+- Moved date filtering from client-side to server-side
+- Added `startDate` and `endDate` query parameters to GET /api/broadcasts
+- MyBroadcastService now filters in SQL query for accuracy
 
-**4. Admin Page Stats**
-- Added Active Doms count card (pink gradient)
-- Added Watchlist count card (yellow gradient)
-- Updated grid to 7 columns for all stat cards
+**4. Broadcast Count Mismatch**
+- Changed deduplication from hourly to 10-minute buckets
+- Formula: `FLOOR(EXTRACT(EPOCH FROM started_at) / 600)` groups broadcasts
+- More granular session detection prevents over-merging
 
-**5. Profile Tab Merge**
-- Combined Snapshot + Profile + History tabs into single "Profile" tab
-- Removed redundant Profile and History tab buttons
-- Merged content includes:
-  - Latest session/snapshot data
-  - Profile details (bio, age, location, etc.)
-  - Social Media Links (collapsible)
-  - Member History from Statbate (collapsible)
-  - Raw Data toggle
+**5. Broadcast Stats Showing Zeros**
+- Auto-detected broadcasts have 0 for tokens/viewers/followers
+- Changed stats queries to use `AVG(NULLIF(field, 0))`
+- Excludes zeros from averages for accurate statistics
 
-### v1.17.1 - UI Cleanup
-
-- Renamed "My Broadcasts" to "Broadcasts" in navigation bar
-- Added /visitors review tasks to TODO.md
-
-### New Visitors Page with Offline Tracking
-
-Built a complete visitor tracking system that distinguishes between visits during live broadcasts vs. offline profile visits:
-
-**Backend (`server/src/routes/visitors.ts`)**:
-- `/api/visitors/recent` - Recent visitors with offline stats
-- `/api/visitors/top` - Top visitors by visit count
-- `/api/visitors/history` - Full visit history with pagination
-- `/api/visitors/stats` - Aggregate statistics
-
-**Frontend (`client/src/pages/Visitors.tsx`)**:
-- Three view modes: Recent, Top Visitors, Visit History
-- Filter by: All, Offline, Following, Followers, Tippers, Regulars, New
-- Sort by: Last Visit, Username, Visit Count, Offline Count, Tips, Total Visits
-- Stats cards showing daily/weekly/monthly/all-time with offline breakdowns
-- Orange indicators for offline visits
-
-**Database Migration (`038_add_room_visits_broadcast_status.sql`)**:
-- Added `is_broadcasting` boolean column to `room_visits` table
-- Added `session_id` UUID column linking to active stream session
-- Index on `is_broadcasting` for query performance
-
-**Service Updates**:
-- `room-visits.service.ts` - Updated `recordVisit()` to accept broadcast status
-- `events-client.ts` - Pass `currentSessionId !== null` as broadcast indicator
-
-### Bug Fixes
-
-**Profile Page Social Links (React Error #31)**:
-- Fixed `Profile.tsx` to handle multiple social_links data formats:
-  - Array format: `[{platform, url}]`
-  - Object with strings: `{platform: "url"}`
-  - Object with objects: `{platform: {url, platform}}`
-
-### Documentation
-
-**TODO.md Reorganization**:
-- Organized by feature area with page prefixes (e.g., `/profile - Info Card:`)
-- Sorted by effort/risk (lowest first within sections)
-- Added new items from user feedback
+**6. Timeline Event Type Filter**
+- Added filter buttons to TimelineTab component
+- Filter by: Enter, Leave, Chat, PM, Tip, Media Purchase, Fan Club
+- Color-coded buttons matching event type colors
+- "All" button to reset filters
+- Server-side filtering via `types` query parameter
 
 ## Key Decisions
 
-1. **Offline Detection**: Using `currentSessionId !== null` to determine if broadcaster is live - simple and reliable
-2. **Visit Tracking**: All visits recorded regardless of broadcast status, with boolean flag for filtering
-3. **UI Indicators**: Orange color scheme for offline visits to distinguish from live (green)
-
-## Current State
-
-- All changes staged and ready for release
-- Database migration will run automatically on app restart
-- Docker containers need rebuild to pick up changes
+1. **10-Minute Buckets**: Changed from hourly to 10-minute deduplication - balances between too many separate broadcasts and over-merging
+2. **Server-Side Filtering**: Moved broadcast date filtering to backend to ensure accurate counts
+3. **Dedup Window**: 1-minute window for message deduplication - handles retries without blocking legitimate rapid messages
 
 ## Files Changed
 
-**New Files**:
-- `client/src/pages/Visitors.tsx`
-- `server/src/routes/visitors.ts`
-- `server/src/db/migrations/038_add_room_visits_broadcast_status.sql`
+**Server**:
+- `server/src/routes/system.ts` - Added image storage size query
+- `server/src/routes/profile.ts` - Added timeline types filter parameter
+- `server/src/routes/broadcasts.ts` - Added date range parameters
+- `server/src/services/interaction.service.ts` - Added createIfNotDuplicate()
+- `server/src/services/my-broadcast.service.ts` - 10-min buckets, date filtering, nullif averages
+- `server/src/api/chaturbate/events-client.ts` - Use createIfNotDuplicate for PMs
 
-**Modified Files**:
-- `client/src/App.tsx` - Added /visitors route
-- `client/src/pages/Profile.tsx` - Fixed social links parsing
-- `server/src/app.ts` - Registered visitors routes
-- `server/src/api/chaturbate/events-client.ts` - Pass broadcast status
-- `server/src/services/room-visits.service.ts` - Accept broadcast status
-- `docs/TODO.md` - Reorganized with page prefixes
+**Client**:
+- `client/src/pages/Admin.tsx` - Display image storage size
+- `client/src/pages/MyBroadcasts.tsx` - Pass date params to API
+- `client/src/components/profile/TimelineTab.tsx` - Event type filter UI
+
+**Documentation**:
+- `docs/TODO.md` - Marked completed items with (v1.19.0)
+
+## Current State
+
+- All changes committed and tagged as v1.19.0
+- Docker containers rebuilt and running
+- Build verified successful for both server and client
 
 ## Next Steps
 
-See `docs/TODO.md` for prioritized backlog. Key items:
-- Profile page bug fixes (Communications PM direction, duplicate messages)
-- Broadcasts page data issues
-- Admin page enhancements
+See `docs/TODO.md` for remaining items:
+- Review /visitors page
+- Add DOM/SUB badge to profile info card
+- Fix Communications PM direction (backwards)
+- Fix profile Images tab count mismatch
+- Add manual DM/PM entry capability
+- Expandable broadcasts with chat history

@@ -39,6 +39,52 @@ export class InteractionService {
   }
 
   /**
+   * Create interaction only if a similar one doesn't exist within a time window
+   * Prevents duplicate messages from event retries
+   */
+  static async createIfNotDuplicate(
+    params: CreateInteractionParams,
+    windowMinutes: number = 1
+  ): Promise<Interaction | null> {
+    const {
+      personId,
+      type,
+      content,
+      timestamp = new Date(),
+      source,
+      metadata = null,
+      streamSessionId = null,
+    } = params;
+
+    // Check for existing similar interaction within time window
+    const existingResult = await query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM interactions
+       WHERE person_id = $1
+         AND type = $2
+         AND content = $3
+         AND timestamp BETWEEN $4::timestamptz - INTERVAL '${windowMinutes} minutes'
+                          AND $4::timestamptz + INTERVAL '${windowMinutes} minutes'`,
+      [personId, type, content, timestamp]
+    );
+
+    if (parseInt(existingResult.rows[0].count) > 0) {
+      logger.debug(`Skipping duplicate interaction for person ${personId}: ${type}`);
+      return null;
+    }
+
+    // No duplicate found, create the interaction
+    const result = await query<Interaction>(
+      `INSERT INTO interactions (person_id, type, content, timestamp, source, metadata, stream_session_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [personId, type, content, timestamp, source, JSON.stringify(metadata), streamSessionId]
+    );
+
+    logger.debug(`Created interaction for person ${personId}: ${type}`);
+    return result.rows[0];
+  }
+
+  /**
    * Get interactions by person
    */
   static async getByPerson(

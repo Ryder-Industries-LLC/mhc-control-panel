@@ -9,14 +9,21 @@ const router = Router();
 /**
  * GET /api/broadcasts
  * Get all broadcasts with pagination
+ * Query params:
+ *   - limit: number of broadcasts per page (default 20)
+ *   - offset: pagination offset (default 0)
+ *   - startDate: ISO date string for date range filter start
+ *   - endDate: ISO date string for date range filter end
  * Returns: { broadcasts: [], total: number, hasMore: boolean }
  */
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { limit = '20', offset = '0' } = req.query;
+    const { limit = '20', offset = '0', startDate, endDate } = req.query;
     const result = await MyBroadcastService.getAllWithCount({
       limit: parseInt(limit as string, 10),
       offset: parseInt(offset as string, 10),
+      startDate: startDate ? new Date(startDate as string) : undefined,
+      endDate: endDate ? new Date(endDate as string) : undefined,
     });
     res.json(result);
   } catch (error) {

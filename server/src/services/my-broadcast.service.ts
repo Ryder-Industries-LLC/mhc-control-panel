@@ -270,16 +270,29 @@ export class MyBroadcastService {
   /**
    * Get all broadcasts with pagination and total count
    * Combines my_broadcasts table with stream_sessions for the broadcaster
+   * Supports optional date range filtering
    */
-  static async getAllWithCount(options?: { limit?: number; offset?: number; broadcaster?: string }): Promise<{
+  static async getAllWithCount(options?: {
+    limit?: number;
+    offset?: number;
+    broadcaster?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{
     broadcasts: MyBroadcast[];
     total: number;
     hasMore: boolean;
   }> {
-    const { limit = 50, offset = 0, broadcaster = 'hudson_cage' } = options || {};
+    const { limit = 50, offset = 0, broadcaster = 'hudson_cage', startDate, endDate } = options || {};
+
+    // Build date filter conditions
+    const dateFilter1 = startDate ? `AND started_at >= $4` : '';
+    const dateFilter2 = endDate ? `AND started_at <= $5` : '';
+    const dateFilter3 = startDate ? `AND started_at >= $4` : '';
+    const dateFilter4 = endDate ? `AND started_at <= $5` : '';
 
     // Query combines my_broadcasts with stream_sessions (for the broadcaster)
-    // Uses UNION to merge both sources, then deduplicates by overlapping time ranges
+    // Deduplicates broadcasts within 10 minutes, preferring manual entries and merging stats
     const result = await query(
       `WITH all_broadcasts AS (
         -- From my_broadcasts table
@@ -300,6 +313,7 @@ export class MyBroadcastService {
           created_at,
           updated_at
         FROM my_broadcasts
+        WHERE 1=1 ${dateFilter1} ${dateFilter2}
 
         UNION ALL
 
@@ -324,24 +338,41 @@ export class MyBroadcastService {
           started_at as created_at,
           COALESCE(ended_at, started_at) as updated_at
         FROM stream_sessions
-        WHERE LOWER(broadcaster) = LOWER($3)
+        WHERE LOWER(broadcaster) = LOWER($3) ${dateFilter3} ${dateFilter4}
       ),
-      deduped AS (
-        SELECT DISTINCT ON (DATE_TRUNC('hour', started_at))
-          *
+      -- Group broadcasts within 10 minutes of each other
+      -- Use floor division to create 10-minute buckets
+      with_bucket AS (
+        SELECT *,
+          FLOOR(EXTRACT(EPOCH FROM started_at) / 600) as time_bucket
         FROM all_broadcasts
-        ORDER BY DATE_TRUNC('hour', started_at) DESC, source = 'manual' DESC
+      ),
+      -- Deduplicate within each bucket, preferring manual entries
+      deduped AS (
+        SELECT DISTINCT ON (time_bucket)
+          id, started_at, ended_at, duration_minutes,
+          peak_viewers, total_tokens, followers_gained,
+          summary, notes, tags, room_subject,
+          auto_detected, source, created_at, updated_at
+        FROM with_bucket
+        ORDER BY time_bucket DESC, source = 'manual' DESC, started_at ASC
       )
       SELECT *, COUNT(*) OVER() as total_count
       FROM deduped
       ORDER BY started_at DESC
       LIMIT $1 OFFSET $2`,
-      [limit, offset, broadcaster]
+      startDate && endDate
+        ? [limit, offset, broadcaster, startDate, endDate]
+        : startDate
+          ? [limit, offset, broadcaster, startDate]
+          : endDate
+            ? [limit, offset, broadcaster, endDate]
+            : [limit, offset, broadcaster]
     );
 
     const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count || '0') : 0;
     const broadcasts = result.rows.map(row => {
-      const { total_count, ...broadcast } = row;
+      const { total_count, time_bucket, ...broadcast } = row;
       return broadcast;
     }) as MyBroadcast[];
 
@@ -397,6 +428,8 @@ export class MyBroadcastService {
   /**
    * Get summary statistics
    * Combines my_broadcasts with stream_sessions to match getAll behavior
+   * Uses 10-minute buckets for deduplication (same as getAllWithCount)
+   * Excludes zeros from averages for more accurate stats
    */
   static async getStats(days = 30, broadcaster = 'hudson_cage'): Promise<{
     totalBroadcasts: number;
@@ -440,21 +473,30 @@ export class MyBroadcastService {
         WHERE LOWER(broadcaster) = LOWER($2)
           AND started_at >= NOW() - INTERVAL '1 day' * $1
       ),
-      -- Deduplicate same as getAll (by hour)
-      deduped AS (
-        SELECT DISTINCT ON (DATE_TRUNC('hour', started_at))
-          *
+      -- Group broadcasts within 10 minutes (same as getAllWithCount)
+      with_bucket AS (
+        SELECT *,
+          FLOOR(EXTRACT(EPOCH FROM started_at) / 600) as time_bucket
         FROM all_broadcasts
-        ORDER BY DATE_TRUNC('hour', started_at) DESC, source = 'manual' DESC
+      ),
+      -- Deduplicate within each bucket, preferring manual entries
+      deduped AS (
+        SELECT DISTINCT ON (time_bucket)
+          *
+        FROM with_bucket
+        ORDER BY time_bucket DESC, source = 'manual' DESC, started_at ASC
       )
       SELECT
         COUNT(*) as total_broadcasts,
         COALESCE(SUM(duration_minutes), 0) as total_minutes,
         COALESCE(AVG(duration_minutes), 0) as avg_duration,
         COALESCE(SUM(total_tokens), 0) as total_tokens,
-        COALESCE(AVG(peak_viewers), 0) as avg_viewers,
+        -- Exclude zeros from viewer average for more accurate stats
+        COALESCE(AVG(NULLIF(peak_viewers, 0)), 0) as avg_viewers,
         COALESCE(MAX(peak_viewers), 0) as peak_viewers,
-        COALESCE(SUM(followers_gained), 0) as total_followers_gained
+        COALESCE(SUM(followers_gained), 0) as total_followers_gained,
+        -- Also count how many broadcasts have manual data for reference
+        COUNT(*) FILTER (WHERE source = 'manual') as manual_count
       FROM deduped`,
       [days, broadcaster]
     );

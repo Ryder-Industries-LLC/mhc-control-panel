@@ -70,17 +70,32 @@ router.get('/stats', async (_req: Request, res: Response) => {
       `),
     ]);
 
-    // Calculate image storage size (estimated from affiliate_api_snapshots)
+    // Calculate image storage size from profile_images table
     let imageCount = 0;
+    let imageTotalSizeBytes = 0;
     try {
-      const imageResult = await query(`
+      // Get count and total size from profile_images (uploaded images with known file sizes)
+      const profileImagesResult = await query(`
+        SELECT
+          COUNT(*) as count,
+          COALESCE(SUM(file_size), 0) as total_size
+        FROM profile_images
+        WHERE file_size IS NOT NULL
+      `);
+      const uploadedCount = parseInt(profileImagesResult.rows[0]?.count || '0');
+      imageTotalSizeBytes = parseInt(profileImagesResult.rows[0]?.total_size || '0');
+
+      // Also count affiliate API snapshots (these don't have file_size stored)
+      const affiliateImagesResult = await query(`
         SELECT COUNT(*) as count
         FROM affiliate_api_snapshots
         WHERE image_path_360x270 IS NOT NULL
       `);
-      imageCount = parseInt(imageResult.rows[0]?.count || '0');
+      const affiliateCount = parseInt(affiliateImagesResult.rows[0]?.count || '0');
+
+      imageCount = uploadedCount + affiliateCount;
     } catch (e) {
-      // Table might not exist
+      // Tables might not exist
     }
 
     // Get CBHours live stats count
@@ -147,6 +162,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
         byRole,
         bySource,
         imagesStored: imageCount,
+        imageSizeBytes: imageTotalSizeBytes,
       },
       queue: {
         priority1Pending: queuePriority1Pending,

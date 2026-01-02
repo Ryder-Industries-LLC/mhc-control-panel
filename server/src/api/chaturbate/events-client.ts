@@ -301,7 +301,8 @@ export class ChaturbateEventsClient {
 
     const person = await PersonService.findOrCreate({ username, role: 'VIEWER' });
 
-    await InteractionService.create({
+    // Use deduplication to prevent duplicate messages from event retries
+    await InteractionService.createIfNotDuplicate({
       personId: person.id,
       type: 'PRIVATE_MESSAGE',
       content: message,
@@ -313,7 +314,7 @@ export class ChaturbateEventsClient {
         toUser,
         broadcaster: this.username,
       },
-    });
+    }, 1); // 1 minute window for deduplication
   }
 
   private async handleTip(event: ChaturbateEvent) {

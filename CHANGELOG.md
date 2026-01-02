@@ -2,6 +2,27 @@
 
 All notable changes to MHC Control Panel will be documented in this file.
 
+## [1.19.0] - 2026-01-02
+
+### Added
+
+- Admin page: Image storage size display alongside database size
+- Timeline tab: Event type filter buttons (Enter, Leave, Chat, PM, Tip, Media Purchase, Fan Club)
+- InteractionService: `createIfNotDuplicate()` method for message deduplication with configurable time window
+- Broadcasts API: Server-side date range filtering with `startDate` and `endDate` parameters
+
+### Fixed
+
+- Duplicate private messages in Communications - added 1-minute deduplication window
+- My Broadcasts missing data - moved date filtering from client to server-side
+- Broadcast count mismatch - changed from hourly to 10-minute deduplication buckets
+- Broadcast stats (Total Tokens, Avg Viewers, Peak Viewers, Followers) showing incorrect zeros - excluded zero values from averages
+
+### Changed
+
+- Broadcasts deduplication: Uses 10-minute time buckets instead of hourly for more granular session detection
+- MyBroadcasts page: Date filtering now handled server-side for accuracy
+
 ## [1.18.0] - 2026-01-02
 
 ### Added

@@ -1742,12 +1742,15 @@ router.get('/:username/communications', async (req: Request, res: Response) => {
 /**
  * GET /api/profile/:username/timeline
  * Get a chronological timeline of all interactions for a user
- * Includes: USER_ENTER, USER_LEAVE, CHAT_MESSAGE, PRIVATE_MESSAGE, TIP_EVENT, MEDIA_PURCHASE, FANCLUB_JOIN
+ * Query params:
+ *   - types: Comma-separated event types to filter (e.g., "TIP_EVENT,PRIVATE_MESSAGE")
+ *   - limit: Number of events per page (default 50)
+ *   - offset: Pagination offset (default 0)
  */
 router.get('/:username/timeline', async (req: Request, res: Response) => {
   try {
     const { username } = req.params;
-    const { limit = '50', offset = '0' } = req.query;
+    const { limit = '50', offset = '0', types = '' } = req.query;
 
     if (!username) {
       return res.status(400).json({ error: 'Username is required' });
@@ -1759,7 +1762,29 @@ router.get('/:username/timeline', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Person not found' });
     }
 
-    // Get timeline events - multiple interaction types
+    // All valid timeline event types
+    const allEventTypes = ['USER_ENTER', 'USER_LEAVE', 'CHAT_MESSAGE', 'PRIVATE_MESSAGE', 'TIP_EVENT', 'MEDIA_PURCHASE', 'FANCLUB_JOIN'];
+
+    // Parse and validate event types filter
+    let selectedTypes: string[];
+    if (types && typeof types === 'string' && types.trim()) {
+      selectedTypes = types.split(',')
+        .map(t => t.trim().toUpperCase())
+        .filter(t => allEventTypes.includes(t));
+      // If no valid types provided, use all
+      if (selectedTypes.length === 0) {
+        selectedTypes = allEventTypes;
+      }
+    } else {
+      selectedTypes = allEventTypes;
+    }
+
+    // Build dynamic SQL with parameterized type list
+    const typePlaceholders = selectedTypes.map((_, i) => `$${i + 2}`).join(', ');
+    const limitParam = selectedTypes.length + 2;
+    const offsetParam = selectedTypes.length + 3;
+
+    // Get timeline events - filtered by selected types
     const result = await query(
       `SELECT
         id,
@@ -1771,19 +1796,19 @@ router.get('/:username/timeline', async (req: Request, res: Response) => {
         stream_session_id
        FROM interactions
        WHERE person_id = $1
-         AND type IN ('USER_ENTER', 'USER_LEAVE', 'CHAT_MESSAGE', 'PRIVATE_MESSAGE', 'TIP_EVENT', 'MEDIA_PURCHASE', 'FANCLUB_JOIN')
+         AND type IN (${typePlaceholders})
        ORDER BY timestamp DESC
-       LIMIT $2 OFFSET $3`,
-      [person.id, parseInt(limit as string), parseInt(offset as string)]
+       LIMIT $${limitParam} OFFSET $${offsetParam}`,
+      [person.id, ...selectedTypes, parseInt(limit as string), parseInt(offset as string)]
     );
 
-    // Get total count
+    // Get total count for selected types
     const countResult = await query(
       `SELECT COUNT(*) as total
        FROM interactions
        WHERE person_id = $1
-         AND type IN ('USER_ENTER', 'USER_LEAVE', 'CHAT_MESSAGE', 'PRIVATE_MESSAGE', 'TIP_EVENT', 'MEDIA_PURCHASE', 'FANCLUB_JOIN')`,
-      [person.id]
+         AND type IN (${typePlaceholders})`,
+      [person.id, ...selectedTypes]
     );
 
     const events = result.rows.map(row => ({
@@ -1802,6 +1827,8 @@ router.get('/:username/timeline', async (req: Request, res: Response) => {
       total: parseInt(countResult.rows[0].total),
       limit: parseInt(limit as string),
       offset: parseInt(offset as string),
+      selectedTypes,
+      availableTypes: allEventTypes,
     });
   } catch (error) {
     logger.error('Error fetching timeline', { error, username: req.params.username });
