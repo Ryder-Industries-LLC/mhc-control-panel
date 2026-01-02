@@ -108,6 +108,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
   // Image upload state
   const [uploadedImages, setUploadedImages] = useState<any[]>([]);
+  const [currentProfileImage, setCurrentProfileImage] = useState<any | null>(null);
   const [imageUploadLoading, setImageUploadLoading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
@@ -275,7 +276,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
     }
   }, [profileData?.person?.username]);
 
-  // Fetch image history when profile loads
+  // Fetch image history and current profile image when profile loads
   useEffect(() => {
     if (profileData?.person?.id) {
       fetch(`/api/person/${profileData.person.id}/images?limit=10`)
@@ -289,26 +290,47 @@ const Profile: React.FC<ProfilePageProps> = () => {
           setImageHistory([]);
         });
     }
-  }, [profileData?.person?.id]);
+    if (profileData?.person?.username) {
+      fetch(`/api/profile/${profileData.person.username}/images/current`)
+        .then(response => response.json())
+        .then(data => {
+          setCurrentProfileImage(data.image || null);
+        })
+        .catch(err => {
+          console.error('Failed to fetch current profile image', err);
+          setCurrentProfileImage(null);
+        });
+    }
+  }, [profileData?.person?.id, profileData?.person?.username]);
 
   // Extract social links from profile data
-  // Handle both array format [{platform, url}] and object format {platform: url}
+  // Handle various formats: array [{platform, url}], object {platform: url}, or object {platform: {url, platform}}
   useEffect(() => {
     if (profileData?.profile?.social_links) {
       const links = profileData.profile.social_links;
+      const linksObj: Record<string, string> = {};
+
       if (Array.isArray(links)) {
         // Convert array format to object format
-        const linksObj: Record<string, string> = {};
         links.forEach((link: { platform: string; url: string }) => {
           if (link.platform && link.url) {
             linksObj[link.platform] = link.url;
           }
         });
-        setSocialLinks(linksObj);
-      } else {
-        // Already in object format
-        setSocialLinks(links);
+      } else if (typeof links === 'object' && links !== null) {
+        // Object format - but values might be strings or objects
+        Object.entries(links).forEach(([platform, value]) => {
+          if (typeof value === 'string') {
+            // Already in correct format {platform: "url"}
+            linksObj[platform] = value;
+          } else if (value && typeof value === 'object' && 'url' in value) {
+            // Value is an object like {url: "...", platform: "..."}
+            linksObj[platform] = (value as { url: string }).url;
+          }
+        });
       }
+
+      setSocialLinks(linksObj);
     } else {
       setSocialLinks({});
     }
@@ -579,11 +601,18 @@ const Profile: React.FC<ProfilePageProps> = () => {
         throw new Error(data.error || 'Failed to set image as current');
       }
 
-      // Refresh the images list to reflect the change
+      // Refresh the images list and current profile image
       const imagesResponse = await fetch(`/api/profile/${profileData.person.username}/images`);
       if (imagesResponse.ok) {
         const data = await imagesResponse.json();
         setUploadedImages(data.images || []);
+      }
+
+      // Refresh the current profile image for the overview
+      const currentResponse = await fetch(`/api/profile/${profileData.person.username}/images/current`);
+      if (currentResponse.ok) {
+        const data = await currentResponse.json();
+        setCurrentProfileImage(data.image || null);
       }
     } catch (err: any) {
       setImageUploadError(err.message || 'Failed to set image as current');
@@ -871,9 +900,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   <div className="relative group">
                     <img
                       src={
-                        imageHistory.length > 0
-                          ? `/images/${imageHistory[currentImageIndex]?.image_url}`
-                          : getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url)
+                        currentProfileImage
+                          ? `/images/profiles/${currentProfileImage.file_path}`
+                          : imageHistory.length > 0
+                            ? `/images/${imageHistory[currentImageIndex]?.image_url}`
+                            : getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url)
                       }
                       alt={profileData.person.username}
                       className={`w-[200px] h-[150px] rounded-lg object-cover shadow-lg ${
@@ -1971,10 +2002,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                   e.stopPropagation();
                                   handleSetAsCurrent(image.id);
                                 }}
-                                className="p-1 bg-mhc-primary/80 hover:bg-mhc-primary text-white rounded"
+                                className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded shadow-lg border border-white/30"
                                 title="Set as current image"
                               >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                 </svg>
                               </button>

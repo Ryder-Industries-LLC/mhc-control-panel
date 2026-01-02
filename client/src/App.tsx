@@ -8,6 +8,7 @@ import Admin from './pages/Admin';
 import Profile from './pages/Profile';
 import MyBroadcasts from './pages/MyBroadcasts';
 import LiveMonitor from './pages/LiveMonitor';
+import Visitors from './pages/Visitors';
 import GlobalLookup from './components/GlobalLookup';
 
 function App() {
@@ -22,7 +23,7 @@ function App() {
                 <img
                   src="/mhc-logo.jpg"
                   alt="MHC"
-                  className="h-10 w-10 rounded-full object-cover border-2 border-mhc-primary"
+                  className="h-10 w-10 rounded-md object-contain border-2 border-mhc-primary"
                 />
               </Link>
               <GlobalLookup inline />
@@ -46,6 +47,9 @@ function App() {
               <Link to="/live" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Live
               </Link>
+              <Link to="/visitors" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
+                Visitors
+              </Link>
               <Link to="/admin" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Admin
               </Link>
@@ -63,6 +67,7 @@ function App() {
             <Route path="/broadcasts" element={<MyBroadcasts />} />
             <Route path="/events" element={<EventsFeed />} />
             <Route path="/live" element={<LiveMonitor />} />
+            <Route path="/visitors" element={<Visitors />} />
             <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>

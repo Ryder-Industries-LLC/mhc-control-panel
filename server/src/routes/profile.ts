@@ -1065,6 +1065,33 @@ router.delete('/:username/service-relationships/:role', async (req: Request, res
 // ============================================================
 
 /**
+ * GET /api/profile/:username/images/current
+ * Get the current/primary image for a profile
+ */
+router.get('/:username/images/current', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const currentImage = await ProfileImagesService.getCurrentByPersonId(person.id);
+
+    res.json({ image: currentImage });
+  } catch (error) {
+    logger.error('Error getting current image', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /api/profile/:username/images
  * Get all images for a profile (uploaded + affiliate)
  */

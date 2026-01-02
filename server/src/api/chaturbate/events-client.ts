@@ -397,8 +397,16 @@ export class ChaturbateEventsClient {
     });
 
     // Record room visit (this is your room, so track visits)
+    // Track whether we're currently broadcasting
+    const isBroadcasting = this.currentSessionId !== null;
     try {
-      await RoomVisitsService.recordVisit(person.id, new Date());
+      await RoomVisitsService.recordVisit(
+        person.id,
+        new Date(),
+        undefined,
+        isBroadcasting,
+        this.currentSessionId
+      );
     } catch (error) {
       logger.error('Failed to record room visit', { error, username });
     }

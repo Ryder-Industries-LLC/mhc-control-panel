@@ -6,6 +6,8 @@ export interface RoomVisit {
   person_id: string;
   visited_at: Date;
   event_id: string | null;
+  is_broadcasting: boolean;
+  session_id: string | null;
   created_at: Date;
 }
 
@@ -25,7 +27,9 @@ export class RoomVisitsService {
   static async recordVisit(
     personId: string,
     visitedAt: Date = new Date(),
-    eventId?: string
+    eventId?: string,
+    isBroadcasting: boolean = true,
+    sessionId?: string | null
   ): Promise<RoomVisit | null> {
     // Check for recent visit (within 5 minutes) to deduplicate
     const recentCheckSql = `
@@ -44,11 +48,11 @@ export class RoomVisitsService {
 
       // Insert the visit
       const insertSql = `
-        INSERT INTO room_visits (person_id, visited_at, event_id)
-        VALUES ($1, $2, $3)
+        INSERT INTO room_visits (person_id, visited_at, event_id, is_broadcasting, session_id)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING *
       `;
-      const insertResult = await query(insertSql, [personId, visitedAt, eventId || null]);
+      const insertResult = await query(insertSql, [personId, visitedAt, eventId || null, isBroadcasting, sessionId || null]);
 
       // Update the person's visit count and last visit
       const updatePersonSql = `
@@ -59,7 +63,7 @@ export class RoomVisitsService {
       `;
       await query(updatePersonSql, [personId, visitedAt]);
 
-      logger.info('Room visit recorded', { personId, visitedAt });
+      logger.info('Room visit recorded', { personId, visitedAt, isBroadcasting });
       return this.mapRowToVisit(insertResult.rows[0]);
     } catch (error) {
       logger.error('Error recording room visit', { error, personId });
@@ -261,6 +265,8 @@ export class RoomVisitsService {
       person_id: row.person_id,
       visited_at: row.visited_at,
       event_id: row.event_id,
+      is_broadcasting: row.is_broadcasting ?? true,
+      session_id: row.session_id,
       created_at: row.created_at,
     };
   }

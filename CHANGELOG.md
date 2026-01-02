@@ -2,6 +2,23 @@
 
 All notable changes to MHC Control Panel will be documented in this file.
 
+## [1.17.0] - 2026-01-02
+
+### Added
+- New Visitors page (`/visitors`) for tracking room visitors
+- Offline visitor tracking - distinguishes between visits during broadcasts vs. profile visits when offline
+- Visitor statistics with daily/weekly/monthly breakdowns
+- Filter visitors by: following, followers, tippers, regulars, new visitors, and offline visits
+- Visit history view with broadcast status indicators
+- Database migration for `is_broadcasting` and `session_id` columns on room_visits
+
+### Fixed
+- Profile page social links rendering error (React error #31) - now handles multiple data formats
+- Social links now properly support array, object with strings, and object with objects formats
+
+### Changed
+- Reorganized TODO.md with page prefixes for clarity (e.g., `/profile - Info Card:`)
+
 ## [1.16.1] - 2026-01-02
 
 ### Changed
