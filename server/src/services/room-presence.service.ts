@@ -363,7 +363,7 @@ export class RoomPresenceService {
           prof.tags,
           prof.friend_tier,
           prof.following,
-          prof.is_follower,
+          prof.follower as is_follower,
           prof.banned_me,
           prof.watch_list,
           (SELECT service_level FROM service_relationships WHERE profile_id = prof.id AND service_role = 'sub' LIMIT 1) as sub_level,
