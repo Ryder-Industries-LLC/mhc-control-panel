@@ -39,13 +39,13 @@ const getSessionImageUrl = (session: any, isLive: boolean): string | null => {
   if (isLive) {
     // When live, prefer real-time Chaturbate image
     return session.image_url_360x270 || session.image_path_360x270
-      ? `http://localhost:3000/images/${session.image_path_360x270}`
+      ? `/images/${session.image_path_360x270}`
       : null;
   }
 
   // When offline, prefer local cached image
   if (session.image_path_360x270) {
-    return `http://localhost:3000/images/${session.image_path_360x270}`;
+    return `/images/${session.image_path_360x270}`;
   }
   // Fall back to external URL if no local cache
   return session.image_url_360x270 || null;
@@ -278,7 +278,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
   // Fetch image history when profile loads
   useEffect(() => {
     if (profileData?.person?.id) {
-      fetch(`http://localhost:3000/api/person/${profileData.person.id}/images?limit=10`)
+      fetch(`/api/person/${profileData.person.id}/images?limit=10`)
         .then(response => response.json())
         .then(data => {
           setImageHistory(data.images || []);
@@ -872,7 +872,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     <img
                       src={
                         imageHistory.length > 0
-                          ? `http://localhost:3000/images/${imageHistory[currentImageIndex]?.image_url}`
+                          ? `/images/${imageHistory[currentImageIndex]?.image_url}`
                           : getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url)
                       }
                       alt={profileData.person.username}
@@ -1899,8 +1899,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
                     {uploadedImages.map((image, index) => {
                       const imageUrl = image.source === 'affiliate_api'
-                        ? `http://localhost:3000/images/${image.file_path}`
-                        : `http://localhost:3000/images/profiles/${image.file_path}`;
+                        ? `/images/${image.file_path}`
+                        : `/images/profiles/${image.file_path}`;
                       const imageDate = image.captured_at || image.uploaded_at;
                       const isUploaded = image.source !== 'affiliate_api';
 

@@ -38,7 +38,7 @@ const Follow: React.FC = () => {
 
   const checkCookieStatus = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/followers/cookies-status');
+      const response = await fetch('/api/followers/cookies-status');
       const data = await response.json();
       setHasCookies(data.hasCookies);
     } catch (err) {
@@ -52,11 +52,11 @@ const Follow: React.FC = () => {
       setError(null);
 
       if (activeTab === 'following') {
-        const response = await fetch('http://localhost:3000/api/followers/following');
+        const response = await fetch('/api/followers/following');
         const data = await response.json();
         setFollowing(data.following || []);
       } else {
-        const response = await fetch('http://localhost:3000/api/followers/followers');
+        const response = await fetch('/api/followers/followers');
         const data = await response.json();
         setFollowers(data.followers || []);
       }
@@ -77,8 +77,8 @@ const Follow: React.FC = () => {
 
       const text = await file.text();
       const endpoint = type === 'following'
-        ? 'http://localhost:3000/api/followers/update-following'
-        : 'http://localhost:3000/api/followers/update-followers';
+        ? '/api/followers/update-following'
+        : '/api/followers/update-followers';
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -123,7 +123,7 @@ const Follow: React.FC = () => {
         return;
       }
 
-      const response = await fetch('http://localhost:3000/api/followers/import-cookies', {
+      const response = await fetch('/api/followers/import-cookies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cookies }),
@@ -161,8 +161,8 @@ const Follow: React.FC = () => {
       window.addEventListener('beforeunload', handleBeforeUnload);
 
       const endpoint = type === 'following'
-        ? 'http://localhost:3000/api/followers/scrape-following'
-        : 'http://localhost:3000/api/followers/scrape-followers';
+        ? '/api/followers/scrape-following'
+        : '/api/followers/scrape-followers';
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -452,7 +452,7 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
                       {person.image_url && (
                         <div className="relative w-28 h-20">
                           <img
-                            src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                            src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
                             alt={person.username}
                             className="w-full h-full object-cover rounded-md border-2 border-white/10 transition-all hover:border-mhc-primary hover:scale-105 hover:shadow-lg hover:shadow-mhc-primary/40"
                           />

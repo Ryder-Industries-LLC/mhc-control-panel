@@ -94,7 +94,7 @@ const EventsFeed: React.FC = () => {
   const fetchEvents = async () => {
     try {
       // Fetch more events (500) for important tabs, fewer for presence events
-      const response = await fetch('http://localhost:3000/api/events/recent?limit=500');
+      const response = await fetch('/api/events/recent?limit=500');
       const data = await response.json();
       // Apply deduplication to prevent showing duplicate events
       setEvents(dedupeEvents(data.events || []));

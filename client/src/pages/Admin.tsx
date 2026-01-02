@@ -308,7 +308,7 @@ const Admin: React.FC = () => {
 
   const checkCookieStatus = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/followers/cookies-status');
+      const response = await fetch('/api/followers/cookies-status');
       const data = await response.json();
       setHasCookies(data.hasCookies);
     } catch (err) {
@@ -348,7 +348,7 @@ const Admin: React.FC = () => {
         return;
       }
 
-      const response = await fetch('http://localhost:3000/api/followers/import-cookies', {
+      const response = await fetch('/api/followers/import-cookies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cookies }),
@@ -379,8 +379,8 @@ const Admin: React.FC = () => {
       setScrapeStatus(`Scraping ${type}... This may take 2-5 minutes for large lists.`);
 
       const endpoint = type === 'following'
-        ? 'http://localhost:3000/api/followers/scrape-following'
-        : 'http://localhost:3000/api/followers/scrape-followers';
+        ? '/api/followers/scrape-following'
+        : '/api/followers/scrape-followers';
 
       const response = await fetch(endpoint, {
         method: 'POST',

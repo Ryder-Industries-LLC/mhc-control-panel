@@ -345,7 +345,7 @@ const Users: React.FC = () => {
       setFollowingLoading(true);
       setError(null);
       // Use the dedicated following endpoint which returns all following users
-      const response = await fetch('http://localhost:3000/api/followers/following');
+      const response = await fetch('/api/followers/following');
       const data = await response.json();
       setFollowingUsers(data.following || []);
     } catch (err) {
@@ -361,7 +361,7 @@ const Users: React.FC = () => {
       setFollowersLoading(true);
       setError(null);
       // Use the dedicated followers endpoint which returns all followers
-      const response = await fetch('http://localhost:3000/api/followers/followers');
+      const response = await fetch('/api/followers/followers');
       const data = await response.json();
       setFollowerUsers(data.followers || []);
     } catch (err) {
@@ -390,7 +390,7 @@ const Users: React.FC = () => {
     try {
       setSubsLoading(true);
       setError(null);
-      const response = await fetch(`http://localhost:3000/api/followers/subs?filter=${subsFilter}`);
+      const response = await fetch(`/api/followers/subs?filter=${subsFilter}`);
       const data = await response.json();
       setSubUsers(data.subs || []);
     } catch (err) {
@@ -406,8 +406,8 @@ const Users: React.FC = () => {
       setFriendsLoading(true);
       setError(null);
       const url = friendTierFilter
-        ? `http://localhost:3000/api/followers/friends?tier=${friendTierFilter}`
-        : 'http://localhost:3000/api/followers/friends';
+        ? `/api/followers/friends?tier=${friendTierFilter}`
+        : '/api/followers/friends';
       const response = await fetch(url);
       const data = await response.json();
       setFriendUsers(data.friends || []);
@@ -423,7 +423,7 @@ const Users: React.FC = () => {
     try {
       setBansLoading(true);
       setError(null);
-      const response = await fetch('http://localhost:3000/api/followers/bans');
+      const response = await fetch('/api/followers/bans');
       const data = await response.json();
       setBannedUsers(data.bans || []);
     } catch (err) {
@@ -439,8 +439,8 @@ const Users: React.FC = () => {
       setDomsLoading(true);
       setError(null);
       const url = domsFilter !== 'all'
-        ? `http://localhost:3000/api/followers/doms?filter=${domsFilter}`
-        : 'http://localhost:3000/api/followers/doms';
+        ? `/api/followers/doms?filter=${domsFilter}`
+        : '/api/followers/doms';
       const response = await fetch(url);
       const data = await response.json();
       setDomUsers(data.doms || []);
@@ -456,7 +456,7 @@ const Users: React.FC = () => {
     try {
       setWatchlistLoading(true);
       setError(null);
-      const response = await fetch('http://localhost:3000/api/followers/watchlist');
+      const response = await fetch('/api/followers/watchlist');
       const data = await response.json();
       setWatchlistUsers(data.watchlist || []);
     } catch (err) {
@@ -524,7 +524,7 @@ const Users: React.FC = () => {
     try {
       setFollowingLoading(true);
       const text = await file.text();
-      const response = await fetch('http://localhost:3000/api/followers/update-following', {
+      const response = await fetch('/api/followers/update-following', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ html: text }),
@@ -548,7 +548,7 @@ const Users: React.FC = () => {
     try {
       setFollowersLoading(true);
       const text = await file.text();
-      const response = await fetch('http://localhost:3000/api/followers/update-followers', {
+      const response = await fetch('/api/followers/update-followers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ html: text }),
@@ -793,7 +793,7 @@ const Users: React.FC = () => {
   // Get image URL with fallback handling
   const getImageUrl = (imageUrl: string | null): string | null => {
     if (!imageUrl) return null;
-    return imageUrl.startsWith('http') ? imageUrl : `http://localhost:3000/images/${imageUrl}`;
+    return imageUrl.startsWith('http') ? imageUrl : `/images/${imageUrl}`;
   };
 
   // View mode toggle component
@@ -1289,7 +1289,7 @@ const Users: React.FC = () => {
                     {person.image_url && (
                       <div className="relative w-[120px] h-[90px] cursor-pointer group">
                         <img
-                          src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                          src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
                           alt={person.username}
                           className="w-full h-full object-cover rounded-md border-2 border-white/10 transition-all group-hover:border-mhc-primary group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-mhc-primary/40"
                         />
@@ -1297,7 +1297,7 @@ const Users: React.FC = () => {
                           <span className="absolute top-0.5 right-0.5 text-red-500 text-xs animate-pulse drop-shadow-[0_0_4px_rgba(239,68,68,0.8)]">●</span>
                         )}
                         <div className="hidden group-hover:block absolute left-[130px] top-1/2 -translate-y-1/2 z-[100] bg-[#1a1a2e] border-2 border-white/20 rounded-lg p-2 shadow-2xl pointer-events-none">
-                          <img src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`} alt={person.username} className="w-[360px] h-[270px] object-cover rounded" />
+                          <img src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`} alt={person.username} className="w-[360px] h-[270px] object-cover rounded" />
                           {isPersonLive(person) && (
                             <div className="absolute top-3 left-3 bg-red-500/90 text-white px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide animate-pulse">● LIVE</div>
                           )}
@@ -1556,7 +1556,7 @@ const Users: React.FC = () => {
                 <td className="px-2 py-2">
                   {person.image_url && (
                     <img
-                      src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                      src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
                       alt={person.username}
                       className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
                     />
@@ -1761,7 +1761,7 @@ const Users: React.FC = () => {
                 <td className="px-2 py-2">
                   {person.image_url && (
                     <img
-                      src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                      src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
                       alt={person.username}
                       className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
                     />
@@ -1900,7 +1900,7 @@ const Users: React.FC = () => {
                   <td className="px-2 py-2">
                     {person.image_url && (
                       <img
-                        src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                        src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
                         alt={person.username}
                         className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
                       />
@@ -2020,7 +2020,7 @@ const Users: React.FC = () => {
                           <td className="px-2 py-2">
                             {person.image_url && (
                               <img
-                                src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                                src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
                                 alt={person.username}
                                 className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
                               />
@@ -2145,7 +2145,7 @@ const Users: React.FC = () => {
                           <td className="px-2 py-2">
                             {person.image_url && (
                               <img
-                                src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                                src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
                                 alt={person.username}
                                 className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
                               />
@@ -2297,7 +2297,7 @@ const Users: React.FC = () => {
                           <td className="px-2 py-2">
                             {person.image_url && (
                               <img
-                                src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                                src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
                                 alt={person.username}
                                 className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
                               />
@@ -2385,7 +2385,7 @@ const Users: React.FC = () => {
                           <td className="px-2 py-2">
                             {person.image_url && (
                               <img
-                                src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                                src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
                                 alt={person.username}
                                 className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
                               />
@@ -2473,7 +2473,7 @@ const Users: React.FC = () => {
                           <td className="px-2 py-2">
                             {person.image_url && (
                               <img
-                                src={person.image_url.startsWith('http') ? person.image_url : `http://localhost:3000/images/${person.image_url}`}
+                                src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
                                 alt={person.username}
                                 className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
                               />
