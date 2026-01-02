@@ -1,0 +1,48 @@
+# Changelog
+
+All notable changes to MHC Control Panel will be documented in this file.
+
+## [1.16.1] - 2026-01-02
+
+### Changed
+- Updated Docker ports to avoid conflicts with pims-ops-portal
+  - PostgreSQL: 5432 -> 5433
+  - Backend API: 3000 -> 3002
+  - Frontend remains on 8080
+
+## [1.16.0] - 2025-12-31
+
+### Added
+- Pagination for large data sets
+- Inline search functionality
+- Twitter validation for profiles
+- PM formatting improvements
+
+## [1.15.0] - 2025-12-30
+
+### Fixed
+- Badge display issues
+- Event handling improvements
+- Admin jobs merge functionality
+
+## [1.14.0] - 2025-12-29
+
+### Added
+- Occasional subscription sub-level
+- Live monitoring improvements
+
+### Fixed
+- HistoryTab functionality
+
+## [1.13.0] - 2025-12-28
+
+### Changed
+- Profile page reorganization
+- New profile features
+
+## [1.12.0] - 2025-12-27
+
+### Added
+- Drag & drop for profile images
+- Multi-upload support
+- Set-as-current functionality for profile images
