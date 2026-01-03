@@ -54,6 +54,39 @@ const getSessionImageUrl = (session: any, isLive: boolean): string | null => {
   return session.image_url_360x270 || null;
 };
 
+// Placeholder images for profiles without photos
+// Viewer: Simple silhouette in grayscale
+const VIEWER_PLACEHOLDER = `data:image/svg+xml,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 270" fill="none">
+  <rect width="360" height="270" fill="#1a1a2e"/>
+  <circle cx="180" cy="100" r="45" fill="#374151"/>
+  <ellipse cx="180" cy="220" rx="70" ry="50" fill="#374151"/>
+  <text x="180" y="255" text-anchor="middle" fill="#6b7280" font-family="system-ui" font-size="14">Viewer</text>
+</svg>
+`)}`;
+
+// Model: Stylized male silhouette in grayscale
+const MODEL_PLACEHOLDER = `data:image/svg+xml,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 270" fill="none">
+  <rect width="360" height="270" fill="#1a1a2e"/>
+  <defs>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4b5563"/>
+      <stop offset="100%" style="stop-color:#374151"/>
+    </linearGradient>
+  </defs>
+  <circle cx="180" cy="90" r="40" fill="url(#glow)"/>
+  <path d="M120 200 Q140 140 180 140 Q220 140 240 200 L250 270 L110 270 Z" fill="url(#glow)"/>
+  <rect x="155" y="125" width="50" height="25" rx="5" fill="url(#glow)"/>
+  <text x="180" y="255" text-anchor="middle" fill="#9ca3af" font-family="system-ui" font-size="14">Model</text>
+</svg>
+`)}`;
+
+// Get placeholder image based on role
+const getPlaceholderImage = (role: string): string => {
+  return role === 'MODEL' ? MODEL_PLACEHOLDER : VIEWER_PLACEHOLDER;
+};
+
 interface ImageHistoryItem {
   image_url: string;
   observed_at: string;
@@ -98,8 +131,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
   // Profile attributes state
   const [bannedMe, setBannedMe] = useState(false);
   const [watchList, setWatchList] = useState(false);
-  const [friendTier, setFriendTier] = useState<number | null>(null);
-
 
   // Top mover badge state
   const [topMoverStatus, setTopMoverStatus] = useState<'gainer' | 'loser' | null>(null);
@@ -198,7 +229,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
     if (profileData?.profile) {
       setBannedMe(profileData.profile.banned_me || false);
       setWatchList(profileData.profile.watch_list || false);
-      setFriendTier(profileData.profile.friend_tier || null);
     }
   }, [profileData?.profile]);
 
@@ -859,25 +889,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
     setServiceRelationships(prev => prev.filter(r => r.service_role !== role));
   };
 
-  const handleFriendTierChange = async (newTier: number | null) => {
-    if (!profileData?.person?.username) return;
-
-    const oldTier = friendTier;
-    setFriendTier(newTier);
-
-    try {
-      await fetch(`/api/profile/${profileData.person.username}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ friend_tier: newTier }),
-      });
-    } catch (err) {
-      // Revert on error
-      setFriendTier(oldTier);
-    }
-  };
-
-  // Unified relationship handler (new)
+  // Unified relationship handler
   const handleSaveRelationship = async (data: Omit<Relationship, 'id' | 'profile_id' | 'created_at' | 'updated_at'>) => {
     if (!profileData?.person?.username) return;
 
@@ -971,8 +983,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
           {/* Profile Header */}
           <div className="bg-gradient-primary text-white rounded-lg p-8 mb-5 shadow-lg">
             <div className="flex gap-5 items-center flex-wrap md:flex-nowrap">
-              {(imageHistory.length > 0 || getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile?.photos && profileData.profile.photos.length > 0)) && (
-                <div className="flex-shrink-0 flex flex-col items-start gap-3">
+              {/* Profile image section - always show with placeholder fallback */}
+              <div className="flex-shrink-0 flex flex-col items-start gap-3">
                   {/* Badge row ABOVE image - Live, Model/Member, Followers */}
                   <div className="flex gap-2 items-center">
                     {/* LIVE indicator */}
@@ -1004,7 +1016,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
                           ? `/images/profiles/${currentProfileImage.file_path}`
                           : imageHistory.length > 0
                             ? `/images/${imageHistory[currentImageIndex]?.image_url}`
-                            : getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession)) || (profileData.profile.photos.find((p: any) => p.isPrimary)?.url || profileData.profile.photos[0]?.url)
+                            : getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession))
+                              || profileData.profile.photos?.find((p: any) => p.isPrimary)?.url
+                              || profileData.profile.photos?.[0]?.url
+                              || getPlaceholderImage(profileData.person.role)
                       }
                       alt={profileData.person.username}
                       className={`w-[200px] h-[150px] rounded-lg object-cover shadow-lg ${
@@ -1049,7 +1064,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     </div>
                   )}
                 </div>
-              )}
 
               <div className="flex-1">
                 {/* Username row with Following + Live/Offline status */}
@@ -1087,26 +1101,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
                 {/* Badges row */}
                 <div className="mb-3 flex items-center gap-2 flex-wrap">
-                  {/* Friend Tier - compact dropdown */}
-                  <select
-                    value={friendTier || ''}
-                    onChange={(e) => handleFriendTierChange(e.target.value ? parseInt(e.target.value, 10) : null)}
-                    className={`px-2 py-1 rounded-full text-sm font-semibold border cursor-pointer focus:outline-none focus:ring-2 focus:ring-white/30 ${
-                      friendTier === 1 ? 'bg-amber-500/30 border-amber-500/50 text-amber-300' :
-                      friendTier === 2 ? 'bg-orange-500/30 border-orange-500/50 text-orange-300' :
-                      friendTier === 3 ? 'bg-blue-500/30 border-blue-500/50 text-blue-300' :
-                      friendTier === 4 ? 'bg-gray-500/30 border-gray-500/50 text-gray-300' :
-                      'bg-white/10 border-white/20 text-white/60'
-                    }`}
-                    title="Friend Tier"
-                  >
-                    <option value="">No Tier</option>
-                    <option value="1">T1 Special</option>
-                    <option value="2">T2 Tipper</option>
-                    <option value="3">T3 Regular</option>
-                    <option value="4">T4 Drive-by</option>
-                  </select>
-                  {/* Following badge - POSITION SWAP: condition unchanged (profileData.profile?.following) */}
+                  {/* Following badge */}
                   {profileData.profile?.following && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50" title="You follow this user">
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">

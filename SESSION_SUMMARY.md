@@ -1,83 +1,68 @@
 # Session Summary
 
-**Date**: 2026-01-02
-**Version**: 1.19.0
+**Date**: 2026-01-03
+**Version**: 1.21.2
 
 ## What Was Accomplished
 
-### v1.19.0 - Bug Fixes & Enhancements
+### v1.21.2 - Session Lifecycle & Profile Improvements
 
-Implemented multiple fixes and enhancements from the TODO backlog:
+**1. Session 'Ended' Status**
+- Added intermediate 'ended' status between 'active' and 'pending_finalize'
+- When broadcast stops, session immediately transitions to 'ended'
+- Session stays 'ended' until merge window (30 min) expires
+- Prevents confusion when session shows "Live" after broadcast ends
+- New orange "Ended" badge in Sessions UI
 
-**1. Admin Page - Image Storage Size**
-- Added image storage size calculation from `profile_images` table
-- Displays total bytes alongside image count in Admin page
-- Uses `formatBytes()` for human-readable display (KB, MB, GB)
+**2. Finalize Sessions Job Auto-Start**
+- Added `finalize-sessions` to core jobs list
+- Job now automatically starts on server boot
+- Manually finalized 38 sessions that were stuck in 'pending' status
 
-**2. Duplicate Messages Fix (Communications PMs)**
-- Added `createIfNotDuplicate()` method to InteractionService
-- Checks for existing messages within configurable time window (default 1 minute)
-- Applied to private message handling in events-client.ts
-- Prevents duplicate storage from event retries
+**3. Placeholder Profile Images**
+- Added SVG placeholder images for users without photos
+- Viewers: Grayscale silhouette with "Viewer" label
+- Models: Grayscale styled figure with "Model" label
+- Fixed conditional wrapper hiding image section when no images
 
-**3. My Broadcasts - Missing January 1 Data**
-- Moved date filtering from client-side to server-side
-- Added `startDate` and `endDate` query parameters to GET /api/broadcasts
-- MyBroadcastService now filters in SQL query for accuracy
+**4. Profile Overview Cleanup**
+- Removed friend tier dropdown (Friend badge retained)
+- Relationship badge system now handles friend status
 
-**4. Broadcast Count Mismatch**
-- Changed deduplication from hourly to 10-minute buckets
-- Formula: `FLOOR(EXTRACT(EPOCH FROM started_at) / 600)` groups broadcasts
-- More granular session detection prevents over-merging
-
-**5. Broadcast Stats Showing Zeros**
-- Auto-detected broadcasts have 0 for tokens/viewers/followers
-- Changed stats queries to use `AVG(NULLIF(field, 0))`
-- Excludes zeros from averages for accurate statistics
-
-**6. Timeline Event Type Filter**
-- Added filter buttons to TimelineTab component
-- Filter by: Enter, Leave, Chat, PM, Tip, Media Purchase, Fan Club
-- Color-coded buttons matching event type colors
-- "All" button to reset filters
-- Server-side filtering via `types` query parameter
+**5. Data Cleanup**
+- Removed duplicate interactions from database
+- Corrected session end time for stuck broadcast
 
 ## Key Decisions
 
-1. **10-Minute Buckets**: Changed from hourly to 10-minute deduplication - balances between too many separate broadcasts and over-merging
-2. **Server-Side Filtering**: Moved broadcast date filtering to backend to ensure accurate counts
-3. **Dedup Window**: 1-minute window for message deduplication - handles retries without blocking legitimate rapid messages
+1. **4-State Session Lifecycle**: `active` -> `ended` -> `pending_finalize` -> `finalized`
+   - 'ended' provides user feedback that broadcast stopped
+   - 'pending_finalize' means ready for AI summary generation
+2. **Core Jobs Auto-Start**: Critical jobs auto-start without needing manual intervention
+3. **Placeholder SVGs**: Inline data URLs avoid extra HTTP requests
 
 ## Files Changed
 
 **Server**:
-- `server/src/routes/system.ts` - Added image storage size query
-- `server/src/routes/profile.ts` - Added timeline types filter parameter
-- `server/src/routes/broadcasts.ts` - Added date range parameters
-- `server/src/services/interaction.service.ts` - Added createIfNotDuplicate()
-- `server/src/services/my-broadcast.service.ts` - 10-min buckets, date filtering, nullif averages
-- `server/src/api/chaturbate/events-client.ts` - Use createIfNotDuplicate for PMs
+- `server/src/db/migrations/049_add_ended_session_status.sql` - Added 'ended' to status enum
+- `server/src/services/session-stitcher.service.ts` - Added endSession(), getActiveSession()
+- `server/src/services/job-restore.service.ts` - Added finalize-sessions to core jobs
+- `server/src/api/chaturbate/events-client.ts` - Uses v2 session service for broadcast events
+- `server/src/jobs/finalize-sessions.job.ts` - Transitions 'ended' -> 'pending_finalize'
 
 **Client**:
-- `client/src/pages/Admin.tsx` - Display image storage size
-- `client/src/pages/MyBroadcasts.tsx` - Pass date params to API
-- `client/src/components/profile/TimelineTab.tsx` - Event type filter UI
-
-**Documentation**:
-- `docs/TODO.md` - Marked completed items with (v1.19.0)
+- `client/src/pages/Profile.tsx` - Placeholder images, removed friend dropdown
+- `client/src/pages/Sessions.tsx` - Added 'ended' status badge
+- `client/src/pages/SessionDetail.tsx` - Added 'ended' status badge
 
 ## Current State
 
-- All changes committed and tagged as v1.19.0
+- All changes committed and tagged as v1.21.2
 - Docker containers rebuilt and running
-- Build verified successful for both server and client
+- Session lifecycle properly tracks broadcast state
 
 ## Next Steps
 
-See `docs/TODO.md` for remaining items:
-- Review /visitors page
-- Add DOM/SUB badge to profile info card
-- Fix Communications PM direction (backwards)
-- Fix profile Images tab count mismatch
-- Add manual DM/PM entry capability
-- Expandable broadcasts with chat history
+- Review AI summary generation timing
+- Consider adding manual session controls
+- Profile tab enhancements

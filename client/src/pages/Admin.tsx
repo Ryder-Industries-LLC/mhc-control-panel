@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import CollapsibleSection from '../components/CollapsibleSection';
 import { useTheme, ThemeName } from '../context/ThemeContext';
+import { api } from '../api/client';
 
 const themeLabels: Record<ThemeName, string> = {
   midnight: 'Midnight',
@@ -198,6 +199,17 @@ const Admin: React.FC = () => {
   const [manualScraping, setManualScraping] = useState(false);
   const [manualScrapeResult, setManualScrapeResult] = useState<string | null>(null);
 
+  // Broadcast settings state
+  const [broadcastSettings, setBroadcastSettings] = useState<{
+    mergeGapMinutes: number;
+    aiSummaryDelayMinutes: number | null;
+    aiSummaryDelayIsCustom: boolean;
+  } | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null);
+
   // Auto-refresh both job statuses when on Jobs tab (merged view)
   useEffect(() => {
     if (activeTab === 'jobs') {
@@ -232,6 +244,70 @@ const Admin: React.FC = () => {
       checkCookieStatus();
     }
   }, [activeTab]);
+
+  // Load broadcast settings when Settings tab is active
+  useEffect(() => {
+    if (activeTab === 'settings') {
+      fetchBroadcastSettings();
+    }
+  }, [activeTab]);
+
+  const fetchBroadcastSettings = async () => {
+    setSettingsLoading(true);
+    setSettingsError(null);
+    try {
+      const config = await api.getBroadcastConfig();
+      setBroadcastSettings({
+        mergeGapMinutes: config.mergeGapMinutes,
+        aiSummaryDelayMinutes: config.aiSummaryDelayMinutes,
+        aiSummaryDelayIsCustom: config.aiSummaryDelayIsCustom,
+      });
+    } catch (err) {
+      setSettingsError('Failed to load broadcast settings');
+      console.error('Error fetching broadcast settings:', err);
+    } finally {
+      setSettingsLoading(false);
+    }
+  };
+
+  const saveBroadcastSettings = async () => {
+    if (!broadcastSettings) return;
+
+    setSettingsSaving(true);
+    setSettingsError(null);
+    setSettingsSuccess(null);
+
+    try {
+      await api.updateSetting(
+        'broadcast_merge_gap_minutes',
+        broadcastSettings.mergeGapMinutes,
+        'Minutes between broadcast segments to merge into one session'
+      );
+
+      if (broadcastSettings.aiSummaryDelayIsCustom && broadcastSettings.aiSummaryDelayMinutes !== null) {
+        await api.updateSetting(
+          'ai_summary_delay_minutes',
+          broadcastSettings.aiSummaryDelayMinutes,
+          'Minutes to wait after broadcast ends before generating AI summary'
+        );
+      } else {
+        // Set to null to use merge gap
+        await api.updateSetting(
+          'ai_summary_delay_minutes',
+          null,
+          'Minutes to wait after broadcast ends before generating AI summary'
+        );
+      }
+
+      setSettingsSuccess('Settings saved successfully');
+      setTimeout(() => setSettingsSuccess(null), 3000);
+    } catch (err) {
+      setSettingsError('Failed to save settings');
+      console.error('Error saving broadcast settings:', err);
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   // Profile scrape form initialization (legacy - kept for form state)
   useEffect(() => {
@@ -1969,6 +2045,121 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
         {activeTab === 'settings' && (
           <div className="bg-mhc-surface-light rounded-lg p-6">
             <h2 className="text-xl font-semibold text-mhc-text mb-6">Settings</h2>
+
+            {/* Broadcast Settings */}
+            <div className="mb-8">
+              <h3 className="text-lg font-medium text-mhc-text mb-4">Broadcast Settings</h3>
+
+              {settingsError && (
+                <div className="p-3 px-4 rounded-md mb-4 bg-red-500/15 border-l-4 border-red-500 text-red-300">
+                  {settingsError}
+                </div>
+              )}
+
+              {settingsSuccess && (
+                <div className="p-3 px-4 rounded-md mb-4 bg-green-500/15 border-l-4 border-green-500 text-green-300">
+                  {settingsSuccess}
+                </div>
+              )}
+
+              {settingsLoading ? (
+                <div className="text-mhc-text-muted">Loading settings...</div>
+              ) : broadcastSettings ? (
+                <div className="space-y-6">
+                  {/* Merge Gap Setting */}
+                  <div>
+                    <label className="block text-mhc-text mb-2 font-medium">
+                      Session Merge Gap (minutes)
+                    </label>
+                    <p className="text-mhc-text-muted text-sm mb-2">
+                      When broadcasts are within this many minutes of each other, they will be merged into a single session.
+                    </p>
+                    <input
+                      type="number"
+                      min="5"
+                      max="120"
+                      value={broadcastSettings.mergeGapMinutes}
+                      onChange={(e) => setBroadcastSettings({
+                        ...broadcastSettings,
+                        mergeGapMinutes: parseInt(e.target.value) || 30
+                      })}
+                      className="w-32 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                    />
+                  </div>
+
+                  {/* AI Summary Delay Setting */}
+                  <div>
+                    <label className="block text-mhc-text mb-2 font-medium">
+                      AI Summary Delay
+                    </label>
+                    <p className="text-mhc-text-muted text-sm mb-2">
+                      How long to wait after a broadcast ends before generating an AI summary.
+                    </p>
+                    <div className="flex items-center gap-4 mb-2">
+                      <label className="flex items-center gap-2 text-mhc-text">
+                        <input
+                          type="radio"
+                          name="aiSummaryDelay"
+                          checked={!broadcastSettings.aiSummaryDelayIsCustom}
+                          onChange={() => setBroadcastSettings({
+                            ...broadcastSettings,
+                            aiSummaryDelayIsCustom: false,
+                            aiSummaryDelayMinutes: null
+                          })}
+                          className="text-mhc-primary"
+                        />
+                        Use merge gap ({broadcastSettings.mergeGapMinutes} minutes)
+                      </label>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-2 text-mhc-text">
+                        <input
+                          type="radio"
+                          name="aiSummaryDelay"
+                          checked={broadcastSettings.aiSummaryDelayIsCustom}
+                          onChange={() => setBroadcastSettings({
+                            ...broadcastSettings,
+                            aiSummaryDelayIsCustom: true,
+                            aiSummaryDelayMinutes: broadcastSettings.mergeGapMinutes
+                          })}
+                          className="text-mhc-primary"
+                        />
+                        Custom delay:
+                      </label>
+                      {broadcastSettings.aiSummaryDelayIsCustom && (
+                        <input
+                          type="number"
+                          min="5"
+                          max="1440"
+                          value={broadcastSettings.aiSummaryDelayMinutes ?? 30}
+                          onChange={(e) => setBroadcastSettings({
+                            ...broadcastSettings,
+                            aiSummaryDelayMinutes: parseInt(e.target.value) || 30
+                          })}
+                          className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                        />
+                      )}
+                      {broadcastSettings.aiSummaryDelayIsCustom && (
+                        <span className="text-mhc-text-muted">minutes</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Save Button */}
+                  <div className="pt-4 border-t border-white/10">
+                    <button
+                      onClick={saveBroadcastSettings}
+                      disabled={settingsSaving}
+                      className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {settingsSaving ? 'Saving...' : 'Save Broadcast Settings'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-mhc-text-muted">No settings available</div>
+              )}
+            </div>
 
             {/* Theme Selection */}
             <div className="mb-8">

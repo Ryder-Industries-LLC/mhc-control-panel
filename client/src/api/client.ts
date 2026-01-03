@@ -309,6 +309,32 @@ export const api = {
     const response = await apiClient.get('/api/followers/unfollowed');
     return response.data;
   },
+
+  // Settings API
+  getSettings: async (): Promise<Record<string, { value: any; description: string | null; updatedAt: string }>> => {
+    const response = await apiClient.get('/api/settings');
+    return response.data;
+  },
+
+  getSetting: async (key: string): Promise<{ key: string; value: any }> => {
+    const response = await apiClient.get(`/api/settings/${key}`);
+    return response.data;
+  },
+
+  updateSetting: async (key: string, value: any, description?: string): Promise<{ key: string; value: any; description: string | null; updatedAt: string }> => {
+    const response = await apiClient.put(`/api/settings/${key}`, { value, description });
+    return response.data;
+  },
+
+  getBroadcastConfig: async (): Promise<{
+    mergeGapMinutes: number;
+    summaryDelayMinutes: number;
+    aiSummaryDelayMinutes: number | null;
+    aiSummaryDelayIsCustom: boolean;
+  }> => {
+    const response = await apiClient.get('/api/settings/broadcast/config');
+    return response.data;
+  },
 };
 
 export default apiClient;

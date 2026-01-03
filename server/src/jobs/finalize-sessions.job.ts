@@ -236,6 +236,19 @@ export class FinalizeSessionsJob {
       this.stats.lastRunFinalized = 0;
       this.stats.lastRunSummaries = 0;
 
+      // First, transition 'ended' sessions to 'pending_finalize' if their finalize_at has passed
+      const transitionResult = await query(
+        `UPDATE broadcast_sessions_v2
+         SET status = 'pending_finalize', updated_at = NOW()
+         WHERE status = 'ended'
+           AND finalize_at <= NOW()
+         RETURNING id`
+      );
+      const transitioned = transitionResult.rowCount ?? 0;
+      if (transitioned > 0) {
+        logger.info(`Transitioned ${transitioned} sessions from 'ended' to 'pending_finalize'`);
+      }
+
       // Find sessions ready to finalize
       const sessionsResult = await query<SessionToFinalize>(
         `SELECT id, started_at, ended_at, last_event_at, finalize_at, ai_summary_status

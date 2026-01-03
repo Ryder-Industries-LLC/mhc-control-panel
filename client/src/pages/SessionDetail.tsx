@@ -17,7 +17,7 @@ interface Session {
   endedAt: string | null;
   lastEventAt: string;
   finalizeAt: string | null;
-  status: 'active' | 'pending_finalize' | 'finalized';
+  status: 'active' | 'ended' | 'pending_finalize' | 'finalized';
   durationMinutes: number | null;
   totalTokens: number;
   followersGained: number;
@@ -205,16 +205,22 @@ const SessionDetail: React.FC = () => {
             LIVE
           </span>
         );
+      case 'ended':
+        return (
+          <span className="px-3 py-1 rounded-full text-sm bg-orange-500/20 text-orange-400 border border-orange-500/30">
+            Ended
+          </span>
+        );
       case 'pending_finalize':
         return (
           <span className="px-3 py-1 rounded-full text-sm bg-amber-500/20 text-amber-400 border border-amber-500/30">
-            Pending Finalization
+            Processing
           </span>
         );
       case 'finalized':
         return (
           <span className="px-3 py-1 rounded-full text-sm bg-blue-500/20 text-blue-400 border border-blue-500/30">
-            Finalized
+            Complete
           </span>
         );
       default:

@@ -2,6 +2,33 @@
 
 All notable changes to MHC Control Panel will be documented in this file.
 
+## [1.21.2] - 2026-01-03
+
+### Added
+
+- **Session 'Ended' Status**: New intermediate session state between 'active' and 'pending_finalize'
+  - Broadcast stop now transitions session to 'ended' (shows as "Ended" badge in UI)
+  - Session stays in 'ended' until merge window expires, then moves to 'pending_finalize'
+  - Provides clearer feedback when broadcast has stopped but isn't yet finalized
+- **Placeholder Profile Images**: Generic profile images for users without photos
+  - Viewers: Grayscale silhouette with "Viewer" label
+  - Models: Grayscale figure with "Model" label
+  - Displayed in Profile page when no images exist
+
+### Fixed
+
+- **Finalize Sessions Job Auto-Start**: Job now automatically starts on server boot
+  - Added to core jobs list in `job-restore.service.ts`
+  - Prevents sessions from getting stuck in 'pending' status
+- **Profile Image Section Always Visible**: Image section now displays even without images
+  - Removed conditional wrapper that was hiding placeholder fallback
+- **Duplicate Interactions**: Cleaned up duplicate messages in Comms section
+
+### Changed
+
+- **Profile Overview**: Removed friend tier dropdown (Friend badge retained)
+- **Sessions UI**: Added 'Ended' status badge (orange) alongside existing Live/Processing/Complete
+
 ## [1.21.1] - 2026-01-03
 
 ### Fixed

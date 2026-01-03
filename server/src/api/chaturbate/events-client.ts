@@ -4,6 +4,7 @@ import { logger } from '../../config/logger.js';
 import { PersonService } from '../../services/person.service.js';
 import { InteractionService } from '../../services/interaction.service.js';
 import { SessionService } from '../../services/session.service.js';
+import { SessionStitcherService } from '../../services/session-stitcher.service.js';
 import { RoomVisitsService } from '../../services/room-visits.service.js';
 import { RoomPresenceService } from '../../services/room-presence.service.js';
 import { query } from '../../db/client.js';
@@ -258,17 +259,21 @@ export class ChaturbateEventsClient {
   }
 
   private async handleBroadcastStart(_event: ChaturbateEvent) {
-    // Auto-start session
+    // Auto-start session (legacy)
     const session = await SessionService.start(env.CHATURBATE_USERNAME);
     this.currentSessionId = session.id;
     logger.info(`Session auto-started: ${session.id}`);
+
+    // Also create/find v2 session
+    const sessionV2 = await SessionStitcherService.getOrCreateActiveSession();
+    logger.info(`Session v2 active: ${sessionV2.id}`);
 
     // Start room presence tracking for this session
     RoomPresenceService.startSession(session.id);
   }
 
   private async handleBroadcastStop(_event: ChaturbateEvent) {
-    // Auto-end session
+    // Auto-end session (legacy)
     if (this.currentSessionId) {
       await SessionService.end(this.currentSessionId);
       logger.info(`Session auto-ended: ${this.currentSessionId}`);
@@ -276,6 +281,13 @@ export class ChaturbateEventsClient {
 
       // End room presence tracking
       RoomPresenceService.endSession();
+    }
+
+    // End v2 session - transitions from 'active' to 'ended'
+    const activeSessionV2 = await SessionStitcherService.getActiveSession();
+    if (activeSessionV2) {
+      await SessionStitcherService.endSession(activeSessionV2.id);
+      logger.info(`Session v2 ended: ${activeSessionV2.id} (status: ended, waiting for merge window)`);
     }
   }
 

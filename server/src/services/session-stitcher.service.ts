@@ -9,7 +9,7 @@ export interface BroadcastSessionV2 {
   ended_at: Date | null;
   last_event_at: Date;
   finalize_at: Date | null;
-  status: 'active' | 'pending_finalize' | 'finalized';
+  status: 'active' | 'ended' | 'pending_finalize' | 'finalized';
   total_tokens: number;
   followers_gained: number;
   peak_viewers: number;
@@ -117,11 +117,24 @@ export class SessionStitcherService {
 
     for (const builder of sessionBuilders) {
       // Determine status and finalize_at
+      // Sessions start as 'active' when broadcasting, then move to 'ended' when broadcast stops
+      // They stay in 'ended' until finalize_at passes, then become 'pending_finalize', then 'finalized'
       const isActive = builder.ended_at === null;
-      const status = isActive ? 'active' : 'pending_finalize';
       const finalize_at = isActive
         ? null
         : new Date(builder.last_event_at.getTime() + summaryDelayMinutes * 60 * 1000);
+
+      // For sessions that have ended, check if we're past the finalize time
+      let status: 'active' | 'ended' | 'pending_finalize' | 'finalized';
+      if (isActive) {
+        status = 'active';
+      } else if (finalize_at && finalize_at <= new Date()) {
+        // Finalize time has passed, ready for finalization
+        status = 'pending_finalize';
+      } else {
+        // Ended but still within merge window
+        status = 'ended';
+      }
 
       const result = await query<BroadcastSessionV2>(
         `INSERT INTO broadcast_sessions_v2
@@ -194,7 +207,7 @@ export class SessionStitcherService {
   static async getAll(options?: {
     limit?: number;
     offset?: number;
-    status?: 'active' | 'pending_finalize' | 'finalized';
+    status?: 'active' | 'ended' | 'pending_finalize' | 'finalized';
     startDate?: Date;
     endDate?: Date;
   }): Promise<{ sessions: BroadcastSessionV2[]; total: number }> {
@@ -303,6 +316,75 @@ export class SessionStitcherService {
        WHERE id = $1
        RETURNING *`,
       [sessionId]
+    );
+    return result.rows[0] || null;
+  }
+
+  /**
+   * End a currently active session
+   * Sets ended_at, calculates finalize_at, and changes status to 'ended'
+   */
+  static async endSession(sessionId: string): Promise<BroadcastSessionV2 | null> {
+    const summaryDelayMinutes = await SettingsService.getEffectiveSummaryDelayMinutes();
+    const now = new Date();
+    const finalizeAt = new Date(now.getTime() + summaryDelayMinutes * 60 * 1000);
+
+    const result = await query<BroadcastSessionV2>(
+      `UPDATE broadcast_sessions_v2
+       SET ended_at = $2,
+           last_event_at = $2,
+           finalize_at = $3,
+           status = 'ended',
+           updated_at = NOW()
+       WHERE id = $1 AND status = 'active'
+       RETURNING *`,
+      [sessionId, now, finalizeAt]
+    );
+
+    if (result.rows[0]) {
+      logger.info(`Session ended: ${sessionId}, will finalize at ${finalizeAt.toISOString()}`);
+    }
+
+    return result.rows[0] || null;
+  }
+
+  /**
+   * Create or find the current active v2 session
+   */
+  static async getOrCreateActiveSession(): Promise<BroadcastSessionV2> {
+    // Check for existing active session
+    const existingResult = await query<BroadcastSessionV2>(
+      `SELECT * FROM broadcast_sessions_v2
+       WHERE status = 'active'
+       ORDER BY started_at DESC
+       LIMIT 1`
+    );
+
+    if (existingResult.rows[0]) {
+      return existingResult.rows[0];
+    }
+
+    // Create new session
+    const result = await query<BroadcastSessionV2>(
+      `INSERT INTO broadcast_sessions_v2
+       (started_at, last_event_at, status)
+       VALUES (NOW(), NOW(), 'active')
+       RETURNING *`
+    );
+
+    logger.info(`Created new active session: ${result.rows[0].id}`);
+    return result.rows[0];
+  }
+
+  /**
+   * Get the current active session (if any)
+   */
+  static async getActiveSession(): Promise<BroadcastSessionV2 | null> {
+    const result = await query<BroadcastSessionV2>(
+      `SELECT * FROM broadcast_sessions_v2
+       WHERE status = 'active'
+       ORDER BY started_at DESC
+       LIMIT 1`
     );
     return result.rows[0] || null;
   }

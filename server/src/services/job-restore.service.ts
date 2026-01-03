@@ -78,6 +78,19 @@ export class JobRestoreService {
       }
     }
 
+    // Auto-start finalize-sessions job if not already running
+    // This is a core job that should always be running
+    if (!restored.includes('finalize-sessions') && !failed.includes('finalize-sessions')) {
+      try {
+        logger.info('Auto-starting finalize-sessions job (core job)');
+        await finalizeSessionsJob.start();
+        restored.push('finalize-sessions (auto-started)');
+      } catch (error) {
+        failed.push('finalize-sessions (auto-start)');
+        logger.error('Failed to auto-start finalize-sessions job', { error });
+      }
+    }
+
     logger.info('Job restoration complete', {
       restored: restored.length,
       skipped: skipped.length,
