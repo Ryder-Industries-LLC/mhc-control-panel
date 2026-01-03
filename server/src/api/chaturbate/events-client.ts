@@ -166,7 +166,7 @@ export class ChaturbateEventsClient {
   }
 
   /**
-   * Log event to database
+   * Log event to database with deduplication
    */
   private async logEvent(event: ChaturbateEvent) {
     try {
@@ -180,9 +180,18 @@ export class ChaturbateEventsClient {
         username,
       });
 
+      // Use INSERT with conflict detection to prevent duplicates
+      // Duplicates are same method + username within the same minute
       await query(
         `INSERT INTO event_logs (method, broadcaster, username, raw_event)
-         VALUES ($1, $2, $3, $4)`,
+         SELECT $1, $2, $3, $4
+         WHERE NOT EXISTS (
+           SELECT 1 FROM event_logs
+           WHERE method = $1
+             AND username = $3
+             AND created_at >= DATE_TRUNC('minute', NOW())
+             AND created_at < DATE_TRUNC('minute', NOW()) + INTERVAL '1 minute'
+         )`,
         [event.method, broadcaster, username, JSON.stringify(event.object)]
       );
 
@@ -278,7 +287,8 @@ export class ChaturbateEventsClient {
 
     const person = await PersonService.findOrCreate({ username, role: 'VIEWER' });
 
-    await InteractionService.create({
+    // Use deduplication to prevent duplicate messages from event retries
+    await InteractionService.createIfNotDuplicate({
       personId: person.id,
       type: 'CHAT_MESSAGE',
       content: message,
@@ -288,7 +298,7 @@ export class ChaturbateEventsClient {
         ...event.object.user,
         broadcaster: this.username,
       },
-    });
+    }, 1); // 1 minute window for deduplication
   }
 
   private async handlePrivateMessage(event: ChaturbateEvent) {
@@ -326,7 +336,8 @@ export class ChaturbateEventsClient {
 
     const person = await PersonService.findOrCreate({ username, role: 'VIEWER' });
 
-    await InteractionService.create({
+    // Use deduplication to prevent duplicate tips from event retries
+    await InteractionService.createIfNotDuplicate({
       personId: person.id,
       type: 'TIP_EVENT',
       content: message || `Tipped ${tokens} tokens`,
@@ -338,7 +349,7 @@ export class ChaturbateEventsClient {
         ...event.object.user,
         broadcaster: this.username,
       },
-    });
+    }, 1); // 1 minute window for deduplication
   }
 
   private async handleFollow(event: ChaturbateEvent) {
@@ -347,7 +358,8 @@ export class ChaturbateEventsClient {
 
     const person = await PersonService.findOrCreate({ username, role: 'VIEWER' });
 
-    await InteractionService.create({
+    // Use deduplication to prevent duplicate follows from event retries
+    await InteractionService.createIfNotDuplicate({
       personId: person.id,
       type: 'FOLLOW',
       content: 'Followed',
@@ -357,7 +369,7 @@ export class ChaturbateEventsClient {
         ...event.object.user,
         broadcaster: this.username,
       },
-    });
+    }, 1); // 1 minute window for deduplication
   }
 
   private async handleUnfollow(event: ChaturbateEvent) {
@@ -366,7 +378,8 @@ export class ChaturbateEventsClient {
 
     const person = await PersonService.findOrCreate({ username, role: 'VIEWER' });
 
-    await InteractionService.create({
+    // Use deduplication to prevent duplicate unfollows from event retries
+    await InteractionService.createIfNotDuplicate({
       personId: person.id,
       type: 'UNFOLLOW',
       content: 'Unfollowed',
@@ -376,7 +389,7 @@ export class ChaturbateEventsClient {
         ...event.object.user,
         broadcaster: this.username,
       },
-    });
+    }, 1); // 1 minute window for deduplication
   }
 
   private async handleUserEnter(event: ChaturbateEvent) {
@@ -385,7 +398,8 @@ export class ChaturbateEventsClient {
 
     const person = await PersonService.findOrCreate({ username, role: 'VIEWER' });
 
-    await InteractionService.create({
+    // Use deduplication to prevent duplicate enter events from event retries
+    await InteractionService.createIfNotDuplicate({
       personId: person.id,
       type: 'USER_ENTER',
       content: 'Entered room',
@@ -395,7 +409,7 @@ export class ChaturbateEventsClient {
         ...event.object.user,
         broadcaster: this.username,
       },
-    });
+    }, 1); // 1 minute window for deduplication
 
     // Record room visit (this is your room, so track visits)
     // Track whether we're currently broadcasting
@@ -426,7 +440,8 @@ export class ChaturbateEventsClient {
 
     const person = await PersonService.findOrCreate({ username, role: 'VIEWER' });
 
-    await InteractionService.create({
+    // Use deduplication to prevent duplicate leave events from event retries
+    await InteractionService.createIfNotDuplicate({
       personId: person.id,
       type: 'USER_LEAVE',
       content: 'Left room',
@@ -436,7 +451,7 @@ export class ChaturbateEventsClient {
         ...event.object.user,
         broadcaster: this.username,
       },
-    });
+    }, 1); // 1 minute window for deduplication
 
     // Update room presence (for live monitor)
     try {
@@ -452,7 +467,8 @@ export class ChaturbateEventsClient {
 
     const person = await PersonService.findOrCreate({ username, role: 'VIEWER' });
 
-    await InteractionService.create({
+    // Use deduplication to prevent duplicate fanclub joins from event retries
+    await InteractionService.createIfNotDuplicate({
       personId: person.id,
       type: 'FANCLUB_JOIN',
       content: 'Joined fanclub',
@@ -462,7 +478,7 @@ export class ChaturbateEventsClient {
         ...event.object.user,
         broadcaster: this.username,
       },
-    });
+    }, 1); // 1 minute window for deduplication
   }
 
   private async handleMediaPurchase(event: ChaturbateEvent) {
@@ -471,7 +487,8 @@ export class ChaturbateEventsClient {
 
     const person = await PersonService.findOrCreate({ username, role: 'VIEWER' });
 
-    await InteractionService.create({
+    // Use deduplication to prevent duplicate media purchases from event retries
+    await InteractionService.createIfNotDuplicate({
       personId: person.id,
       type: 'MEDIA_PURCHASE',
       content: 'Purchased media',
@@ -481,7 +498,7 @@ export class ChaturbateEventsClient {
         ...event.object,
         broadcaster: this.username,
       },
-    });
+    }, 1); // 1 minute window for deduplication
   }
 }
 

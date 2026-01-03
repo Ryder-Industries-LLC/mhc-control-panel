@@ -51,6 +51,12 @@ export const roomPresenceEmitter = new RoomPresenceEmitter();
 // Users to exclude from room presence (never show in Live Monitor)
 const EXCLUDED_USERNAMES = new Set(['smk_lover']);
 
+// Track recent enter/leave events to prevent duplicate emissions
+// Key: personId, Value: timestamp of last event
+const recentEnterEvents: Map<string, number> = new Map();
+const recentLeaveEvents: Map<string, number> = new Map();
+const DEDUP_WINDOW_MS = 60000; // 1 minute deduplication window
+
 /**
  * Service to track who is currently in the room during a broadcast
  * Uses database for cross-process communication between worker and web
@@ -129,6 +135,24 @@ export class RoomPresenceService {
       return null;
     }
 
+    // Check for duplicate enter event within dedup window
+    const now = Date.now();
+    const lastEnter = recentEnterEvents.get(personId);
+    if (lastEnter && (now - lastEnter) < DEDUP_WINDOW_MS) {
+      logger.debug('Skipping duplicate user enter event', { username, personId });
+      return null;
+    }
+    recentEnterEvents.set(personId, now);
+
+    // Clean up old entries periodically (every 100 entries)
+    if (recentEnterEvents.size > 100) {
+      for (const [pid, ts] of recentEnterEvents) {
+        if (now - ts > DEDUP_WINDOW_MS) {
+          recentEnterEvents.delete(pid);
+        }
+      }
+    }
+
     try {
       // Track that this user visited this stream
       const isFirstVisitThisStream = !this.streamVisitors.has(personId);
@@ -177,6 +201,24 @@ export class RoomPresenceService {
    * Record a user leaving the room
    */
   static async userLeave(personId: string): Promise<RoomOccupantWithProfile | null> {
+    // Check for duplicate leave event within dedup window
+    const now = Date.now();
+    const lastLeave = recentLeaveEvents.get(personId);
+    if (lastLeave && (now - lastLeave) < DEDUP_WINDOW_MS) {
+      logger.debug('Skipping duplicate user leave event', { personId });
+      return null;
+    }
+    recentLeaveEvents.set(personId, now);
+
+    // Clean up old entries periodically (every 100 entries)
+    if (recentLeaveEvents.size > 100) {
+      for (const [pid, ts] of recentLeaveEvents) {
+        if (now - ts > DEDUP_WINDOW_MS) {
+          recentLeaveEvents.delete(pid);
+        }
+      }
+    }
+
     try {
       // Get user data before deleting
       const result = await query(

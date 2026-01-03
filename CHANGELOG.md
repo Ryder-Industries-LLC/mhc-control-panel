@@ -2,6 +2,23 @@
 
 All notable changes to MHC Control Panel will be documented in this file.
 
+## [1.21.1] - 2026-01-03
+
+### Fixed
+
+- **Duplicate Events**: Fixed duplicate messages appearing across all views
+  - Added deduplication to all event handlers in `events-client.ts` (tips, follows, enters, leaves, etc.)
+  - Added SQL-level deduplication for `event_logs` table inserts
+  - Added in-memory deduplication for `RoomPresenceService` SSE emissions
+  - Created cleanup scripts to remove existing duplicates from database
+- **Dashboard Activity**: Renamed "Recent Broadcast Activity" to "Broadcast Activity" and added pagination with Load More/Show Less buttons
+
+### Added
+
+- Cleanup scripts for historical duplicate data:
+  - `scripts/cleanup-duplicate-interactions.sql` - removed 2,043 duplicate interactions
+  - `scripts/cleanup-duplicate-event-logs.sql` - removed 3,041 duplicate event logs
+
 ## [1.21.0] - 2026-01-03
 
 ### Added

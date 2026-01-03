@@ -29,6 +29,8 @@ interface SessionV2 {
   aiSummaryStatus: string;
 }
 
+const ACTIVITY_PAGE_SIZE = 20;
+
 const BroadcasterDashboard: React.FC = () => {
   const [data, setData] = useState<HudsonResponse | null>(null);
   const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
@@ -39,6 +41,7 @@ const BroadcasterDashboard: React.FC = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [showRawData, setShowRawData] = useState(false);
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
+  const [activityDisplayCount, setActivityDisplayCount] = useState(ACTIVITY_PAGE_SIZE);
 
   const fetchData = async () => {
     try {
@@ -538,57 +541,83 @@ const BroadcasterDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Recent Broadcast Activity */}
-      {data.recentInteractions && getBroadcastActivity(data.recentInteractions).length > 0 && (
-        <div className="bg-mhc-surface p-6 rounded-xl mb-6 shadow-lg">
-          <h3 className="text-mhc-text mt-0 mb-5 text-xl font-semibold border-b-2 border-mhc-primary pb-2">
-            Recent Broadcast Activity ({getBroadcastActivity(data.recentInteractions).length})
-          </h3>
-          <div className="flex flex-col gap-3 max-h-[600px] overflow-y-auto">
-            {getBroadcastActivity(data.recentInteractions).slice(0, 10).map((interaction) => {
-              const username = interaction.metadata?.username as string | undefined;
-              const fromUser = interaction.metadata?.fromUser as string | undefined;
-              const toUser = interaction.metadata?.toUser as string | undefined;
+      {/* Broadcast Activity */}
+      {data.recentInteractions && getBroadcastActivity(data.recentInteractions).length > 0 && (() => {
+        const allActivity = getBroadcastActivity(data.recentInteractions);
+        const displayedActivity = allActivity.slice(0, activityDisplayCount);
+        const hasMore = allActivity.length > activityDisplayCount;
 
-              // Check if this is Hudson's own message
-              const isHudsonMessage = username === 'hudson_cage' &&
-                (interaction.type === 'CHAT_MESSAGE' || interaction.type === 'PRIVATE_MESSAGE');
+        return (
+          <div className="bg-mhc-surface p-6 rounded-xl mb-6 shadow-lg">
+            <h3 className="text-mhc-text mt-0 mb-5 text-xl font-semibold border-b-2 border-mhc-primary pb-2">
+              Broadcast Activity ({allActivity.length})
+            </h3>
+            <div className="flex flex-col gap-3">
+              {displayedActivity.map((interaction) => {
+                const username = interaction.metadata?.username as string | undefined;
+                const fromUser = interaction.metadata?.fromUser as string | undefined;
+                const toUser = interaction.metadata?.toUser as string | undefined;
 
-              const styles = getInteractionStyles(interaction.type, isHudsonMessage);
+                // Check if this is Hudson's own message
+                const isHudsonMessage = username === 'hudson_cage' &&
+                  (interaction.type === 'CHAT_MESSAGE' || interaction.type === 'PRIVATE_MESSAGE');
 
-              return (
-                <div
-                  key={interaction.id}
-                  className={`bg-mhc-surface-light p-4 rounded-md border-l-4 ${styles.border} ${styles.opacity || ''}`}
-                >
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="flex items-center gap-2">
-                      <Badge type={interaction.type} variant="interaction" size="sm" />
-                      {interaction.type === 'PRIVATE_MESSAGE' && fromUser && toUser ? (
-                        <span className="text-mhc-text text-sm">
-                          <Link to={`/?username=${fromUser}`} className="font-semibold hover:underline">{fromUser}</Link>
-                          <span className="text-mhc-text-muted mx-1">→</span>
-                          <Link to={`/?username=${toUser}`} className="font-semibold hover:underline">{toUser}</Link>
-                        </span>
-                      ) : username && username !== 'hudson_cage' ? (
-                        <Link to={`/?username=${username}`} className="text-mhc-text text-sm font-semibold hover:underline">
-                          {username}
-                        </Link>
-                      ) : (
-                        <span className="text-mhc-text-dim text-sm">{username || 'Unknown'}</span>
-                      )}
+                const styles = getInteractionStyles(interaction.type, isHudsonMessage);
+
+                return (
+                  <div
+                    key={interaction.id}
+                    className={`bg-mhc-surface-light p-4 rounded-md border-l-4 ${styles.border} ${styles.opacity || ''}`}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <div className="flex items-center gap-2">
+                        <Badge type={interaction.type} variant="interaction" size="sm" />
+                        {interaction.type === 'PRIVATE_MESSAGE' && fromUser && toUser ? (
+                          <span className="text-mhc-text text-sm">
+                            <Link to={`/?username=${fromUser}`} className="font-semibold hover:underline">{fromUser}</Link>
+                            <span className="text-mhc-text-muted mx-1">→</span>
+                            <Link to={`/?username=${toUser}`} className="font-semibold hover:underline">{toUser}</Link>
+                          </span>
+                        ) : username && username !== 'hudson_cage' ? (
+                          <Link to={`/?username=${username}`} className="text-mhc-text text-sm font-semibold hover:underline">
+                            {username}
+                          </Link>
+                        ) : (
+                          <span className="text-mhc-text-dim text-sm">{username || 'Unknown'}</span>
+                        )}
+                      </div>
+                      <span className="text-mhc-text-dim text-xs">{formatMilitaryTime(interaction.timestamp)}</span>
                     </div>
-                    <span className="text-mhc-text-dim text-xs">{formatMilitaryTime(interaction.timestamp)}</span>
+                    {interaction.content && (
+                      <div className="text-gray-300 leading-relaxed text-sm">{interaction.content}</div>
+                    )}
                   </div>
-                  {interaction.content && (
-                    <div className="text-gray-300 leading-relaxed text-sm">{interaction.content}</div>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+            {hasMore && (
+              <div className="mt-4 text-center">
+                <button
+                  onClick={() => setActivityDisplayCount(prev => prev + ACTIVITY_PAGE_SIZE)}
+                  className="bg-mhc-surface-light text-mhc-text-muted border border-gray-600 px-6 py-2 rounded-md text-sm cursor-pointer transition-all hover:bg-gray-600 hover:border-mhc-primary hover:text-white"
+                >
+                  Load More ({allActivity.length - activityDisplayCount} remaining)
+                </button>
+              </div>
+            )}
+            {activityDisplayCount > ACTIVITY_PAGE_SIZE && (
+              <div className="mt-2 text-center">
+                <button
+                  onClick={() => setActivityDisplayCount(ACTIVITY_PAGE_SIZE)}
+                  className="text-mhc-text-muted text-sm hover:text-mhc-primary transition-colors"
+                >
+                  Show Less
+                </button>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {data && (
         <div className="mt-5">
