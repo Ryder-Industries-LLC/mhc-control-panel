@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-02
+**Last Updated**: 2026-01-03
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -11,77 +11,89 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 ### /visitors
 
 - [ ] Review new /visitors page
-- [x] Fix offline visitors *(v1.18.0)*
+- [x] Fix offline visitors _(v1.18.0)_
 
 ### /profile - Info Card
 
-- [ ] If DOM or SUB, add a badge to the user profile overview card
-- [x] Instead of centering Model and Follower count on profile overview card, make it left aligned *(v1.18.0)*
+- [x] If DOM or SUB, add a badge to the user profile overview card _(v1.20.0 - added role badges for Sub, Dom, Friend, Custom with status indicators)_
+- [x] Instead of centering Model and Follower count on profile overview card, make it left aligned _(v1.18.0)_
 
 ### /profile - Snapshot
 
-- [x] Latest snapshot should not say "LIVE SESSION" if the user is not live, use "LAST SESSION" instead *(v1.18.0)*
-- [x] Combine snapshot and profile tabs *(v1.18.0 - merged Snapshot + Profile + History into "Profile" tab)*
-- [x] Rename "History" tab *(v1.18.0 - merged into collapsible "Member History" section)*
+- [x] Latest snapshot should not say "LIVE SESSION" if the user is not live, use "LAST SESSION" instead _(v1.18.0)_
+- [x] Combine snapshot and profile tabs _(v1.18.0 - merged Snapshot + Profile + History into "Profile" tab)_
+- [x] Rename "History" tab _(v1.18.0 - merged into collapsible "Member History" section)_
 
 ### /profile - Communications
 
-- [x] Add "Show Raw Data" toggle on Communications tab *(v1.18.0)*
+- [x] Add "Show Raw Data" toggle on Communications tab _(v1.18.0)_
 
 ### /admin
 
-- [x] Add Active Doms as a stat card for user segments *(v1.18.0)*
-- [x] Add Watchlist as a user segment stat *(v1.18.0)*
-- [x] Add image storage size as well as database size to Admin page *(v1.19.0)*
+- [x] Add Active Doms as a stat card for user segments _(v1.18.0)_
+- [x] Add Watchlist as a user segment stat _(v1.18.0)_
+- [x] Add image storage size as well as database size to Admin page _(v1.19.0)_
 
 ---
 
 ## Bug Fixes (Medium Effort / Medium Risk)
 
 ### /profile - Communications
+
 - [ ] The Communications direction is backwards - PMs in "hudson_cage's Room" are actually PMs in "username's room"
   - [ ] Create test cases to verify correct behavior
   - [ ] PMs in Hudson_cage's room are also showing direct messages in PMs - needs fix
-- [x] Investigate why there are duplicate messages in Communications PMs *(v1.19.0 - added deduplication to InteractionService)*
+- [x] Investigate why there are duplicate messages in Communications PMs _(v1.19.0 - added deduplication to InteractionService)_
 
 ### /profile - Images
+
 - [ ] `/profile/mrleather` Images tab says (6) but only 3 images are showing - investigate mismatch
 
 ### /profile - Interactions
+
 - [ ] Fix Interactions messages to be more like the PMs in hudson_cage's Room (See profile/danbury44)
 
-### /broadcasts
-- [x] My Broadcasts is missing January 1 broadcast - investigate missing data *(v1.19.0 - added server-side date filtering)*
-- [x] Total Broadcasts says 3 for this month but only 2 are showing *(v1.19.0 - changed from hourly to 10-minute dedup buckets)*
-- [x] Total Tokens, Avg Viewers, Peak Viewers and Followers are showing zero/non-zero data incorrectly *(v1.19.0 - excluded zeros from averages)*
+### /sessions
+
+- [x] My Broadcasts is missing January 1 broadcast - investigate missing data _(v1.19.0 - added server-side date filtering)_
+- [x] Total Broadcasts says 3 for this month but only 2 are showing _(v1.19.0 - changed from hourly to 10-minute dedup buckets)_
+- [x] Total Tokens, Avg Viewers, Peak Viewers and Followers are showing zero/non-zero data incorrectly _(v1.19.0 - excluded zeros from averages)_
+- [x] Broadcast stats staying at 0, missing sessions, session merging rules _(v1.21.0 - new sessions-v2 system with rollups from events)_
+- [x] AI summary timing issue _(v1.21.0 - finalize_at computed from merge gap)_
 
 ---
 
 ## Feature Enhancements (Medium Effort)
 
 ### /profile - Timeline
+
 - [ ] Fix/add Private Message From/To indicator (like on Communications)
-- [x] Add ability to filter the Activity timeline by Event Type *(v1.19.0)*
+- [x] Add ability to filter the Activity timeline by Event Type _(v1.19.0)_
 
 ### /profile - Communications
+
 - [ ] Add ability to add manual DM or PMs in each tab in Communications
 
 ### /profile - Notes
+
 - [ ] Rework the Notes section - move the Notes Add field below the Notes list with 2 levels:
   - Expand Notes
     - Collapsible Section of Previous Notes - most recent note shows snippet with expand option
     - Add Notes Field
 
-### /broadcasts
+### /sessions (formerly /broadcasts)
 
-- [x] If Broadcasts are within 10 minutes of each other, merge those together *(v1.19.0 - auto-merges in 10-minute buckets)*
-- [ ] Should be able to expand Broadcasts and see the full history and chat threads
-- [ ] Fix auto-generated summaries
+- [x] If Broadcasts are within 10 minutes of each other, merge those together _(v1.19.0 - auto-merges in 10-minute buckets)_
+- [x] Session merging with configurable gap _(v1.21.0 - 30-minute merge gap, configurable in settings)_
+- [x] Should be able to expand Broadcasts and see the full history and chat threads _(v1.21.0 - SessionDetail page with Events tab)_
+- [ ] Fix auto-generated summaries (AI summary infrastructure in place, needs Claude API integration)
 
 ### /events
+
 - [ ] Rework the page, maybe more like timeline
 
 ### /admin
+
 - [ ] Verify Active Subs are actually active
 - [ ] Consider moving datasources and merging that with Jobs management page
 - [ ] Add settings page feature that allows you to set API keys and environment variables including ability to upload a logo to replace the main page logo
@@ -91,12 +103,15 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 ## New Features (Higher Effort)
 
 ### /profile - Interactions
+
 - [ ] Plan new feature for adding multiple external video links (e.g., to embed videos from x.com/jayksmoker)
 
 ### /profile - Images
+
 - [ ] Look at scraping CB API for images on profile pages and pull images, tagging them as "profile" type
 
 ### Stats & Data Sources
+
 - [ ] Identify exactly what data is coming from Statbate that we can't get elsewhere (subscription expires soon)
 - [ ] See what is pulling from CB Hours, CB Rewards, etc. - investigate if we can get more data
 
@@ -105,6 +120,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 ## Research Tasks (Investigation Needed)
 
 ### Scraping & Data Import
+
 - [ ] Research if we can scrape CB to pull Direct Messages and save to profile
 - [ ] Research if we can scrape Chaturbate to pull Notes from username
   - This will be tricky but we should be able to go to the DM interface, search for the user, click on the user, and see the notes
@@ -115,12 +131,14 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 ## Major Features (High Effort / Higher Risk)
 
 ### Authentication
+
 - [ ] Add Register/Signup/Login functionality
 - [ ] Include login options: Email, Google, Facebook, Apple, X
 
 ---
 
 ## Testing
+
 - [ ] Finish testing previous pages
 - [ ] /profile - Communications: Create test cases for PM direction fix
 

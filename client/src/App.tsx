@@ -9,6 +9,9 @@ import Profile from './pages/Profile';
 import MyBroadcasts from './pages/MyBroadcasts';
 import LiveMonitor from './pages/LiveMonitor';
 import Visitors from './pages/Visitors';
+import Sessions from './pages/Sessions';
+import SessionDetail from './pages/SessionDetail';
+import Inbox from './pages/Inbox';
 import GlobalLookup from './components/GlobalLookup';
 
 function App() {
@@ -29,26 +32,17 @@ function App() {
               <GlobalLookup inline />
             </div>
             <div className="flex gap-6 items-center">
-              <Link to="/" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
-                Users
-              </Link>
-              <Link to="/profile" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
-                Profile
-              </Link>
               <Link to="/dashboard" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Dashboard
               </Link>
-              <Link to="/broadcasts" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
-                Broadcasts
+              <Link to="/sessions" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
+                Sessions
               </Link>
-              <Link to="/events" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
-                Events
+              <Link to="/inbox" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
+                Inbox
               </Link>
-              <Link to="/live" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
-                Live
-              </Link>
-              <Link to="/visitors" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
-                Visitors
+              <Link to="/people" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
+                People
               </Link>
               <Link to="/admin" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Admin
@@ -59,12 +53,17 @@ function App() {
 
         <main className="flex-1 p-5">
           <Routes>
-            <Route path="/" element={<Users />} />
-            <Route path="/profile" element={<Profile />} />
-            <Route path="/profile/:username" element={<Profile />} />
+            <Route path="/" element={<BroadcasterDashboard />} />
             <Route path="/dashboard" element={<BroadcasterDashboard />} />
             <Route path="/hudson" element={<BroadcasterDashboard />} /> {/* Alias for backwards compatibility */}
-            <Route path="/broadcasts" element={<MyBroadcasts />} />
+            <Route path="/sessions" element={<Sessions />} />
+            <Route path="/sessions/:id" element={<SessionDetail />} />
+            <Route path="/inbox" element={<Inbox />} />
+            <Route path="/people" element={<Users />} />
+            <Route path="/people/:username" element={<Profile />} />
+            <Route path="/profile" element={<Profile />} /> {/* Alias for backwards compatibility */}
+            <Route path="/profile/:username" element={<Profile />} /> {/* Alias for backwards compatibility */}
+            <Route path="/broadcasts" element={<MyBroadcasts />} /> {/* Legacy route */}
             <Route path="/events" element={<EventsFeed />} />
             <Route path="/live" element={<LiveMonitor />} />
             <Route path="/visitors" element={<Visitors />} />

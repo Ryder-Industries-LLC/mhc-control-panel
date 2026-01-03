@@ -10,6 +10,7 @@ import { affiliatePollingJob } from '../jobs/affiliate-polling.job.js';
 import { profileScrapeJob } from '../jobs/profile-scrape.job.js';
 import { cbhoursPollingJob } from '../jobs/cbhours-polling.job.js';
 import { statbateRefreshJob } from '../jobs/statbate-refresh.job.js';
+import { finalizeSessionsJob } from '../jobs/finalize-sessions.job.js';
 import { logger } from '../config/logger.js';
 
 export class JobRestoreService {
@@ -26,6 +27,7 @@ export class JobRestoreService {
         profileScrapeJob.init(),
         cbhoursPollingJob.init(),
         statbateRefreshJob.init(),
+        finalizeSessionsJob.init(),
       ]);
       logger.info('All job state records initialized');
     } catch (error) {
@@ -57,6 +59,7 @@ export class JobRestoreService {
       { name: 'profile-scrape', job: profileScrapeJob },
       { name: 'cbhours-polling', job: cbhoursPollingJob },
       { name: 'statbate-refresh', job: statbateRefreshJob },
+      { name: 'finalize-sessions', job: finalizeSessionsJob },
     ];
 
     for (const { name, job } of jobs) {
@@ -96,6 +99,7 @@ export class JobRestoreService {
       profileScrapeJob.stop(),
       cbhoursPollingJob.stop(),
       statbateRefreshJob.stop(),
+      finalizeSessionsJob.stop(),
     ]);
 
     logger.info('All jobs stopped');
@@ -114,6 +118,7 @@ export class JobRestoreService {
       profileScrapeJob.halt(),
       cbhoursPollingJob.halt(),
       statbateRefreshJob.halt(),
+      finalizeSessionsJob.halt(),
     ]);
 
     logger.info('All jobs halted');

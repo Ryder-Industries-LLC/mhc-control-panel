@@ -11,6 +11,7 @@
     "start": "node dist/index.js",
     "worker": "node dist/worker.js",
     "migrate": "node dist/db/migrate.js",
+    "rebuild:sessions": "node dist/commands/rebuild-sessions.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint server/src --ext .ts",

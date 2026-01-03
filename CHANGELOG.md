@@ -2,6 +2,60 @@
 
 All notable changes to MHC Control Panel will be documented in this file.
 
+## [1.21.0] - 2026-01-03
+
+### Added
+
+- **Sessions Page** (`/sessions`): New broadcast sessions system with real stats from Events API
+  - Sessions list with date range filters and pagination
+  - Session detail view with Summary, Events, and Audience tabs
+  - Stats computed from actual events: tokens, followers, peak/avg viewers, unique visitors
+  - AI summary generation support
+  - Rebuild Sessions button for reprocessing from events
+- **Inbox Page** (`/inbox`): Dedicated threaded PM interface
+  - Conversation list grouped by user
+  - Message view with chat-style bubbles
+  - Search across all messages
+  - Stats display (total messages, conversations, sent/received)
+- **Dashboard Updates**: Enhanced homepage with session-based KPIs
+  - Live Status Widget: Shows when broadcasting with real-time stats
+  - Monthly Stats: 30-day summary from sessions-v2 API
+  - Recent Sessions: Quick links to latest broadcasts
+- **Backend Services**:
+  - `segment-builder.service.ts`: Creates segments from broadcastStart/Stop events
+  - `session-stitcher.service.ts`: Merges segments within 30-minute gap
+  - `rollups.service.ts`: Computes session stats from events
+  - `settings.service.ts`: App settings management (merge gap, AI delay)
+  - `finalize-sessions.job.ts`: Background job for session finalization
+- **New API Endpoints**:
+  - `GET/POST /api/sessions-v2`: Sessions CRUD with stats
+  - `GET /api/sessions-v2/current`: Active session
+  - `GET /api/sessions-v2/stats`: Aggregate statistics
+  - `POST /api/sessions-v2/rebuild`: Rebuild from events
+  - `GET/PUT /api/settings`: App settings
+  - `GET /api/inbox/threads`: PM conversations
+  - `GET /api/inbox/thread/:username`: Messages with user
+  - `GET /api/inbox/stats`: PM statistics
+  - `GET /api/inbox/search`: Search messages
+- **Database Migrations** (043-045):
+  - `app_settings` table for configurable settings
+  - `broadcast_segments` table for individual broadcast periods
+  - `broadcast_sessions_v2` table with rollup columns
+  - Event linkage columns (`segment_id`, `session_id`)
+- Rebuild sessions command: `npm run rebuild:sessions`
+
+### Changed
+
+- **Navigation**: Simplified to Dashboard | Sessions | Inbox | People | Admin
+- **Homepage**: Dashboard is now the default route (`/`)
+- **People Page**: Renamed from Users, available at `/people`
+- Routes reorganized with backwards-compatible aliases
+
+### Deprecated
+
+- `/broadcasts` route (redirects to legacy MyBroadcasts, will be removed)
+- Old `stream_sessions` table (kept during transition)
+
 ## [1.20.0] - 2026-01-02
 
 ### Added

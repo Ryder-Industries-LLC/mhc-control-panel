@@ -20,6 +20,9 @@ import broadcastsRoutes from './routes/broadcasts.js';
 import roomPresenceRoutes from './routes/room-presence.js';
 import visitorsRoutes from './routes/visitors.js';
 import relationshipRoutes from './routes/relationship.js';
+import sessionsV2Routes from './routes/sessions-v2.js';
+import settingsRoutes from './routes/settings.js';
+import inboxRoutes from './routes/inbox.js';
 
 export function createApp() {
   const app = express();
@@ -70,6 +73,9 @@ export function createApp() {
   app.use('/api/room/presence', roomPresenceRoutes);
   app.use('/api/visitors', visitorsRoutes);
   app.use('/api/relationship', relationshipRoutes);
+  app.use('/api/sessions-v2', sessionsV2Routes);
+  app.use('/api/settings', settingsRoutes);
+  app.use('/api/inbox', inboxRoutes);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

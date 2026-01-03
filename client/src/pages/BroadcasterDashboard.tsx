@@ -1,12 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, HudsonResponse, Session, Interaction } from '../api/client';
-import { formatDate, formatNumber, formatFullDate, formatMilitaryTime } from '../utils/formatting';
+import { formatDate, formatNumber, formatFullDate, formatMilitaryTime, formatDuration } from '../utils/formatting';
 import Badge from '../components/Badge';
 // Hudson.css removed - fully migrated to Tailwind CSS
 
+interface SessionStats {
+  totalSessions: number;
+  totalTokens: number;
+  totalFollowers: number;
+  avgViewers: number;
+  peakViewers: number;
+  totalMinutes: number;
+}
+
+interface SessionV2 {
+  id: string;
+  startedAt: string;
+  endedAt: string | null;
+  status: 'active' | 'pending_finalize' | 'finalized';
+  durationMinutes: number | null;
+  totalTokens: number;
+  followersGained: number;
+  peakViewers: number;
+  avgViewers: number;
+  uniqueVisitors: number;
+  aiSummary: string | null;
+  aiSummaryStatus: string;
+}
+
 const BroadcasterDashboard: React.FC = () => {
   const [data, setData] = useState<HudsonResponse | null>(null);
+  const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
+  const [currentSession, setCurrentSession] = useState<SessionV2 | null>(null);
+  const [recentSessions, setRecentSessions] = useState<SessionV2[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -16,8 +43,30 @@ const BroadcasterDashboard: React.FC = () => {
   const fetchData = async () => {
     try {
       setError(null);
-      const result = await api.getHudson();
-      setData(result);
+
+      // Fetch all data in parallel
+      const [hudsonResult, statsRes, currentRes, sessionsRes] = await Promise.all([
+        api.getHudson(),
+        fetch('/api/sessions-v2/stats?days=30'),
+        fetch('/api/sessions-v2/current'),
+        fetch('/api/sessions-v2?limit=5'),
+      ]);
+
+      setData(hudsonResult);
+
+      if (statsRes.ok) {
+        setSessionStats(await statsRes.json());
+      }
+
+      if (currentRes.ok) {
+        const currentData = await currentRes.json();
+        setCurrentSession(currentData.session || null);
+      }
+
+      if (sessionsRes.ok) {
+        const sessionsData = await sessionsRes.json();
+        setRecentSessions(sessionsData.sessions || []);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch data');
     } finally {
@@ -38,15 +87,6 @@ const BroadcasterDashboard: React.FC = () => {
 
     return () => clearInterval(interval);
   }, [autoRefresh]);
-
-  const formatDuration = (startedAt: string, endedAt: string | null) => {
-    const start = new Date(startedAt).getTime();
-    const end = endedAt ? new Date(endedAt).getTime() : Date.now();
-    const durationMs = end - start;
-    const hours = Math.floor(durationMs / (1000 * 60 * 60));
-    const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours}h ${minutes}m`;
-  };
 
   // Get interaction-specific styles
   const getInteractionStyles = (type: string, isHudson: boolean) => {
@@ -180,44 +220,120 @@ const BroadcasterDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Current Session */}
-      {data.currentSession && !data.currentSession.ended_at && (
-        <div className="bg-mhc-surface p-6 rounded-xl mb-6 shadow-lg border-2 border-emerald-500">
-          <h2 className="text-emerald-500 mt-0 mb-5 text-3xl font-bold">🔴 Live Now</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="flex justify-between p-3 bg-mhc-surface-light rounded-md">
-              <span className="text-mhc-text-muted font-medium text-sm">Started:</span>
-              <span className="text-mhc-text font-semibold">{formatDate(data.currentSession.started_at)}</span>
+      {/* Live Status Widget */}
+      {currentSession && currentSession.status === 'active' && (
+        <Link to={`/sessions/${currentSession.id}`} className="block no-underline">
+          <div className="bg-mhc-surface p-6 rounded-xl mb-6 shadow-lg border-2 border-emerald-500 hover:border-emerald-400 transition-colors cursor-pointer">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-emerald-500 m-0 text-2xl font-bold flex items-center gap-3">
+                <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
+                Live Now
+              </h2>
+              <span className="text-white/60 text-sm">Click to view session details →</span>
             </div>
-            <div className="flex justify-between p-3 bg-mhc-surface-light rounded-md">
-              <span className="text-mhc-text-muted font-medium text-sm">Duration:</span>
-              <span className="text-mhc-text font-semibold">{formatDuration(data.currentSession.started_at, data.currentSession.ended_at)}</span>
-            </div>
-          </div>
-
-          {data.currentSessionStats && (
-            <div className="mt-5 pt-5 border-t border-mhc-surface-light">
-              <h3 className="text-mhc-text mt-0 mb-4 text-lg font-semibold">Session Stats</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="flex flex-col p-4 bg-mhc-surface-light rounded-md">
-                  <span className="text-mhc-text-muted font-medium text-sm mb-2">Total Tips</span>
-                  <span className="text-mhc-text font-semibold text-2xl">{formatNumber(data.currentSessionStats.totalTips)}</span>
-                </div>
-                <div className="flex flex-col p-4 bg-mhc-surface-light rounded-md">
-                  <span className="text-mhc-text-muted font-medium text-sm mb-2">Total Interactions</span>
-                  <span className="text-mhc-text font-semibold text-2xl">{formatNumber(data.currentSessionStats.totalInteractions)}</span>
-                </div>
-                <div className="flex flex-col p-4 bg-mhc-surface-light rounded-md">
-                  <span className="text-mhc-text-muted font-medium text-sm mb-2">Unique Users</span>
-                  <span className="text-mhc-text font-semibold text-2xl">{formatNumber(data.currentSessionStats.uniqueUsers)}</span>
-                </div>
-                <div className="flex flex-col p-4 bg-mhc-surface-light rounded-md">
-                  <span className="text-mhc-text-muted font-medium text-sm mb-2">Duration (min)</span>
-                  <span className="text-mhc-text font-semibold text-2xl">{formatNumber(data.currentSessionStats.durationMinutes || 0)}</span>
-                </div>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="flex flex-col p-3 bg-mhc-surface-light rounded-md">
+                <span className="text-mhc-text-muted font-medium text-xs mb-1">Started</span>
+                <span className="text-mhc-text font-semibold">{formatMilitaryTime(currentSession.startedAt)}</span>
+              </div>
+              <div className="flex flex-col p-3 bg-mhc-surface-light rounded-md">
+                <span className="text-mhc-text-muted font-medium text-xs mb-1">Duration</span>
+                <span className="text-mhc-text font-semibold">{formatDuration(currentSession.durationMinutes || 0)}</span>
+              </div>
+              <div className="flex flex-col p-3 bg-mhc-surface-light rounded-md">
+                <span className="text-mhc-text-muted font-medium text-xs mb-1">Tokens</span>
+                <span className="text-amber-400 font-semibold">{currentSession.totalTokens.toLocaleString()}</span>
+              </div>
+              <div className="flex flex-col p-3 bg-mhc-surface-light rounded-md">
+                <span className="text-mhc-text-muted font-medium text-xs mb-1">Followers</span>
+                <span className={`font-semibold ${currentSession.followersGained >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {currentSession.followersGained >= 0 ? '+' : ''}{currentSession.followersGained}
+                </span>
+              </div>
+              <div className="flex flex-col p-3 bg-mhc-surface-light rounded-md">
+                <span className="text-mhc-text-muted font-medium text-xs mb-1">Peak Viewers</span>
+                <span className="text-blue-400 font-semibold">{currentSession.peakViewers}</span>
               </div>
             </div>
-          )}
+          </div>
+        </Link>
+      )}
+
+      {/* Monthly Stats (from sessions-v2) */}
+      {sessionStats && (
+        <div className="bg-mhc-surface p-6 rounded-xl mb-6 shadow-lg">
+          <div className="flex justify-between items-center mb-5">
+            <h2 className="text-mhc-text m-0 text-xl font-semibold">Last 30 Days</h2>
+            <Link to="/sessions" className="text-mhc-primary text-sm hover:underline">View all sessions →</Link>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="flex flex-col p-4 bg-mhc-surface-light rounded-md text-center">
+              <span className="text-2xl font-bold text-mhc-primary">{sessionStats.totalSessions}</span>
+              <span className="text-mhc-text-muted font-medium text-xs uppercase">Sessions</span>
+            </div>
+            <div className="flex flex-col p-4 bg-mhc-surface-light rounded-md text-center">
+              <span className="text-2xl font-bold text-mhc-primary">{formatDuration(sessionStats.totalMinutes)}</span>
+              <span className="text-mhc-text-muted font-medium text-xs uppercase">Total Time</span>
+            </div>
+            <div className="flex flex-col p-4 bg-mhc-surface-light rounded-md text-center">
+              <span className="text-2xl font-bold text-amber-400">{sessionStats.totalTokens.toLocaleString()}</span>
+              <span className="text-mhc-text-muted font-medium text-xs uppercase">Tokens</span>
+            </div>
+            <div className="flex flex-col p-4 bg-mhc-surface-light rounded-md text-center">
+              <span className="text-2xl font-bold text-blue-400">{Math.round(sessionStats.avgViewers)}</span>
+              <span className="text-mhc-text-muted font-medium text-xs uppercase">Avg Viewers</span>
+            </div>
+            <div className="flex flex-col p-4 bg-mhc-surface-light rounded-md text-center">
+              <span className="text-2xl font-bold text-blue-400">{sessionStats.peakViewers}</span>
+              <span className="text-mhc-text-muted font-medium text-xs uppercase">Peak Viewers</span>
+            </div>
+            <div className="flex flex-col p-4 bg-mhc-surface-light rounded-md text-center">
+              <span className={`text-2xl font-bold ${sessionStats.totalFollowers >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {sessionStats.totalFollowers >= 0 ? '+' : ''}{sessionStats.totalFollowers}
+              </span>
+              <span className="text-mhc-text-muted font-medium text-xs uppercase">Followers</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recent Sessions Quick Links */}
+      {recentSessions.length > 0 && (
+        <div className="bg-mhc-surface p-6 rounded-xl mb-6 shadow-lg">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-mhc-text m-0 text-xl font-semibold">Recent Sessions</h2>
+            <Link to="/sessions" className="text-mhc-primary text-sm hover:underline">View all →</Link>
+          </div>
+          <div className="space-y-2">
+            {recentSessions.slice(0, 3).map(session => (
+              <Link
+                key={session.id}
+                to={`/sessions/${session.id}`}
+                className="block p-4 bg-mhc-surface-light rounded-lg hover:bg-white/10 transition-colors no-underline"
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="text-white font-medium">{formatFullDate(session.startedAt)}</span>
+                    <span className="text-white/60 text-sm ml-3">
+                      {formatMilitaryTime(session.startedAt)}
+                      {session.endedAt && ` - ${formatMilitaryTime(session.endedAt)}`}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm">
+                    <span className="text-amber-400">{session.totalTokens.toLocaleString()} tokens</span>
+                    <span className={session.followersGained >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                      {session.followersGained >= 0 ? '+' : ''}{session.followersGained} followers
+                    </span>
+                    {session.status === 'active' && (
+                      <span className="px-2 py-0.5 rounded text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        LIVE
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
       )}
 
