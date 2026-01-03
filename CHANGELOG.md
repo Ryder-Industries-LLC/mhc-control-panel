@@ -2,6 +2,44 @@
 
 All notable changes to MHC Control Panel will be documented in this file.
 
+## [1.20.0] - 2026-01-02
+
+### Added
+
+- Unified Relationship Model: Merged Dom, Sub, Friend into single relationship record per profile
+  - Multi-select roles (Dom, Sub, Friend, Custom) with custom role label support
+  - Status tracking: Potential, Occasional, Active, On Hold, Inactive, Decommissioned, Banished
+  - Traits multi-select with seed suggestions and custom values
+  - Since/Until date tracking (DATE only)
+  - Notes field
+- Profile Names section: New collapsible section for identity management
+  - IRL Name (private, never displayed publicly)
+  - Identity Name (safe to display)
+  - Address As terms (Sir, Pup, Master, etc.) with predefined + custom options
+- Relationship History tracking: Automatic change logging for status, roles, and dates
+  - Collapsible history viewer with field type and time range filters
+  - Roles changes shown as Added/Removed diffs
+- New API endpoints:
+  - `GET/PUT/DELETE /api/profile/:username/relationship` - Unified relationship CRUD
+  - `GET /api/profile/:username/relationship/history` - History with filters
+  - `GET/PATCH /api/profile/:username/names` - Profile names
+  - `GET /api/relationship/seeds` - Trait and address term suggestions
+- Database migrations (039-042): Seed tables, relationships, history, and data migration
+- Profile header: Role badges (Sub, Dom, Friend, Custom) with status indicators
+
+### Changed
+
+- Profile page: Separated Flags, Names, and Relationship into distinct collapsible sections
+- Badge display: Status takes visual precedence, Banished shows red emphasis
+- Legacy service relationships: Shown in deprecated section during transition period
+
+### Migration
+
+- Automatic data migration from `service_relationships` and `friend_tier` to new unified model
+- Status mapping: Current/Actively Serving → Active, Paused → On Hold, Ended → Inactive
+- Combined roles when user had both Sub+Dom or Sub+Friend relationships
+- Initial history entries created with `migration_042` source
+
 ## [1.19.0] - 2026-01-02
 
 ### Added

@@ -375,4 +375,108 @@ export class ProfileService {
       throw error;
     }
   }
+
+  /**
+   * Get profile names (irl_name, identity_name, address_as)
+   */
+  static async getNames(profileId: number): Promise<{
+    irl_name: string | null;
+    identity_name: string | null;
+    address_as: string[];
+  } | null> {
+    const sql = `SELECT irl_name, identity_name, address_as FROM profiles WHERE id = $1`;
+
+    try {
+      const result = await query(sql, [profileId]);
+      if (result.rows.length === 0) {
+        return null;
+      }
+      const row = result.rows[0];
+      return {
+        irl_name: row.irl_name,
+        identity_name: row.identity_name,
+        address_as: row.address_as || [],
+      };
+    } catch (error) {
+      logger.error('Error getting profile names', { error, profileId });
+      throw error;
+    }
+  }
+
+  /**
+   * Update profile names (irl_name, identity_name, address_as)
+   */
+  static async updateNames(
+    profileId: number,
+    names: {
+      irl_name?: string | null;
+      identity_name?: string | null;
+      address_as?: string[];
+    }
+  ): Promise<{
+    irl_name: string | null;
+    identity_name: string | null;
+    address_as: string[];
+  }> {
+    // Build dynamic update
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    if ('irl_name' in names) {
+      setClauses.push(`irl_name = $${paramIndex++}`);
+      values.push(names.irl_name?.trim() || null);
+    }
+
+    if ('identity_name' in names) {
+      setClauses.push(`identity_name = $${paramIndex++}`);
+      values.push(names.identity_name?.trim() || null);
+    }
+
+    if ('address_as' in names) {
+      setClauses.push(`address_as = $${paramIndex++}`);
+      // Normalize: trim, filter empty, dedupe
+      const normalized = (names.address_as || [])
+        .map((t) => t.trim())
+        .filter((t) => t !== '')
+        .filter((t, i, arr) => arr.indexOf(t) === i);
+      values.push(normalized);
+    }
+
+    if (setClauses.length === 0) {
+      // Nothing to update, just return current values
+      const current = await this.getNames(profileId);
+      if (!current) {
+        throw new Error('Profile not found');
+      }
+      return current;
+    }
+
+    setClauses.push(`updated_at = NOW()`);
+    values.push(profileId);
+
+    const sql = `
+      UPDATE profiles
+      SET ${setClauses.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING irl_name, identity_name, address_as
+    `;
+
+    try {
+      const result = await query(sql, values);
+      if (result.rows.length === 0) {
+        throw new Error('Profile not found');
+      }
+      const row = result.rows[0];
+      logger.info('Profile names updated', { profileId });
+      return {
+        irl_name: row.irl_name,
+        identity_name: row.identity_name,
+        address_as: row.address_as || [],
+      };
+    } catch (error) {
+      logger.error('Error updating profile names', { error, profileId });
+      throw error;
+    }
+  }
 }

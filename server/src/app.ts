@@ -19,6 +19,7 @@ import systemRoutes from './routes/system.js';
 import broadcastsRoutes from './routes/broadcasts.js';
 import roomPresenceRoutes from './routes/room-presence.js';
 import visitorsRoutes from './routes/visitors.js';
+import relationshipRoutes from './routes/relationship.js';
 
 export function createApp() {
   const app = express();
@@ -68,6 +69,7 @@ export function createApp() {
   app.use('/api/broadcasts', broadcastsRoutes);
   app.use('/api/room/presence', roomPresenceRoutes);
   app.use('/api/visitors', visitorsRoutes);
+  app.use('/api/relationship', relationshipRoutes);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

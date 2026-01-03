@@ -9,6 +9,9 @@ import { CommsSection } from '../components/profile/CommsSection';
 import { TimelineTab } from '../components/profile/TimelineTab';
 import { InteractionsTab } from '../components/profile/InteractionsTab';
 import { HistoryTab } from '../components/profile/HistoryTab';
+import { RelationshipEditor, type Relationship, type RelationshipTraitSeed } from '../components/RelationshipEditor';
+import { NamesEditor, type ProfileNames, type AddressTermSeed } from '../components/NamesEditor';
+import { RelationshipHistoryViewer } from '../components/RelationshipHistoryViewer';
 // Profile.css removed - fully migrated to Tailwind CSS
 
 interface ProfilePageProps {}
@@ -82,8 +85,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [imageHistory, setImageHistory] = useState<ImageHistoryItem[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  const [relationshipTab, setRelationshipTab] = useState<'flags' | 'sub' | 'dom'>('flags');
-
   // Notes and status state
   const [profileNotes, setProfileNotes] = useState<ProfileNote[]>([]);
   const [notesLoading, setNotesLoading] = useState(false);
@@ -122,9 +123,19 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
   const [socialLinksLoading, setSocialLinksLoading] = useState(false);
 
-  // Service relationships state
+  // Service relationships state (legacy - kept for backward compatibility during transition)
   const [serviceRelationships, setServiceRelationships] = useState<ServiceRelationship[]>([]);
   const [serviceRelationshipsLoading, setServiceRelationshipsLoading] = useState(false);
+
+  // Unified relationship state (new)
+  const [relationship, setRelationship] = useState<Relationship | null>(null);
+  const [relationshipLoading, setRelationshipLoading] = useState(false);
+  const [traitSeeds, setTraitSeeds] = useState<RelationshipTraitSeed[]>([]);
+  const [addressTermSeeds, setAddressTermSeeds] = useState<AddressTermSeed[]>([]);
+
+  // Profile names state (new)
+  const [profileNames, setProfileNames] = useState<ProfileNames | null>(null);
+  const [profileNamesLoading, setProfileNamesLoading] = useState(false);
 
   // Room visits state
   const [roomVisitStats, setRoomVisitStats] = useState<{
@@ -216,7 +227,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
       };
       fetchProfileNotes();
 
-      // Fetch service relationships
+      // Fetch service relationships (legacy - kept for backward compatibility)
       const fetchServiceRelationships = async () => {
         setServiceRelationshipsLoading(true);
         try {
@@ -233,6 +244,40 @@ const Profile: React.FC<ProfilePageProps> = () => {
       };
       fetchServiceRelationships();
 
+      // Fetch unified relationship (new)
+      const fetchRelationship = async () => {
+        setRelationshipLoading(true);
+        try {
+          const response = await fetch(`/api/profile/${profileData.person.username}/relationship`);
+          if (response.ok) {
+            const data = await response.json();
+            setRelationship(data.relationship || null);
+          }
+        } catch (err) {
+          console.error('Error fetching relationship:', err);
+        } finally {
+          setRelationshipLoading(false);
+        }
+      };
+      fetchRelationship();
+
+      // Fetch profile names (new)
+      const fetchProfileNames = async () => {
+        setProfileNamesLoading(true);
+        try {
+          const response = await fetch(`/api/profile/${profileData.person.username}/names`);
+          if (response.ok) {
+            const data = await response.json();
+            setProfileNames(data.names || null);
+          }
+        } catch (err) {
+          console.error('Error fetching profile names:', err);
+        } finally {
+          setProfileNamesLoading(false);
+        }
+      };
+      fetchProfileNames();
+
       // Fetch room visit stats
       const fetchRoomVisitStats = async () => {
         try {
@@ -248,6 +293,23 @@ const Profile: React.FC<ProfilePageProps> = () => {
       fetchRoomVisitStats();
     }
   }, [profileData?.person?.username]);
+
+  // Fetch relationship seed data once on mount
+  useEffect(() => {
+    const fetchSeeds = async () => {
+      try {
+        const response = await fetch('/api/relationship/seeds');
+        if (response.ok) {
+          const data = await response.json();
+          setTraitSeeds(data.traits || []);
+          setAddressTermSeeds(data.addressTerms || []);
+        }
+      } catch (err) {
+        console.error('Error fetching relationship seeds:', err);
+      }
+    };
+    fetchSeeds();
+  }, []);
 
   // Check if current profile is a top mover (7 day)
   useEffect(() => {
@@ -815,6 +877,44 @@ const Profile: React.FC<ProfilePageProps> = () => {
     }
   };
 
+  // Unified relationship handler (new)
+  const handleSaveRelationship = async (data: Omit<Relationship, 'id' | 'profile_id' | 'created_at' | 'updated_at'>) => {
+    if (!profileData?.person?.username) return;
+
+    const response = await fetch(`/api/profile/${profileData.person.username}/relationship`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to save relationship');
+    }
+
+    const result = await response.json();
+    setRelationship(result.relationship);
+  };
+
+  // Profile names handler (new)
+  const handleSaveNames = async (names: ProfileNames) => {
+    if (!profileData?.person?.username) return;
+
+    const response = await fetch(`/api/profile/${profileData.person.username}/names`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(names),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to save names');
+    }
+
+    const result = await response.json();
+    setProfileNames(result.names);
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-5">
       <h1 className="text-mhc-primary text-4xl font-bold mb-8 py-4 border-b-2 border-mhc-primary">Profile Viewer</h1>
@@ -1016,21 +1116,47 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       Following
                     </span>
                   )}
-                  {/* Sub/Dom relationship badges */}
-                  {serviceRelationships.find(r => r.service_role === 'sub' && r.service_level === 'Current') && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50" title="Current Sub">
+                  {/* Unified relationship status badge (takes precedence) */}
+                  {relationship && ['Active', 'Occasional', 'Potential'].includes(relationship.status) && (
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold ${
+                      relationship.status === 'Active' ? 'bg-emerald-500/30 border border-emerald-500/50' :
+                      relationship.status === 'Occasional' ? 'bg-blue-500/30 border border-blue-500/50' :
+                      'bg-gray-500/30 border border-gray-500/50'
+                    }`} title={`Status: ${relationship.status}`}>
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
                       </svg>
+                      {relationship.status}
+                    </span>
+                  )}
+                  {/* Role badges from unified relationship */}
+                  {relationship?.roles.includes('Sub') && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50" title="Sub role">
                       Sub
                     </span>
                   )}
-                  {serviceRelationships.find(r => r.service_role === 'dom' && r.service_level === 'Actively Serving') && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-purple-500/30 border border-purple-500/50" title="Actively Serving Dom">
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
-                      </svg>
+                  {relationship?.roles.includes('Dom') && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-purple-500/30 border border-purple-500/50" title="Dom role">
                       Dom
+                    </span>
+                  )}
+                  {relationship?.roles.includes('Friend') && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-blue-500/30 border border-blue-500/50" title="Friend role">
+                      Friend
+                    </span>
+                  )}
+                  {relationship?.roles.includes('Custom') && relationship.custom_role_label && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-gray-500/30 border border-gray-500/50" title={`Custom: ${relationship.custom_role_label}`}>
+                      {relationship.custom_role_label}
+                    </span>
+                  )}
+                  {/* Banished status with red emphasis */}
+                  {relationship?.status === 'Banished' && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-red-500/40 border border-red-500/60 text-red-300" title="Banished">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clipRule="evenodd"/>
+                      </svg>
+                      Banished
                     </span>
                   )}
                   {bannedMe && (
@@ -1185,110 +1311,151 @@ const Profile: React.FC<ProfilePageProps> = () => {
             </div>
           </div>
 
-          {/* Relationships Section (Collapsible) - Consolidated Flags/Sub/Dom */}
+          {/* Flags Section (Collapsible) - Standalone */}
           <div className="mb-5">
             <CollapsibleSection
               title={
                 <div className="flex items-center gap-2">
-                  <span>Relationships</span>
-                  {serviceRelationships.length > 0 && (
-                    <span className="text-xs text-white/50 font-normal">({serviceRelationships.length})</span>
+                  <span>Flags</span>
+                  {(bannedMe || watchList) && (
+                    <span className="text-xs text-white/50 font-normal">
+                      ({[bannedMe && 'Banned', watchList && 'Watchlist'].filter(Boolean).join(', ')})
+                    </span>
+                  )}
+                </div>
+              }
+              defaultCollapsed={true}
+              className="bg-mhc-surface"
+            >
+              <div className="flex flex-wrap items-center gap-6">
+                {/* Banned Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={bannedMe}
+                    onChange={handleBannedToggle}
+                    className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
+                  />
+                  <span className="text-mhc-text font-medium">Banned Me</span>
+                </label>
+
+                {/* Watchlist Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={watchList}
+                    onChange={handleWatchListToggle}
+                    className="w-5 h-5 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
+                  />
+                  <span className="text-mhc-text font-medium">Watchlist</span>
+                </label>
+              </div>
+            </CollapsibleSection>
+          </div>
+
+          {/* Names Section (Collapsible) - New */}
+          <div className="mb-5">
+            <CollapsibleSection
+              title={
+                <div className="flex items-center gap-2">
+                  <span>Names</span>
+                  {(profileNames?.irl_name || profileNames?.identity_name || (profileNames?.address_as && profileNames.address_as.length > 0)) && (
+                    <span className="text-xs text-white/50 font-normal">
+                      {profileNames?.identity_name || profileNames?.irl_name || `${profileNames?.address_as?.length} terms`}
+                    </span>
+                  )}
+                </div>
+              }
+              defaultCollapsed={true}
+              className="bg-mhc-surface"
+            >
+              {profileNamesLoading ? (
+                <div className="text-white/50 text-sm py-4 text-center">Loading...</div>
+              ) : (
+                <NamesEditor
+                  names={profileNames}
+                  addressTermSeeds={addressTermSeeds}
+                  onSave={handleSaveNames}
+                />
+              )}
+            </CollapsibleSection>
+          </div>
+
+          {/* Relationship Section (Collapsible) - Unified */}
+          <div className="mb-5">
+            <CollapsibleSection
+              title={
+                <div className="flex items-center gap-2">
+                  <span>Relationship</span>
+                  {relationship && (
+                    <span className="text-xs text-white/50 font-normal">
+                      ({relationship.roles.join(', ')}{relationship.status !== 'Potential' ? ` - ${relationship.status}` : ''})
+                    </span>
                   )}
                 </div>
               }
               defaultCollapsed={false}
               className="bg-mhc-surface"
             >
-              {/* Tab buttons */}
-              <div className="flex gap-1 mb-4 border-b border-white/10 pb-2">
-                <button
-                  className={`px-4 py-2 rounded-t text-sm font-medium transition-colors ${
-                    relationshipTab === 'flags'
-                      ? 'bg-mhc-primary text-white'
-                      : 'text-mhc-text-muted hover:bg-white/5'
-                  }`}
-                  onClick={() => setRelationshipTab('flags')}
-                >
-                  Profile Flags
-                </button>
-                <button
-                  className={`px-4 py-2 rounded-t text-sm font-medium transition-colors ${
-                    relationshipTab === 'sub'
-                      ? 'bg-mhc-primary text-white'
-                      : 'text-mhc-text-muted hover:bg-white/5'
-                  }`}
-                  onClick={() => setRelationshipTab('sub')}
-                >
-                  Sub {serviceRelationships.filter(r => r.service_role === 'sub').length > 0 &&
-                    `(${serviceRelationships.filter(r => r.service_role === 'sub').length})`}
-                </button>
-                <button
-                  className={`px-4 py-2 rounded-t text-sm font-medium transition-colors ${
-                    relationshipTab === 'dom'
-                      ? 'bg-mhc-primary text-white'
-                      : 'text-mhc-text-muted hover:bg-white/5'
-                  }`}
-                  onClick={() => setRelationshipTab('dom')}
-                >
-                  Dom {serviceRelationships.filter(r => r.service_role === 'dom').length > 0 &&
-                    `(${serviceRelationships.filter(r => r.service_role === 'dom').length})`}
-                </button>
-              </div>
-
-              {/* Tab content */}
-              {relationshipTab === 'flags' && (
-                <div className="flex flex-wrap items-center gap-6">
-                  {/* Banned Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={bannedMe}
-                      onChange={handleBannedToggle}
-                      className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
+              {relationshipLoading ? (
+                <div className="text-white/50 text-sm py-4 text-center">Loading...</div>
+              ) : (
+                <div className="space-y-4">
+                  <RelationshipEditor
+                    relationship={relationship}
+                    traitSeeds={traitSeeds}
+                    onSave={handleSaveRelationship}
+                  />
+                  {relationship && profileData?.person?.username && (
+                    <RelationshipHistoryViewer
+                      username={profileData.person.username}
                     />
-                    <span className="text-mhc-text font-medium">Banned Me</span>
-                  </label>
-
-                  {/* Watchlist Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={watchList}
-                      onChange={handleWatchListToggle}
-                      className="w-5 h-5 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
-                    />
-                    <span className="text-mhc-text font-medium">Watchlist</span>
-                  </label>
+                  )}
                 </div>
-              )}
-
-              {relationshipTab === 'sub' && (
-                serviceRelationshipsLoading ? (
-                  <div className="text-white/50 text-sm py-4 text-center">Loading...</div>
-                ) : (
-                  <ServiceRelationshipEditor
-                    relationships={serviceRelationships.filter(r => r.service_role === 'sub')}
-                    onSave={handleSaveServiceRelationship}
-                    onRemove={handleRemoveServiceRelationship}
-                    defaultRole="sub"
-                  />
-                )
-              )}
-
-              {relationshipTab === 'dom' && (
-                serviceRelationshipsLoading ? (
-                  <div className="text-white/50 text-sm py-4 text-center">Loading...</div>
-                ) : (
-                  <ServiceRelationshipEditor
-                    relationships={serviceRelationships.filter(r => r.service_role === 'dom')}
-                    onSave={handleSaveServiceRelationship}
-                    onRemove={handleRemoveServiceRelationship}
-                    defaultRole="dom"
-                  />
-                )
               )}
             </CollapsibleSection>
           </div>
+
+          {/* Legacy Service Relationships Section (Collapsible) - Hidden by default during transition */}
+          {serviceRelationships.length > 0 && (
+            <div className="mb-5">
+              <CollapsibleSection
+                title={
+                  <div className="flex items-center gap-2">
+                    <span className="text-white/50">Legacy Relationships</span>
+                    <span className="text-xs text-white/30 font-normal">(deprecated)</span>
+                  </div>
+                }
+                defaultCollapsed={true}
+                className="bg-mhc-surface opacity-60"
+              >
+                <div className="space-y-4">
+                  {serviceRelationships.filter(r => r.service_role === 'sub').length > 0 && (
+                    <div>
+                      <h4 className="text-sm text-white/60 mb-2">Sub</h4>
+                      <ServiceRelationshipEditor
+                        relationships={serviceRelationships.filter(r => r.service_role === 'sub')}
+                        onSave={handleSaveServiceRelationship}
+                        onRemove={handleRemoveServiceRelationship}
+                        defaultRole="sub"
+                      />
+                    </div>
+                  )}
+                  {serviceRelationships.filter(r => r.service_role === 'dom').length > 0 && (
+                    <div>
+                      <h4 className="text-sm text-white/60 mb-2">Dom</h4>
+                      <ServiceRelationshipEditor
+                        relationships={serviceRelationships.filter(r => r.service_role === 'dom')}
+                        onSave={handleSaveServiceRelationship}
+                        onRemove={handleRemoveServiceRelationship}
+                        defaultRole="dom"
+                      />
+                    </div>
+                  )}
+                </div>
+              </CollapsibleSection>
+            </div>
+          )}
 
           {/* Notes Section (Collapsible) */}
           <div className="mb-5">

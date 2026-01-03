@@ -7,6 +7,8 @@ import { PersonService } from '../services/person.service.js';
 import { ProfileEnrichmentService } from '../services/profile-enrichment.service.js';
 import { BroadcastSessionService } from '../services/broadcast-session.service.js';
 import { ServiceRelationshipService } from '../services/service-relationship.service.js';
+import { RelationshipService } from '../services/relationship.service.js';
+import { RelationshipHistoryService, type HistoryFieldType } from '../services/relationship-history.service.js';
 import { ProfileNotesService } from '../services/profile-notes.service.js';
 import { ProfileImagesService } from '../services/profile-images.service.js';
 import { SocialLinksService, type SocialPlatform } from '../services/social-links.service.js';
@@ -1056,6 +1058,242 @@ router.delete('/:username/service-relationships/:role', async (req: Request, res
       username: req.params.username,
       role: req.params.role,
     });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// UNIFIED RELATIONSHIPS ENDPOINTS (NEW)
+// ============================================================
+
+/**
+ * GET /api/profile/:username/relationship
+ * Get unified relationship for a profile
+ */
+router.get('/:username/relationship', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person and profile
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      return res.json({ relationship: null });
+    }
+
+    const profileId = profileResult.rows[0].id;
+    const relationship = await RelationshipService.getByProfileId(profileId);
+
+    res.json({ relationship });
+  } catch (error) {
+    logger.error('Error getting relationship', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PUT /api/profile/:username/relationship
+ * Create or update unified relationship
+ */
+router.put('/:username/relationship', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { roles, custom_role_label, status, traits, since_date, until_date, notes } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    if (!Array.isArray(roles) || roles.length === 0) {
+      return res.status(400).json({ error: 'At least one role is required' });
+    }
+
+    if (!status) {
+      return res.status(400).json({ error: 'Status is required' });
+    }
+
+    const validStatuses = ['Potential', 'Occasional', 'Active', 'On Hold', 'Inactive', 'Decommissioned', 'Banished'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        error: `Invalid status. Valid options: ${validStatuses.join(', ')}`,
+      });
+    }
+
+    // Get or create person
+    const person = await PersonService.findOrCreate({ username, role: 'MODEL' });
+    if (!person) {
+      return res.status(500).json({ error: 'Failed to get person record' });
+    }
+
+    // Get or create profile
+    let profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      await query('INSERT INTO profiles (person_id) VALUES ($1)', [person.id]);
+      profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    }
+
+    const profileId = profileResult.rows[0].id;
+    const relationship = await RelationshipService.upsert(profileId, {
+      roles,
+      custom_role_label: custom_role_label || null,
+      status,
+      traits: traits || [],
+      since_date: since_date || null,
+      until_date: until_date || null,
+      notes: notes || null,
+    });
+
+    res.json(relationship);
+  } catch (error) {
+    logger.error('Error upserting relationship', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/profile/:username/relationship
+ * Delete unified relationship
+ */
+router.delete('/:username/relationship', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    // Get person and profile
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    const profileId = profileResult.rows[0].id;
+    const deleted = await RelationshipService.delete(profileId);
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Relationship not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error deleting relationship', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/profile/:username/relationship/history
+ * Get relationship history with filters
+ * Query params: fieldType (Status|Dates|Roles), startDate, endDate, limit=50, offset=0
+ */
+router.get('/:username/relationship/history', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { fieldType, startDate, endDate, limit = '50', offset = '0' } = req.query;
+
+    // Get person and profile
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      return res.json({ entries: [], total: 0 });
+    }
+
+    const profileId = profileResult.rows[0].id;
+
+    // Get relationship to get its ID
+    const relationship = await RelationshipService.getByProfileId(profileId);
+    if (!relationship) {
+      return res.json({ entries: [], total: 0 });
+    }
+
+    const result = await RelationshipHistoryService.getHistory(relationship.id, {
+      fieldType: fieldType as HistoryFieldType | undefined,
+      startDate: startDate ? new Date(startDate as string) : undefined,
+      endDate: endDate ? new Date(endDate as string) : undefined,
+      limit: parseInt(limit as string, 10),
+      offset: parseInt(offset as string, 10),
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error getting relationship history', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/profile/:username/names
+ * Get profile names (irl_name, identity_name, address_as)
+ */
+router.get('/:username/names', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    // Get person and profile
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    const profileId = profileResult.rows[0].id;
+    const names = await ProfileService.getNames(profileId);
+
+    res.json({ names });
+  } catch (error) {
+    logger.error('Error fetching profile names', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PATCH /api/profile/:username/names
+ * Update profile names (irl_name, identity_name, address_as)
+ */
+router.patch('/:username/names', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { irl_name, identity_name, address_as } = req.body;
+
+    // Get person and profile
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    const profileId = profileResult.rows[0].id;
+    const names = await ProfileService.updateNames(profileId, {
+      irl_name,
+      identity_name,
+      address_as,
+    });
+
+    res.json({ names });
+  } catch (error) {
+    logger.error('Error updating profile names', { error, username: req.params.username });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
