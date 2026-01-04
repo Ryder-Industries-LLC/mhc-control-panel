@@ -484,8 +484,14 @@ const BroadcasterDashboard: React.FC = () => {
                           );
                         })}
                         {sessionActivity.length > 20 && (
-                          <div className="text-mhc-text-muted text-sm text-center py-2">
-                            +{sessionActivity.length - 20} more events
+                          <div className="text-center py-3 border-t border-white/10 mt-2">
+                            <Link
+                              to={`/sessions/${session.id}`}
+                              className="text-mhc-primary hover:text-mhc-primary-light text-sm font-medium hover:underline"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              View all {sessionActivity.length} events →
+                            </Link>
                           </div>
                         )}
                       </div>
