@@ -68,6 +68,25 @@ export const CommsSection: React.FC<CommsSectionProps> = ({ username }) => {
     });
   };
 
+  const formatFullDate = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  const formatMilitaryTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
+  };
+
   const renderMessages = (messages: Message[]) => {
     if (messages.length === 0) {
       return (
@@ -77,46 +96,50 @@ export const CommsSection: React.FC<CommsSectionProps> = ({ username }) => {
       );
     }
 
+    // Determine if message is from broadcaster (sent by the viewing user)
+    const isFromBroadcaster = (msg: Message): boolean => {
+      const fromUser = msg.metadata?.fromUser?.toLowerCase();
+      const toUser = msg.metadata?.toUser?.toLowerCase();
+      const profileUsername = username.toLowerCase();
+      // If fromUser is NOT the profile we're viewing, it's from broadcaster (us)
+      return fromUser !== profileUsername;
+    };
+
     return (
-      <div className="space-y-3 max-h-[400px] overflow-y-auto">
-        {messages.map((msg) => {
-          const fromUser = msg.metadata?.fromUser;
-          const toUser = msg.metadata?.toUser;
+      <div className="space-y-3 max-h-[400px] overflow-y-auto p-4">
+        {messages.map((msg, i) => {
+          const prevMsg = messages[i - 1];
+          const showDate = !prevMsg ||
+            new Date(msg.timestamp).toDateString() !== new Date(prevMsg.timestamp).toDateString();
+          const isBroadcaster = isFromBroadcaster(msg);
 
           return (
-            <div
-              key={msg.id}
-              className="p-3 bg-mhc-surface-light rounded-lg border border-white/10"
-            >
-              <div className="flex justify-between items-start mb-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-mhc-text-muted">
-                    {formatTimestamp(msg.timestamp)}
-                  </span>
-                  {(fromUser || toUser) && (
-                    <span className="text-xs text-mhc-text-muted">
-                      {fromUser && (
-                        <span>
-                          <span className="text-blue-400 font-medium">{fromUser}</span>
-                          {toUser && <span className="text-white/40"> → </span>}
-                        </span>
-                      )}
-                      {toUser && (
-                        <span className="text-emerald-400 font-medium">{toUser}</span>
-                      )}
-                    </span>
-                  )}
+            <React.Fragment key={msg.id}>
+              {showDate && (
+                <div className="text-center text-xs text-white/40 my-4">
+                  {formatFullDate(msg.timestamp)}
                 </div>
-                {msg.broadcaster && (
-                  <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded">
-                    in {msg.broadcaster}'s room
-                  </span>
-                )}
+              )}
+              <div className={`flex ${isBroadcaster ? 'justify-end' : 'justify-start'}`}>
+                <div
+                  className={`max-w-[70%] rounded-lg px-4 py-2 ${
+                    isBroadcaster
+                      ? 'bg-mhc-primary text-white'
+                      : 'bg-white/10 text-white'
+                  }`}
+                >
+                  <p className="break-words whitespace-pre-wrap">{msg.content}</p>
+                  <p className={`text-xs mt-1 ${
+                    isBroadcaster ? 'text-white/70' : 'text-white/40'
+                  }`}>
+                    {formatMilitaryTime(msg.timestamp)}
+                    {msg.broadcaster && (
+                      <span className="ml-2">in {msg.broadcaster}'s room</span>
+                    )}
+                  </p>
+                </div>
               </div>
-              <div className="text-mhc-text whitespace-pre-wrap">
-                {msg.content}
-              </div>
-            </div>
+            </React.Fragment>
           );
         })}
       </div>

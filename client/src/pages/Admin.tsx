@@ -233,6 +233,11 @@ const Admin: React.FC = () => {
   const [videoSettingsError, setVideoSettingsError] = useState<string | null>(null);
   const [videoSettingsSuccess, setVideoSettingsSuccess] = useState<string | null>(null);
 
+  // Note display settings state
+  const [noteLineLimit, setNoteLineLimit] = useState(6);
+  const [noteLineLimitSaving, setNoteLineLimitSaving] = useState(false);
+  const [noteLineLimitSuccess, setNoteLineLimitSuccess] = useState<string | null>(null);
+
   // Auto-refresh both job statuses when on Jobs tab (merged view)
   useEffect(() => {
     if (activeTab === 'jobs') {
@@ -268,14 +273,49 @@ const Admin: React.FC = () => {
     }
   }, [activeTab]);
 
-  // Load broadcast settings, image settings, and video settings when Settings tab is active
+  // Load broadcast settings, image settings, video settings, and note settings when Settings tab is active
   useEffect(() => {
     if (activeTab === 'settings') {
       fetchBroadcastSettings();
       fetchImageSettings();
       fetchVideoSettings();
+      fetchNoteLineLimitSetting();
     }
   }, [activeTab]);
+
+  const fetchNoteLineLimitSetting = async () => {
+    try {
+      const response = await fetch('/api/settings/note_line_limit');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.value) {
+          setNoteLineLimit(parseInt(data.value, 10) || 6);
+        }
+      }
+    } catch (err) {
+      // Use default value on error
+    }
+  };
+
+  const saveNoteLineLimit = async () => {
+    setNoteLineLimitSaving(true);
+    setNoteLineLimitSuccess(null);
+    try {
+      const response = await fetch('/api/settings/note_line_limit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: noteLineLimit.toString() }),
+      });
+      if (response.ok) {
+        setNoteLineLimitSuccess('Note line limit saved successfully');
+        setTimeout(() => setNoteLineLimitSuccess(null), 3000);
+      }
+    } catch (err) {
+      // Silent fail
+    } finally {
+      setNoteLineLimitSaving(false);
+    }
+  };
 
   const fetchBroadcastSettings = async () => {
     setSettingsLoading(true);
@@ -1016,8 +1056,8 @@ const Admin: React.FC = () => {
       {/* Cookie Status */}
       {!hasCookies && (
         <div className="p-3 px-4 rounded-md mb-5 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
-          <strong className="font-bold mr-1">Note:</strong> No cookies imported. Profile scraping requires authenticated Chaturbate cookies.
-          Go to the <button className="underline font-semibold" onClick={() => setActiveTab('scraper')}>Scraper tab</button> to import cookies.
+          <strong className="font-bold mr-1">Note:</strong> No cookies imported. Profile capture requires authenticated Chaturbate cookies.
+          Go to the <button className="underline font-semibold" onClick={() => setActiveTab('scraper')}>Chaturbate Sync tab</button> to import cookies.
         </div>
       )}
 
@@ -1145,12 +1185,12 @@ const Admin: React.FC = () => {
 
           {/* Manual Scrape Section */}
           <CollapsibleSection
-            title="Manual Profile Scrape"
+            title="Manual Profile Capture"
             defaultCollapsed={true}
             className="mb-5"
           >
             <p className="text-white/60 text-base p-4 bg-white/5 rounded-lg mb-4">
-              Manually trigger a profile scrape for a specific username. This bypasses the scheduled job and runs immediately.
+              Manually trigger a profile capture for a specific username. This bypasses the scheduled job and runs immediately.
             </p>
             <div className="flex gap-3 items-center max-w-xl">
               <input
@@ -1291,7 +1331,7 @@ const Admin: React.FC = () => {
 
       {!profileScrapeStatus && (
         <div className="text-center p-10 text-white/60">
-          Loading profile scrape job status...
+          Loading profile capture job status...
         </div>
       )}
     </>
@@ -1351,12 +1391,12 @@ const Admin: React.FC = () => {
           )}
         </div>
 
-        {/* Profile Scraping Control Row */}
+        {/* Profile Capture Control Row */}
         <div className="flex items-center gap-4 p-4 bg-mhc-surface-light rounded-lg border border-white/10">
           <div className="cursor-pointer" onClick={() => setJobSubTab('scraping')}>
             {getProfileScrapeStatusBadge()}
           </div>
-          <span className="font-semibold text-white min-w-[140px]">Profile Scraping</span>
+          <span className="font-semibold text-white min-w-[140px]">Profile Capture</span>
           {profileScrapeStatus && (
             <>
               {profileScrapeStatus.isPaused ? (
@@ -1421,7 +1461,7 @@ const Admin: React.FC = () => {
           }`}
           onClick={() => setJobSubTab('scraping')}
         >
-          Profile Scraping
+          Profile Capture
         </button>
       </div>
 
@@ -1500,68 +1540,69 @@ const Admin: React.FC = () => {
             defaultCollapsed={true}
             className="mb-5"
           >
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-5">
-              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                <div className="text-3xl font-bold mb-2">{formatBytes(systemStats.database.sizeBytes)}</div>
-                <div className="text-sm opacity-90 uppercase tracking-wide">Database Size</div>
+            {/* Main stats in a single row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{formatBytes(systemStats.database.sizeBytes)}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Database Size</div>
               </div>
               <Link
                 to="/"
-                className="text-center p-5 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity block no-underline"
+                className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity block no-underline"
               >
-                <div className="text-3xl font-bold mb-2">{systemStats.database.totalPersons.toLocaleString()}</div>
-                <div className="text-sm opacity-90 uppercase tracking-wide">Total Persons</div>
+                <div className="text-2xl font-bold mb-1">{systemStats.database.totalPersons.toLocaleString()}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Total Persons</div>
               </Link>
-              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                <div className="text-3xl font-bold mb-2">{systemStats.database.imagesStored.toLocaleString()}</div>
-                <div className="text-sm opacity-90 uppercase tracking-wide">Images Stored</div>
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{systemStats.database.imagesStored.toLocaleString()}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Images</div>
                 {systemStats.database.imageSizeBytes > 0 && (
-                  <div className="text-xs opacity-70 mt-1">{formatBytes(systemStats.database.imageSizeBytes)}</div>
+                  <div className="text-xs opacity-70">{formatBytes(systemStats.database.imageSizeBytes)}</div>
                 )}
               </div>
-              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                <div className="text-3xl font-bold mb-2">{systemStats.database.videosStored.toLocaleString()}</div>
-                <div className="text-sm opacity-90 uppercase tracking-wide">Videos Stored</div>
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{systemStats.database.videosStored.toLocaleString()}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Videos</div>
                 {systemStats.database.videoSizeBytes > 0 && (
-                  <div className="text-xs opacity-70 mt-1">{formatBytes(systemStats.database.videoSizeBytes)}</div>
-                )}
-                {systemStats.database.usersWithVideos > 0 && (
-                  <div className="text-xs opacity-70">{systemStats.database.usersWithVideos} users</div>
+                  <div className="text-xs opacity-70">{formatBytes(systemStats.database.videoSizeBytes)}</div>
                 )}
               </div>
             </div>
 
-            {/* Role breakdown */}
-            <div className="mb-5">
-              <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">By Role</h4>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {Object.entries(systemStats.database.byRole).map(([role, count]) => (
-                  <Link
-                    key={role}
-                    to={`/?role=${role}`}
-                    className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10 hover:border-mhc-primary/50 transition-colors no-underline"
-                  >
-                    <span className="font-semibold text-white/70">{role}:</span>
-                    <span className="text-white font-medium">{count.toLocaleString()}</span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-
-            {/* Source breakdown */}
-            {Object.keys(systemStats.database.bySource).length > 0 && (
+            {/* Role breakdown and Source breakdown on same row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {/* Role breakdown */}
               <div>
-                <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Snapshots by Source</h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {Object.entries(systemStats.database.bySource).map(([source, count]) => (
-                    <div key={source} className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
-                      <span className="font-semibold text-white/70">{source}:</span>
+                <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">By Role</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.entries(systemStats.database.byRole).map(([role, count]) => (
+                    <Link
+                      key={role}
+                      to={`/?role=${role}`}
+                      className="flex justify-between items-center p-2 bg-white/5 rounded-md border border-white/10 hover:border-mhc-primary/50 transition-colors no-underline text-sm"
+                    >
+                      <span className="font-semibold text-white/70">{role}:</span>
                       <span className="text-white font-medium">{count.toLocaleString()}</span>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </div>
-            )}
+
+              {/* Source breakdown */}
+              {Object.keys(systemStats.database.bySource).length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Snapshots by Source</h4>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(systemStats.database.bySource).map(([source, count]) => (
+                      <div key={source} className="flex justify-between items-center p-2 bg-white/5 rounded-md border border-white/10 text-sm">
+                        <span className="font-semibold text-white/70">{source}:</span>
+                        <span className="text-white font-medium">{count.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </CollapsibleSection>
 
           {/* Activity & Real-time - Collapsible, collapsed by default */}
@@ -2143,7 +2184,7 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
             }`}
             onClick={() => setActiveTab('scraper')}
           >
-            Scraper
+            Chaturbate Sync
           </button>
           <button
             className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all ${
@@ -2174,319 +2215,319 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
           <div className="bg-mhc-surface-light rounded-lg p-6">
             <h2 className="text-xl font-semibold text-mhc-text mb-6">Settings</h2>
 
-            {/* Broadcast Settings */}
-            <div className="mb-8">
-              <h3 className="text-lg font-medium text-mhc-text mb-4">Broadcast Settings</h3>
-
-              {settingsError && (
-                <div className="p-3 px-4 rounded-md mb-4 bg-red-500/15 border-l-4 border-red-500 text-red-300">
-                  {settingsError}
-                </div>
-              )}
-
-              {settingsSuccess && (
-                <div className="p-3 px-4 rounded-md mb-4 bg-green-500/15 border-l-4 border-green-500 text-green-300">
-                  {settingsSuccess}
-                </div>
-              )}
-
-              {settingsLoading ? (
-                <div className="text-mhc-text-muted">Loading settings...</div>
-              ) : broadcastSettings ? (
-                <div className="space-y-6">
-                  {/* Merge Gap Setting */}
-                  <div>
-                    <label className="block text-mhc-text mb-2 font-medium">
-                      Session Merge Gap (minutes)
-                    </label>
-                    <p className="text-mhc-text-muted text-sm mb-2">
-                      When broadcasts are within this many minutes of each other, they will be merged into a single session.
-                    </p>
-                    <input
-                      type="number"
-                      min="5"
-                      max="120"
-                      value={broadcastSettings.mergeGapMinutes}
-                      onChange={(e) => setBroadcastSettings({
-                        ...broadcastSettings,
-                        mergeGapMinutes: parseInt(e.target.value) || 30
-                      })}
-                      className="w-32 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
-                    />
+            {/* Broadcast Section */}
+            <div className="mb-4">
+              <CollapsibleSection title="Broadcast" defaultCollapsed={true} className="bg-mhc-surface">
+                {settingsError && (
+                  <div className="p-3 px-4 rounded-md mb-4 bg-red-500/15 border-l-4 border-red-500 text-red-300">
+                    {settingsError}
                   </div>
-
-                  {/* AI Summary Delay Setting */}
-                  <div>
-                    <label className="block text-mhc-text mb-2 font-medium">
-                      AI Summary Delay
-                    </label>
-                    <p className="text-mhc-text-muted text-sm mb-2">
-                      How long to wait after a broadcast ends before generating an AI summary.
-                    </p>
-                    <div className="flex items-center gap-4 mb-2">
-                      <label className="flex items-center gap-2 text-mhc-text">
-                        <input
-                          type="radio"
-                          name="aiSummaryDelay"
-                          checked={!broadcastSettings.aiSummaryDelayIsCustom}
-                          onChange={() => setBroadcastSettings({
-                            ...broadcastSettings,
-                            aiSummaryDelayIsCustom: false,
-                            aiSummaryDelayMinutes: null
-                          })}
-                          className="text-mhc-primary"
-                        />
-                        Use merge gap ({broadcastSettings.mergeGapMinutes} minutes)
+                )}
+                {settingsSuccess && (
+                  <div className="p-3 px-4 rounded-md mb-4 bg-green-500/15 border-l-4 border-green-500 text-green-300">
+                    {settingsSuccess}
+                  </div>
+                )}
+                {settingsLoading ? (
+                  <div className="text-mhc-text-muted">Loading settings...</div>
+                ) : broadcastSettings ? (
+                  <div className="space-y-6">
+                    <div>
+                      <label className="block text-mhc-text mb-2 font-medium">
+                        Session Merge Gap (minutes)
                       </label>
+                      <p className="text-mhc-text-muted text-sm mb-2">
+                        When broadcasts are within this many minutes of each other, they will be merged into a single session.
+                      </p>
+                      <input
+                        type="number"
+                        min="5"
+                        max="120"
+                        value={broadcastSettings.mergeGapMinutes}
+                        onChange={(e) => setBroadcastSettings({
+                          ...broadcastSettings,
+                          mergeGapMinutes: parseInt(e.target.value) || 30
+                        })}
+                        className="w-32 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                      />
                     </div>
-                    <div className="flex items-center gap-4">
-                      <label className="flex items-center gap-2 text-mhc-text">
-                        <input
-                          type="radio"
-                          name="aiSummaryDelay"
-                          checked={broadcastSettings.aiSummaryDelayIsCustom}
-                          onChange={() => setBroadcastSettings({
-                            ...broadcastSettings,
-                            aiSummaryDelayIsCustom: true,
-                            aiSummaryDelayMinutes: broadcastSettings.mergeGapMinutes
-                          })}
-                          className="text-mhc-primary"
-                        />
-                        Custom delay:
-                      </label>
-                      {broadcastSettings.aiSummaryDelayIsCustom && (
-                        <input
-                          type="number"
-                          min="5"
-                          max="1440"
-                          value={broadcastSettings.aiSummaryDelayMinutes ?? 30}
-                          onChange={(e) => setBroadcastSettings({
-                            ...broadcastSettings,
-                            aiSummaryDelayMinutes: parseInt(e.target.value) || 30
-                          })}
-                          className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
-                        />
-                      )}
-                      {broadcastSettings.aiSummaryDelayIsCustom && (
-                        <span className="text-mhc-text-muted">minutes</span>
-                      )}
+                    <div className="pt-4 border-t border-white/10">
+                      <button
+                        onClick={saveBroadcastSettings}
+                        disabled={settingsSaving}
+                        className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {settingsSaving ? 'Saving...' : 'Save Broadcast Settings'}
+                      </button>
                     </div>
                   </div>
-
-                  {/* Save Button */}
-                  <div className="pt-4 border-t border-white/10">
-                    <button
-                      onClick={saveBroadcastSettings}
-                      disabled={settingsSaving}
-                      className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {settingsSaving ? 'Saving...' : 'Save Broadcast Settings'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-mhc-text-muted">No settings available</div>
-              )}
+                ) : (
+                  <div className="text-mhc-text-muted">No settings available</div>
+                )}
+              </CollapsibleSection>
             </div>
 
-            {/* Image Upload Settings */}
-            <div className="mb-8">
-              <h3 className="text-lg font-medium text-mhc-text mb-4">Image Upload Limits</h3>
-
-              {imageSettingsError && (
-                <div className="p-3 px-4 rounded-md mb-4 bg-red-500/15 border-l-4 border-red-500 text-red-300">
-                  {imageSettingsError}
-                </div>
-              )}
-
-              {imageSettingsSuccess && (
-                <div className="p-3 px-4 rounded-md mb-4 bg-green-500/15 border-l-4 border-green-500 text-green-300">
-                  {imageSettingsSuccess}
-                </div>
-              )}
-
-              {imageSettingsLoading ? (
-                <div className="text-mhc-text-muted">Loading image settings...</div>
-              ) : imageSettings ? (
-                <div className="space-y-6">
-                  <p className="text-mhc-text-muted text-sm">
-                    Configure maximum file size limits for different types of image uploads.
-                    Files exceeding these limits will be rejected with a user-friendly error message.
-                  </p>
-
-                  {/* Manual Upload Limit */}
-                  <div>
-                    <label className="block text-mhc-text mb-2 font-medium">
-                      Manual Upload Limit
-                    </label>
-                    <p className="text-mhc-text-muted text-sm mb-2">
-                      Maximum size for manually uploaded image files.
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        value={imageSettings.manualMB}
-                        onChange={(e) => setImageSettings({
-                          ...imageSettings,
-                          manualMB: parseInt(e.target.value) || 20
-                        })}
-                        className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
-                      />
-                      <span className="text-mhc-text-muted">MB</span>
+            {/* AI Section */}
+            <div className="mb-4">
+              <CollapsibleSection title="AI" defaultCollapsed={true} className="bg-mhc-surface">
+                {broadcastSettings && (
+                  <div className="space-y-6">
+                    <div>
+                      <label className="block text-mhc-text mb-2 font-medium">
+                        AI Summary Delay
+                      </label>
+                      <p className="text-mhc-text-muted text-sm mb-2">
+                        How long to wait after a broadcast ends before generating an AI summary.
+                      </p>
+                      <div className="flex items-center gap-4 mb-2">
+                        <label className="flex items-center gap-2 text-mhc-text">
+                          <input
+                            type="radio"
+                            name="aiSummaryDelay"
+                            checked={!broadcastSettings.aiSummaryDelayIsCustom}
+                            onChange={() => setBroadcastSettings({
+                              ...broadcastSettings,
+                              aiSummaryDelayIsCustom: false,
+                              aiSummaryDelayMinutes: null
+                            })}
+                            className="text-mhc-primary"
+                          />
+                          Use merge gap ({broadcastSettings.mergeGapMinutes} minutes)
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <label className="flex items-center gap-2 text-mhc-text">
+                          <input
+                            type="radio"
+                            name="aiSummaryDelay"
+                            checked={broadcastSettings.aiSummaryDelayIsCustom}
+                            onChange={() => setBroadcastSettings({
+                              ...broadcastSettings,
+                              aiSummaryDelayIsCustom: true,
+                              aiSummaryDelayMinutes: broadcastSettings.mergeGapMinutes
+                            })}
+                            className="text-mhc-primary"
+                          />
+                          Custom delay:
+                        </label>
+                        {broadcastSettings.aiSummaryDelayIsCustom && (
+                          <input
+                            type="number"
+                            min="5"
+                            max="1440"
+                            value={broadcastSettings.aiSummaryDelayMinutes ?? 30}
+                            onChange={(e) => setBroadcastSettings({
+                              ...broadcastSettings,
+                              aiSummaryDelayMinutes: parseInt(e.target.value) || 30
+                            })}
+                            className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                          />
+                        )}
+                        {broadcastSettings.aiSummaryDelayIsCustom && (
+                          <span className="text-mhc-text-muted">minutes</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="pt-4 border-t border-white/10">
+                      <button
+                        onClick={saveBroadcastSettings}
+                        disabled={settingsSaving}
+                        className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {settingsSaving ? 'Saving...' : 'Save AI Settings'}
+                      </button>
                     </div>
                   </div>
-
-                  {/* External URL Limit */}
-                  <div>
-                    <label className="block text-mhc-text mb-2 font-medium">
-                      External URL Import Limit
-                    </label>
-                    <p className="text-mhc-text-muted text-sm mb-2">
-                      Maximum size for images imported from external URLs.
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        value={imageSettings.externalMB}
-                        onChange={(e) => setImageSettings({
-                          ...imageSettings,
-                          externalMB: parseInt(e.target.value) || 20
-                        })}
-                        className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
-                      />
-                      <span className="text-mhc-text-muted">MB</span>
-                    </div>
-                  </div>
-
-                  {/* Screenshot Limit */}
-                  <div>
-                    <label className="block text-mhc-text mb-2 font-medium">
-                      Screenshot Capture Limit
-                    </label>
-                    <p className="text-mhc-text-muted text-sm mb-2">
-                      Maximum size for screenshot captures.
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        value={imageSettings.screenshotMB}
-                        onChange={(e) => setImageSettings({
-                          ...imageSettings,
-                          screenshotMB: parseInt(e.target.value) || 20
-                        })}
-                        className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
-                      />
-                      <span className="text-mhc-text-muted">MB</span>
-                    </div>
-                  </div>
-
-                  {/* Save Button */}
-                  <div className="pt-4 border-t border-white/10">
-                    <button
-                      onClick={saveImageSettings}
-                      disabled={imageSettingsSaving}
-                      className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {imageSettingsSaving ? 'Saving...' : 'Save Image Settings'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-mhc-text-muted">No image settings available</div>
-              )}
+                )}
+              </CollapsibleSection>
             </div>
 
-            {/* Video Upload Settings */}
-            <div className="mb-8">
-              <h3 className="text-lg font-medium text-mhc-text mb-4">Video Upload Limits</h3>
-
-              {videoSettingsError && (
-                <div className="p-3 px-4 rounded-md mb-4 bg-red-500/15 border-l-4 border-red-500 text-red-300">
-                  {videoSettingsError}
-                </div>
-              )}
-
-              {videoSettingsSuccess && (
-                <div className="p-3 px-4 rounded-md mb-4 bg-green-500/15 border-l-4 border-green-500 text-green-300">
-                  {videoSettingsSuccess}
-                </div>
-              )}
-
-              {videoSettingsLoading ? (
-                <div className="text-mhc-text-muted">Loading video settings...</div>
-              ) : videoSettings ? (
-                <div className="space-y-6">
-                  <p className="text-mhc-text-muted text-sm">
-                    Configure maximum file size for video downloads from profile photosets.
+            {/* Media Section */}
+            <div className="mb-4">
+              <CollapsibleSection title="Media" defaultCollapsed={true} className="bg-mhc-surface">
+                {/* Note Line Limit */}
+                <div className="mb-6">
+                  <label className="block text-mhc-text mb-2 font-medium">
+                    Note Line Limit
+                  </label>
+                  <p className="text-mhc-text-muted text-sm mb-2">
+                    Number of lines to show before "Read More" link appears on profile notes.
                   </p>
-
                   <div className="flex items-center gap-4">
-                    <label className="w-48 text-mhc-text font-medium">Max Video Size:</label>
                     <input
                       type="number"
                       min="1"
-                      max="5000"
-                      value={videoSettings.maxSizeMB}
-                      onChange={(e) => setVideoSettings({
-                        ...videoSettings,
-                        maxSizeMB: parseInt(e.target.value) || 500
-                      })}
+                      max="50"
+                      value={noteLineLimit}
+                      onChange={(e) => setNoteLineLimit(parseInt(e.target.value) || 6)}
                       className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
                     />
-                    <span className="text-mhc-text-muted">MB</span>
-                  </div>
-
-                  {/* Save Button */}
-                  <div className="pt-4 border-t border-white/10">
+                    <span className="text-mhc-text-muted">lines</span>
                     <button
-                      onClick={saveVideoSettings}
-                      disabled={videoSettingsSaving}
-                      className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={saveNoteLineLimit}
+                      disabled={noteLineLimitSaving}
+                      className="px-4 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                     >
-                      {videoSettingsSaving ? 'Saving...' : 'Save Video Settings'}
+                      {noteLineLimitSaving ? 'Saving...' : 'Save'}
                     </button>
+                    {noteLineLimitSuccess && (
+                      <span className="text-green-400 text-sm">{noteLineLimitSuccess}</span>
+                    )}
                   </div>
                 </div>
-              ) : (
-                <div className="text-mhc-text-muted">No video settings available</div>
-              )}
+
+                {/* Image Upload Settings */}
+                <div className="mb-6 pt-4 border-t border-white/10">
+                  <h4 className="text-mhc-text font-medium mb-4">Image Upload Limits</h4>
+                  {imageSettingsError && (
+                    <div className="p-3 px-4 rounded-md mb-4 bg-red-500/15 border-l-4 border-red-500 text-red-300">
+                      {imageSettingsError}
+                    </div>
+                  )}
+                  {imageSettingsSuccess && (
+                    <div className="p-3 px-4 rounded-md mb-4 bg-green-500/15 border-l-4 border-green-500 text-green-300">
+                      {imageSettingsSuccess}
+                    </div>
+                  )}
+                  {imageSettingsLoading ? (
+                    <div className="text-mhc-text-muted">Loading image settings...</div>
+                  ) : imageSettings ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-4">
+                        <label className="w-48 text-mhc-text">Manual Upload:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={imageSettings.manualMB}
+                          onChange={(e) => setImageSettings({
+                            ...imageSettings,
+                            manualMB: parseInt(e.target.value) || 20
+                          })}
+                          className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                        />
+                        <span className="text-mhc-text-muted">MB</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <label className="w-48 text-mhc-text">External URL Import:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={imageSettings.externalMB}
+                          onChange={(e) => setImageSettings({
+                            ...imageSettings,
+                            externalMB: parseInt(e.target.value) || 20
+                          })}
+                          className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                        />
+                        <span className="text-mhc-text-muted">MB</span>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <label className="w-48 text-mhc-text">Screenshot Capture:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={imageSettings.screenshotMB}
+                          onChange={(e) => setImageSettings({
+                            ...imageSettings,
+                            screenshotMB: parseInt(e.target.value) || 20
+                          })}
+                          className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                        />
+                        <span className="text-mhc-text-muted">MB</span>
+                      </div>
+                      <button
+                        onClick={saveImageSettings}
+                        disabled={imageSettingsSaving}
+                        className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {imageSettingsSaving ? 'Saving...' : 'Save Image Settings'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-mhc-text-muted">No image settings available</div>
+                  )}
+                </div>
+
+                {/* Video Upload Settings */}
+                <div className="pt-4 border-t border-white/10">
+                  <h4 className="text-mhc-text font-medium mb-4">Video Upload Limits</h4>
+                  {videoSettingsError && (
+                    <div className="p-3 px-4 rounded-md mb-4 bg-red-500/15 border-l-4 border-red-500 text-red-300">
+                      {videoSettingsError}
+                    </div>
+                  )}
+                  {videoSettingsSuccess && (
+                    <div className="p-3 px-4 rounded-md mb-4 bg-green-500/15 border-l-4 border-green-500 text-green-300">
+                      {videoSettingsSuccess}
+                    </div>
+                  )}
+                  {videoSettingsLoading ? (
+                    <div className="text-mhc-text-muted">Loading video settings...</div>
+                  ) : videoSettings ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-4">
+                        <label className="w-48 text-mhc-text">Max Video Size:</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="5000"
+                          value={videoSettings.maxSizeMB}
+                          onChange={(e) => setVideoSettings({
+                            ...videoSettings,
+                            maxSizeMB: parseInt(e.target.value) || 500
+                          })}
+                          className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                        />
+                        <span className="text-mhc-text-muted">MB</span>
+                      </div>
+                      <button
+                        onClick={saveVideoSettings}
+                        disabled={videoSettingsSaving}
+                        className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {videoSettingsSaving ? 'Saving...' : 'Save Video Settings'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-mhc-text-muted">No video settings available</div>
+                  )}
+                </div>
+              </CollapsibleSection>
             </div>
 
-            {/* Theme Selection */}
-            <div className="mb-8">
-              <h3 className="text-lg font-medium text-mhc-text mb-4">Theme</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-                {themes.map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => setTheme(t)}
-                    className={`p-4 rounded-lg border-2 transition-all text-center ${
-                      theme === t
-                        ? 'border-mhc-primary bg-mhc-primary/20 text-mhc-primary font-semibold'
-                        : 'border-white/20 hover:border-mhc-primary/50 text-mhc-text-muted hover:text-mhc-text'
-                    }`}
-                  >
-                    <div className={`w-8 h-8 rounded-full mx-auto mb-2 ${
-                      t === 'midnight' ? 'bg-gradient-to-br from-slate-800 to-slate-900' :
-                      t === 'charcoal' ? 'bg-gradient-to-br from-gray-700 to-gray-800' :
-                      t === 'ocean' ? 'bg-gradient-to-br from-blue-800 to-cyan-900' :
-                      t === 'forest' ? 'bg-gradient-to-br from-emerald-800 to-green-900' :
-                      t === 'ember' ? 'bg-gradient-to-br from-orange-700 to-red-900' :
-                      'bg-gray-600'
-                    }`} />
-                    <span className="text-sm">{themeLabels[t]}</span>
-                    {theme === t && (
-                      <div className="mt-1 text-xs text-mhc-primary">Active</div>
-                    )}
-                  </button>
-                ))}
-              </div>
+            {/* Theme Section */}
+            <div className="mb-4">
+              <CollapsibleSection title="Theme" defaultCollapsed={true} className="bg-mhc-surface">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                  {themes.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setTheme(t)}
+                      className={`p-4 rounded-lg border-2 transition-all text-center ${
+                        theme === t
+                          ? 'border-mhc-primary bg-mhc-primary/20 text-mhc-primary font-semibold'
+                          : 'border-white/20 hover:border-mhc-primary/50 text-mhc-text-muted hover:text-mhc-text'
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-full mx-auto mb-2 ${
+                        t === 'midnight' ? 'bg-gradient-to-br from-slate-800 to-slate-900' :
+                        t === 'charcoal' ? 'bg-gradient-to-br from-gray-700 to-gray-800' :
+                        t === 'ocean' ? 'bg-gradient-to-br from-blue-800 to-cyan-900' :
+                        t === 'forest' ? 'bg-gradient-to-br from-emerald-800 to-green-900' :
+                        t === 'ember' ? 'bg-gradient-to-br from-orange-700 to-red-900' :
+                        'bg-gray-600'
+                      }`} />
+                      <span className="text-sm">{themeLabels[t]}</span>
+                      {theme === t && (
+                        <div className="mt-1 text-xs text-mhc-primary">Active</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </CollapsibleSection>
             </div>
           </div>
         )}

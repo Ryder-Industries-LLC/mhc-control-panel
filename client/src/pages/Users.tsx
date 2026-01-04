@@ -1,25 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { api, LookupResponse } from '../api/client';
+import { useLocation } from 'react-router-dom';
+import { api } from '../api/client';
 import {
   BasePerson,
   FollowingPerson,
   FollowerPerson,
   UnfollowedPerson,
-  SubPerson,
-  FriendPerson,
-  DomPerson,
   BannedPerson,
   TipperPerson,
   TabType,
   StatFilter,
   PriorityLookup,
-  CountItem,
   ActiveFilter,
+  RelationshipPerson,
+  RelationshipListItem,
+  RelationshipStatus,
   TAG_PRESETS,
   DIRECTORY_SORT_OPTIONS,
   isPersonLive,
-  getFriendTierBadge,
+  buildStandardCounts,
+  formatNumber,
 } from '../types/people';
 import {
   PeopleLayout,
@@ -30,9 +30,7 @@ import {
   PeopleTable,
   PeopleGrid,
   getDirectoryColumns,
-  getFriendsColumns,
-  getSubsColumns,
-  getDomsColumns,
+  getRelationshipColumns,
   getFollowingColumns,
   getFollowersColumns,
   getUnfollowedColumns,
@@ -44,7 +42,6 @@ import {
 
 const Users: React.FC = () => {
   const location = useLocation();
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('directory');
 
   // Directory tab state
@@ -74,45 +71,36 @@ const Users: React.FC = () => {
 
   // Lookup/Queue integration state
   const [lookupUsername, setLookupUsername] = useState('');
-  const [, setLookupResult] = useState<LookupResponse | null>(null);
   const [, setUsernameSuggestions] = useState<string[]>([]);
+
+  // Standard filter type used across tabs
+  type StandardFilter = 'all' | 'live' | 'with_image' | 'models' | 'viewers' | 'following' | 'friends' | 'watchlist';
 
   // Following tab state
   const [followingUsers, setFollowingUsers] = useState<FollowingPerson[]>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
   const [, setFollowingStats] = useState<any>(null);
-  const [followingFilter, setFollowingFilter] = useState<'all' | 'live' | 'with_image' | 'models' | 'viewers' | 'unknown'>('all');
+  const [followingFilter, setFollowingFilter] = useState<StandardFilter>('all');
 
   // Followers tab state
   const [followerUsers, setFollowerUsers] = useState<FollowerPerson[]>([]);
   const [followersLoading, setFollowersLoading] = useState(false);
   const [, setFollowersStats] = useState<any>(null);
-  const [, setFollowerRoleFilter] = useState<string>('ALL');
-  const [followersFilter, setFollowersFilter] = useState<'all' | 'live' | 'with_image' | 'models' | 'viewers' | 'unknown'>('all');
+  const [followersFilter, setFollowersFilter] = useState<StandardFilter>('all');
 
   // Unfollowed tab state
   const [unfollowedUsers, setUnfollowedUsers] = useState<UnfollowedPerson[]>([]);
   const [unfollowedLoading, setUnfollowedLoading] = useState(false);
   const [timeframeFilter, setTimeframeFilter] = useState<number>(30);
 
-  // Subs tab state
-  const [subUsers, setSubUsers] = useState<SubPerson[]>([]);
-  const [subsLoading, setSubsLoading] = useState(false);
-  const [subsFilter, setSubsFilter] = useState<'all' | 'active' | 'inactive'>('all');
-
-  // Friends tab state
-  const [friendUsers, setFriendUsers] = useState<FriendPerson[]>([]);
-  const [friendsLoading, setFriendsLoading] = useState(false);
-  const [friendTierFilter, setFriendTierFilter] = useState<number | null>(null);
+  // Unified Relationships state (Friends/Subs/Doms use same data structure)
+  const [relationshipUsers, setRelationshipUsers] = useState<RelationshipPerson[]>([]);
+  const [relationshipsLoading, setRelationshipsLoading] = useState(false);
+  const [relationshipStatusFilter, setRelationshipStatusFilter] = useState<RelationshipStatus | 'all'>('all');
 
   // Bans tab state
   const [bannedUsers, setBannedUsers] = useState<BannedPerson[]>([]);
   const [bansLoading, setBansLoading] = useState(false);
-
-  // Doms tab state
-  const [domUsers, setDomUsers] = useState<DomPerson[]>([]);
-  const [domsLoading, setDomsLoading] = useState(false);
-  const [domsFilter, setDomsFilter] = useState<string>('all');
 
   // Watchlist tab state
   const [watchlistUsers, setWatchlistUsers] = useState<BasePerson[]>([]);
@@ -144,12 +132,8 @@ const Users: React.FC = () => {
       loadFollowers();
     } else if (activeTab === 'unfollowed') {
       loadUnfollowed();
-    } else if (activeTab === 'subs') {
-      loadSubs();
-    } else if (activeTab === 'doms') {
-      loadDoms();
-    } else if (activeTab === 'friends') {
-      loadFriends();
+    } else if (activeTab === 'subs' || activeTab === 'doms' || activeTab === 'friends') {
+      loadRelationships();
     } else if (activeTab === 'bans') {
       loadBans();
     } else if (activeTab === 'watchlist') {
@@ -161,26 +145,12 @@ const Users: React.FC = () => {
     }
   }, [activeTab]);
 
-  // Reload subs when filter changes
+  // Reload relationships when status filter changes
   useEffect(() => {
-    if (activeTab === 'subs') {
-      loadSubs();
+    if (activeTab === 'subs' || activeTab === 'doms' || activeTab === 'friends') {
+      loadRelationships();
     }
-  }, [subsFilter]);
-
-  // Reload friends when tier filter changes
-  useEffect(() => {
-    if (activeTab === 'friends') {
-      loadFriends();
-    }
-  }, [friendTierFilter]);
-
-  // Reload doms when filter changes
-  useEffect(() => {
-    if (activeTab === 'doms') {
-      loadDoms();
-    }
-  }, [domsFilter]);
+  }, [relationshipStatusFilter]);
 
   // Handle URL query parameters
   useEffect(() => {
@@ -308,36 +278,35 @@ const Users: React.FC = () => {
     }
   };
 
-  const loadSubs = async () => {
+  // Unified relationships loader - fetches from /api/relationship/list
+  const loadRelationships = async () => {
     try {
-      setSubsLoading(true);
+      setRelationshipsLoading(true);
       setError(null);
-      const response = await fetch(`/api/followers/subs?filter=${subsFilter}`);
-      const data = await response.json();
-      setSubUsers(data.subs || []);
-    } catch (err) {
-      setError('Failed to load subscribers');
-      console.error(err);
-    } finally {
-      setSubsLoading(false);
-    }
-  };
 
-  const loadFriends = async () => {
-    try {
-      setFriendsLoading(true);
-      setError(null);
-      const url = friendTierFilter
-        ? `/api/followers/friends?tier=${friendTierFilter}`
-        : '/api/followers/friends';
-      const response = await fetch(url);
+      // Build query params
+      const params = new URLSearchParams();
+      if (relationshipStatusFilter !== 'all') {
+        params.append('status', relationshipStatusFilter);
+      }
+      // Fetch all relationship types at once, filter by role on client side
+      params.append('limit', '500');
+
+      const response = await fetch(`/api/relationship/list?${params.toString()}`);
       const data = await response.json();
-      setFriendUsers(data.friends || []);
+
+      // Map API response to RelationshipPerson format
+      const users: RelationshipPerson[] = (data.items || []).map((item: RelationshipListItem) => ({
+        ...item.person,
+        relationship: item.relationship,
+      }));
+
+      setRelationshipUsers(users);
     } catch (err) {
-      setError('Failed to load friends');
+      setError('Failed to load relationships');
       console.error(err);
     } finally {
-      setFriendsLoading(false);
+      setRelationshipsLoading(false);
     }
   };
 
@@ -353,24 +322,6 @@ const Users: React.FC = () => {
       console.error(err);
     } finally {
       setBansLoading(false);
-    }
-  };
-
-  const loadDoms = async () => {
-    try {
-      setDomsLoading(true);
-      setError(null);
-      const url = domsFilter !== 'all'
-        ? `/api/followers/doms?filter=${domsFilter}`
-        : '/api/followers/doms';
-      const response = await fetch(url);
-      const data = await response.json();
-      setDomUsers(data.doms || []);
-    } catch (err) {
-      setError('Failed to load doms');
-      console.error(err);
-    } finally {
-      setDomsLoading(false);
     }
   };
 
@@ -632,17 +583,8 @@ const Users: React.FC = () => {
     document.querySelector('.users-content')?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Build counts for Directory stats grid
-  const directoryCounts: CountItem[] = [
-    { id: 'all', label: 'All People', value: persons.length, color: 'default', clickable: false },
-    { id: 'live', label: 'Live Now', value: persons.filter(p => isPersonLive(p)).length, color: 'red' },
-    { id: 'with_image', label: 'With Images', value: persons.filter(p => p.image_url).length, color: 'primary' },
-    { id: 'models', label: 'Models', value: persons.filter(p => p.role === 'MODEL').length, color: 'purple' },
-    { id: 'viewers', label: 'Viewers', value: persons.filter(p => p.role === 'VIEWER').length, color: 'blue' },
-    { id: 'following', label: 'Following', value: persons.filter(p => p.following).length, color: 'emerald' },
-    { id: 'friends', label: 'Friends', value: persons.filter(p => p.friend_tier).length, color: 'yellow' },
-    { id: 'watchlist', label: 'Watchlist', value: persons.filter(p => p.watch_list).length, color: 'orange' },
-  ];
+  // Build counts for Directory stats grid (using standard 8-filter set)
+  const directoryCounts = buildStandardCounts(persons);
 
   // Build active filters array for display
   const activeFiltersArray: ActiveFilter[] = [
@@ -685,7 +627,7 @@ const Users: React.FC = () => {
   const renderDirectoryTab = () => (
     <>
       <div className="flex justify-between items-center my-6">
-        <h2 className="text-2xl text-white font-semibold">Directory ({persons.length})</h2>
+        <h2 className="text-2xl text-white font-semibold">Directory ({formatNumber(persons.length)})</h2>
       </div>
 
       {/* Filters Panel with Counts inside */}
@@ -789,31 +731,22 @@ const Users: React.FC = () => {
 
   // Render Following Tab
   const renderFollowingTab = () => {
-    const withImages = followingUsers.filter(p => p.image_url).length;
-    const models = followingUsers.filter(p => p.role === 'MODEL').length;
-    const viewers = followingUsers.filter(p => p.role === 'VIEWER').length;
-    const unknown = followingUsers.length - models - viewers;
-    const liveFollowing = followingUsers.filter(p => isPersonLive(p)).length;
+    // Use standard 8-filter set
+    const followingCounts = buildStandardCounts(followingUsers, { allLabel: 'All Following' });
 
+    // Apply active filter
     const filteredFollowing = followingUsers.filter(p => {
       switch (followingFilter) {
         case 'live': return isPersonLive(p);
         case 'with_image': return !!p.image_url;
         case 'models': return p.role === 'MODEL';
         case 'viewers': return p.role === 'VIEWER';
-        case 'unknown': return p.role !== 'MODEL' && p.role !== 'VIEWER';
+        case 'following': return p.following;
+        case 'friends': return !!p.friend_tier;
+        case 'watchlist': return p.watch_list;
         default: return true;
       }
     });
-
-    const followingCounts: CountItem[] = [
-      { id: 'all', label: 'All', value: followingUsers.length, color: 'default' },
-      { id: 'live', label: 'Live', value: liveFollowing, color: 'red' },
-      { id: 'with_image', label: 'With Images', value: withImages, color: 'primary' },
-      { id: 'models', label: 'Models', value: models, color: 'purple' },
-      { id: 'viewers', label: 'Viewers', value: viewers, color: 'blue' },
-      { id: 'unknown', label: 'Unknown', value: unknown, color: 'default' },
-    ];
 
     const followingColumns = getFollowingColumns();
 
@@ -824,7 +757,7 @@ const Users: React.FC = () => {
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Following ({followingUsers.length})</h2>
+          <h2 className="text-2xl text-white font-semibold">Following ({formatNumber(followingUsers.length)})</h2>
           <label className="px-4 py-2 bg-mhc-primary/20 text-mhc-primary border border-mhc-primary/30 rounded-lg cursor-pointer hover:bg-mhc-primary/30 transition-colors">
             <input type="file" accept=".html" onChange={handleUpdateFollowing} className="hidden" />
             Upload Following HTML
@@ -870,31 +803,22 @@ const Users: React.FC = () => {
 
   // Render Followers Tab
   const renderFollowersTab = () => {
-    const withImages = followerUsers.filter(p => p.image_url).length;
-    const models = followerUsers.filter(p => p.role === 'MODEL').length;
-    const viewers = followerUsers.filter(p => p.role === 'VIEWER').length;
-    const unknown = followerUsers.length - models - viewers;
-    const liveFollowers = followerUsers.filter(p => isPersonLive(p)).length;
+    // Use standard 8-filter set
+    const followerCounts = buildStandardCounts(followerUsers, { allLabel: 'All Followers' });
 
+    // Apply active filter
     const filteredFollowers = followerUsers.filter(p => {
       switch (followersFilter) {
         case 'live': return isPersonLive(p);
         case 'with_image': return !!p.image_url;
         case 'models': return p.role === 'MODEL';
         case 'viewers': return p.role === 'VIEWER';
-        case 'unknown': return p.role !== 'MODEL' && p.role !== 'VIEWER';
+        case 'following': return p.following;
+        case 'friends': return !!p.friend_tier;
+        case 'watchlist': return p.watch_list;
         default: return true;
       }
     });
-
-    const followerCounts: CountItem[] = [
-      { id: 'all', label: 'All', value: followerUsers.length, color: 'default' },
-      { id: 'live', label: 'Live', value: liveFollowers, color: 'red' },
-      { id: 'with_image', label: 'With Images', value: withImages, color: 'primary' },
-      { id: 'models', label: 'Models', value: models, color: 'purple' },
-      { id: 'viewers', label: 'Viewers', value: viewers, color: 'blue' },
-      { id: 'unknown', label: 'Unknown', value: unknown, color: 'default' },
-    ];
 
     const followersColumns = getFollowersColumns();
 
@@ -905,7 +829,7 @@ const Users: React.FC = () => {
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Followers ({followerUsers.length})</h2>
+          <h2 className="text-2xl text-white font-semibold">Followers ({formatNumber(followerUsers.length)})</h2>
           <label className="px-4 py-2 bg-mhc-primary/20 text-mhc-primary border border-mhc-primary/30 rounded-lg cursor-pointer hover:bg-mhc-primary/30 transition-colors">
             <input type="file" accept=".html" onChange={handleUpdateFollowers} className="hidden" />
             Upload Followers HTML
@@ -949,171 +873,64 @@ const Users: React.FC = () => {
     );
   };
 
-  // Render Friends Tab with FiltersPanel
-  const renderFriendsTab = () => {
-    const friendsColumns = getFriendsColumns();
+  // Unified Relationships Tab renderer - used by Friends, Subs, and Doms tabs
+  const renderRelationshipsTab = (roleFilter: 'Friend' | 'Sub' | 'Dom') => {
+    const columns = getRelationshipColumns();
 
-    const activeFilters: ActiveFilter[] = friendTierFilter !== null
-      ? [{ id: `tier-${friendTierFilter}`, label: `Tier ${friendTierFilter}`, type: 'stat' as const }]
+    // Filter users by role
+    const filteredUsers = relationshipUsers.filter(u =>
+      u.relationship?.roles?.includes(roleFilter)
+    );
+
+    // Build standard counts for this role's users
+    const relationshipCounts = buildStandardCounts(filteredUsers, { allLabel: `All ${roleFilter}s` });
+
+    // Further filter by status if needed
+    const displayUsers = relationshipStatusFilter === 'all'
+      ? filteredUsers
+      : filteredUsers.filter(u => u.relationship?.status === relationshipStatusFilter);
+
+    const statusOptions: RelationshipStatus[] = [
+      'Active', 'Potential', 'Occasional', 'On Hold', 'Inactive', 'Decommissioned', 'Banished'
+    ];
+
+    const activeFilters: ActiveFilter[] = relationshipStatusFilter !== 'all'
+      ? [{ id: relationshipStatusFilter, label: relationshipStatusFilter, type: 'stat' as const }]
       : [];
+
+    const roleLabels = { Friend: 'Friends', Sub: 'Subs', Dom: 'Doms' };
+    const label = roleLabels[roleFilter];
 
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Friends ({friendUsers.length})</h2>
+          <h2 className="text-2xl text-white font-semibold">{label} ({formatNumber(displayUsers.length)})</h2>
         </div>
 
         <FiltersPanel
+          counts={relationshipCounts}
+          activeCountFilters={new Set()}
+          onCountFilterToggle={() => {}}
           customFilters={
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
+              <span className="text-white/50 text-sm self-center mr-2">Status:</span>
               <button
                 className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                  friendTierFilter === null ? 'bg-gradient-primary text-white border-transparent' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
+                  relationshipStatusFilter === 'all' ? 'bg-gradient-primary text-white border-transparent' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
                 }`}
-                onClick={() => setFriendTierFilter(null)}
+                onClick={() => setRelationshipStatusFilter('all')}
               >
                 All
               </button>
-              {[1, 2, 3, 4].map(tier => {
-                const badge = getFriendTierBadge(tier);
-                return (
-                  <button
-                    key={tier}
-                    className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                      friendTierFilter === tier ? badge?.class || '' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
-                    }`}
-                    onClick={() => setFriendTierFilter(tier)}
-                  >
-                    Tier {tier} - {badge?.label}
-                  </button>
-                );
-              })}
-            </div>
-          }
-        />
-
-        <ActiveFiltersBar
-          filters={activeFilters}
-          resultCount={friendUsers.length}
-          onRemoveFilter={() => setFriendTierFilter(null)}
-          onClearAll={() => setFriendTierFilter(null)}
-          className="mt-4"
-        />
-
-        <ResultsToolbar
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          totalItems={friendUsers.length}
-          className="mt-4"
-        />
-
-        {friendsLoading ? (
-          <div className="p-12 text-center text-white/50">Loading friends...</div>
-        ) : viewMode === 'grid' ? (
-          <PeopleGrid data={friendUsers} onTagClick={setTagFilter} className="mt-4" />
-        ) : (
-          <PeopleTable
-            data={friendUsers}
-            columns={friendsColumns}
-            emptyMessage="No friends found."
-            emptySubMessage="Add friend tiers on user profiles."
-            className="mt-4"
-          />
-        )}
-      </>
-    );
-  };
-
-  // Render Subs Tab with FiltersPanel
-  const renderSubsTab = () => {
-    const subsColumns = getSubsColumns();
-
-    const activeFilters: ActiveFilter[] = subsFilter !== 'all'
-      ? [{ id: subsFilter, label: subsFilter, type: 'stat' as const }]
-      : [];
-
-    return (
-      <>
-        <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Subs ({subUsers.length})</h2>
-        </div>
-
-        <FiltersPanel
-          customFilters={
-            <div className="flex gap-2">
-              {['all', 'active', 'inactive'].map(filter => (
+              {statusOptions.map(status => (
                 <button
-                  key={filter}
-                  className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all capitalize ${
-                    subsFilter === filter ? 'bg-gradient-primary text-white border-transparent' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
-                  }`}
-                  onClick={() => setSubsFilter(filter as typeof subsFilter)}
-                >
-                  {filter}
-                </button>
-              ))}
-            </div>
-          }
-        />
-
-        <ActiveFiltersBar
-          filters={activeFilters}
-          resultCount={subUsers.length}
-          onRemoveFilter={() => setSubsFilter('all')}
-          onClearAll={() => setSubsFilter('all')}
-          className="mt-4"
-        />
-
-        <ResultsToolbar
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          totalItems={subUsers.length}
-          className="mt-4"
-        />
-
-        {subsLoading ? (
-          <div className="p-12 text-center text-white/50">Loading subs...</div>
-        ) : viewMode === 'grid' ? (
-          <PeopleGrid data={subUsers} onTagClick={setTagFilter} className="mt-4" />
-        ) : (
-          <PeopleTable
-            data={subUsers}
-            columns={subsColumns}
-            emptyMessage="No subscribers found."
-            className="mt-4"
-          />
-        )}
-      </>
-    );
-  };
-
-  // Render Doms Tab with FiltersPanel
-  const renderDomsTab = () => {
-    const domsColumns = getDomsColumns();
-    const domLevels = ['all', 'Potential', 'Actively Serving', 'Ended', 'Paused'];
-
-    const activeFilters: ActiveFilter[] = domsFilter !== 'all'
-      ? [{ id: domsFilter, label: domsFilter, type: 'stat' as const }]
-      : [];
-
-    return (
-      <>
-        <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Doms ({domUsers.length})</h2>
-        </div>
-
-        <FiltersPanel
-          customFilters={
-            <div className="flex gap-2">
-              {domLevels.map(level => (
-                <button
-                  key={level}
+                  key={status}
                   className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                    domsFilter === level ? 'bg-gradient-primary text-white border-transparent' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
+                    relationshipStatusFilter === status ? 'bg-gradient-primary text-white border-transparent' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
                   }`}
-                  onClick={() => setDomsFilter(level)}
+                  onClick={() => setRelationshipStatusFilter(status)}
                 >
-                  {level === 'all' ? 'All' : level}
+                  {status}
                 </button>
               ))}
             </div>
@@ -1122,35 +939,41 @@ const Users: React.FC = () => {
 
         <ActiveFiltersBar
           filters={activeFilters}
-          resultCount={domUsers.length}
-          onRemoveFilter={() => setDomsFilter('all')}
-          onClearAll={() => setDomsFilter('all')}
+          resultCount={displayUsers.length}
+          onRemoveFilter={() => setRelationshipStatusFilter('all')}
+          onClearAll={() => setRelationshipStatusFilter('all')}
           className="mt-4"
         />
 
         <ResultsToolbar
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          totalItems={domUsers.length}
+          totalItems={displayUsers.length}
           className="mt-4"
         />
 
-        {domsLoading ? (
-          <div className="p-12 text-center text-white/50">Loading doms...</div>
+        {relationshipsLoading ? (
+          <div className="p-12 text-center text-white/50">Loading {label.toLowerCase()}...</div>
         ) : viewMode === 'grid' ? (
-          <PeopleGrid data={domUsers} onTagClick={setTagFilter} className="mt-4" />
+          <PeopleGrid data={displayUsers} onTagClick={setTagFilter} className="mt-4" />
         ) : (
           <PeopleTable
-            data={domUsers}
-            columns={domsColumns}
-            emptyMessage="No doms found."
-            emptySubMessage="Add Dom relationships from the profile page."
+            data={displayUsers}
+            columns={columns}
+            emptyMessage={`No ${label.toLowerCase()} found.`}
+            emptySubMessage="Create relationships from user profile pages."
             className="mt-4"
           />
         )}
       </>
     );
   };
+
+  // Wrapper functions for each tab - all use the unified relationship renderer
+  const renderFriendsTab = () => renderRelationshipsTab('Friend');
+  const renderSubsTab = () => renderRelationshipsTab('Sub');
+
+  const renderDomsTab = () => renderRelationshipsTab('Dom');
 
   // Render Unfollowed Tab
   const renderUnfollowedTab = () => {
@@ -1161,6 +984,8 @@ const Users: React.FC = () => {
       return daysAgo <= timeframeFilter;
     });
 
+    // Build standard counts for unfollowed users
+    const unfollowedCounts = buildStandardCounts(filteredUnfollowed, { allLabel: 'All Unfollowed' });
     const unfollowedColumns = getUnfollowedColumns();
 
     const activeFilters: ActiveFilter[] = [
@@ -1170,10 +995,13 @@ const Users: React.FC = () => {
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Unfollowed ({filteredUnfollowed.length})</h2>
+          <h2 className="text-2xl text-white font-semibold">Unfollowed ({formatNumber(filteredUnfollowed.length)})</h2>
         </div>
 
         <FiltersPanel
+          counts={unfollowedCounts}
+          activeCountFilters={new Set()}
+          onCountFilterToggle={() => {}}
           customFilters={
             <div className="flex gap-2 items-center">
               <span className="text-white/70 text-sm">Show unfollowed in last:</span>
@@ -1225,15 +1053,20 @@ const Users: React.FC = () => {
 
   // Render Bans Tab
   const renderBansTab = () => {
+    const bansCounts = buildStandardCounts(bannedUsers, { allLabel: 'All Banned' });
     const bansColumns = getBansColumns();
 
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Bans ({bannedUsers.length})</h2>
+          <h2 className="text-2xl text-white font-semibold">Bans ({formatNumber(bannedUsers.length)})</h2>
         </div>
 
-        <FiltersPanel />
+        <FiltersPanel
+          counts={bansCounts}
+          activeCountFilters={new Set()}
+          onCountFilterToggle={() => {}}
+        />
 
         <ActiveFiltersBar
           filters={[]}
@@ -1268,15 +1101,20 @@ const Users: React.FC = () => {
 
   // Render Watchlist Tab
   const renderWatchlistTab = () => {
+    const watchlistCounts = buildStandardCounts(watchlistUsers, { allLabel: 'All Watchlist' });
     const watchlistColumns = getWatchlistColumns();
 
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Watchlist ({watchlistUsers.length})</h2>
+          <h2 className="text-2xl text-white font-semibold">Watchlist ({formatNumber(watchlistUsers.length)})</h2>
         </div>
 
-        <FiltersPanel />
+        <FiltersPanel
+          counts={watchlistCounts}
+          activeCountFilters={new Set()}
+          onCountFilterToggle={() => {}}
+        />
 
         <ActiveFiltersBar
           filters={[]}
@@ -1311,15 +1149,20 @@ const Users: React.FC = () => {
 
   // Render Tipped By Me Tab
   const renderTippedByMeTab = () => {
+    const tippedByMeCounts = buildStandardCounts(tippedByMeUsers, { allLabel: 'All Tipped' });
     const tippedByMeColumns = getTippedByMeColumns();
 
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Tipped By Me ({tippedByMeUsers.length})</h2>
+          <h2 className="text-2xl text-white font-semibold">Tipped By Me ({formatNumber(tippedByMeUsers.length)})</h2>
         </div>
 
-        <FiltersPanel />
+        <FiltersPanel
+          counts={tippedByMeCounts}
+          activeCountFilters={new Set()}
+          onCountFilterToggle={() => {}}
+        />
 
         <ActiveFiltersBar
           filters={[]}
@@ -1353,15 +1196,20 @@ const Users: React.FC = () => {
 
   // Render Tipped Me Tab
   const renderTippedMeTab = () => {
+    const tippedMeCounts = buildStandardCounts(tippedMeUsers, { allLabel: 'All Tippers' });
     const tippedMeColumns = getTippedMeColumns();
 
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Tipped Me ({tippedMeUsers.length})</h2>
+          <h2 className="text-2xl text-white font-semibold">Tipped Me ({formatNumber(tippedMeUsers.length)})</h2>
         </div>
 
-        <FiltersPanel />
+        <FiltersPanel
+          counts={tippedMeCounts}
+          activeCountFilters={new Set()}
+          onCountFilterToggle={() => {}}
+        />
 
         <ActiveFiltersBar
           filters={[]}

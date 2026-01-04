@@ -18,11 +18,24 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Refactor People page into modular components _(v1.22.0 - extracted to client/src/components/people/)_
 - [x] Stats cards moved to collapsible FiltersPanel _(v1.22.0)_
 - [x] Unified Friends/Subs/Doms table layout _(v1.22.0)_
+- [x] Change "With Images" label to "With Media" _(v1.23.0)_
 
 ### /profile - Info Card
 
 - [x] If DOM or SUB, add a badge to the user profile overview card _(v1.20.0 - added role badges for Sub, Dom, Friend, Custom with status indicators)_
 - [x] Instead of centering Model and Follower count on profile overview card, make it left aligned _(v1.18.0)_
+- [x] Move Flags to bottom of profile overview as always-visible checkboxes _(v1.23.0)_
+- [x] Add "Banned by Me" flag field _(v1.23.0 - DB migration, API, UI)_
+
+### /profile - Media
+
+- [x] Move Media to own collapsible section at top, collapsed by default _(v1.23.0)_
+- [x] Fix doubled image count (was showing 18 instead of 9) _(v1.23.0)_
+
+### /profile - Notes
+
+- [x] Auto-expand last note when Notes section expands _(v1.23.0)_
+- [x] Add "Read More" for notes >6 lines with configurable setting _(v1.23.0 - Admin → Settings → Media)_
 
 ### /profile - Snapshot
 
@@ -33,12 +46,39 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 ### /profile - Communications
 
 - [x] Add "Show Raw Data" toggle on Communications tab _(v1.18.0)_
+- [x] Fix duplicate messages in Communications PMs _(v1.23.0 - DISTINCT ON deduplication)_
+- [x] Match PM format to Inbox conversation format _(v1.23.0 - chat bubble style)_
+- [x] Fix broadcaster attribution bug for PMs _(v1.23.0 - uses CHATURBATE_USERNAME env var)_
+
+### /profile - Interactions & Timeline
+
+- [x] Add deduplication for Interactions tab _(v1.23.0 - DISTINCT ON type, content, timestamp)_
+- [x] Add deduplication for Timeline tab _(v1.23.0 - DISTINCT ON type, content, timestamp)_
+
+### /sessions
+
+- [x] Default Sessions to Events tab instead of Summary _(v1.23.0)_
 
 ### /admin
 
 - [x] Add Active Doms as a stat card for user segments _(v1.18.0)_
 - [x] Add Watchlist as a user segment stat _(v1.18.0)_
 - [x] Add image storage size as well as database size to Admin page _(v1.19.0)_
+- [x] Organize Settings into collapsible sections (Broadcast, AI, Media, Theme) _(v1.23.0)_
+- [x] Rename "Profile Scraper" to "Profile Capture" _(v1.23.0)_
+- [x] Rename "Scraper" tab to "Chaturbate Sync" _(v1.23.0)_
+- [x] Make Database & Storage cards fit on one row _(v1.23.0)_
+- [x] Merge By Role and Snapshots by Source on same row _(v1.23.0)_
+
+---
+
+## Investigation Required (Runtime Verification)
+
+- [ ] Investigate empty Events for recent sessions
+- [ ] Investigate missing January 1 session data
+- [ ] Fix Priority Lookup Queue always showing 0 (table may not exist/be populated)
+- [ ] Investigate statbate_model not increasing
+- [ ] Add search/watchlist prioritization for scraping jobs (needs requirements)
 
 ---
 

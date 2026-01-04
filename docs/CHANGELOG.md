@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.23.0] - 2026-01-04
+
+### Added
+- **"Banned by Me" flag**: New profile flag to track users you've banned (DB migration, API, UI checkbox)
+- **Note Line Limit setting**: Configurable "Read More" truncation for notes >N lines (Admin → Settings → Media)
+- **Media Collapsible Section**: Media moved to own collapsible section at top of profile, collapsed by default
+- **Chat bubble format for PMs**: Communications now matches Inbox conversation format with chat bubbles
+
+### Changed
+- **Profile Flags redesign**: Flags moved to bottom of profile overview as always-visible checkboxes
+- **Auto-expand last note**: When Notes section expands, most recent note auto-expands
+- **"With Images" → "With Media"**: Updated label in People page filters
+- **Sessions default to Events tab**: SessionDetail now opens Events tab instead of Summary
+- **Admin Settings organized**: Settings tab reorganized into collapsible sections (Broadcast, AI, Media, Theme)
+- **Database & Storage layout**: Cards now fit on one row; By Role and Snapshots by Source merged on same row
+- **Renamed "Profile Scraper" → "Profile Capture"**: Updated terminology throughout UI
+- **Renamed "Scraper" tab → "Chaturbate Sync"**: Updated Admin tab name
+
+### Fixed
+- **Doubled image count**: Media section now shows correct count (was adding uploaded + history twice)
+- **Duplicate PM messages**: Added DISTINCT ON deduplication to communications endpoint
+- **Broadcaster attribution for PMs**: Uses CHATURBATE_USERNAME env var instead of hardcoded value
+- **Interactions tab duplicates**: Added deduplication based on type, content, and timestamp
+- **Timeline tab duplicates**: Added deduplication based on type, content, and timestamp
+- **People page layout consistency**: All tabs now use shared components with standardized layout
+
+---
+
 ## [1.22.0] - 2026-01-04
 
 ### Added

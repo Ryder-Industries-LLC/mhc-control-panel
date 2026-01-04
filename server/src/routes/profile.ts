@@ -84,10 +84,15 @@ router.get('/:username', async (req: Request, res: Response) => {
     const profile = profileResult.rows[0] || null;
 
     // Get all interactions for this person
+    // Use DISTINCT ON to deduplicate based on content, type, and timestamp (within same second)
     const interactionsSql = `
-      SELECT *
-      FROM interactions
-      WHERE person_id = $1
+      SELECT * FROM (
+        SELECT DISTINCT ON (type, content, DATE_TRUNC('second', timestamp))
+          *
+        FROM interactions
+        WHERE person_id = $1
+        ORDER BY type, content, DATE_TRUNC('second', timestamp), id
+      ) deduped
       ORDER BY timestamp DESC
     `;
     const interactionsResult = await query(interactionsSql, [person.id]);
@@ -552,7 +557,7 @@ router.get('/', async (req: Request, res: Response) => {
 
 /**
  * PATCH /api/profile/:username
- * Update profile fields (notes, banned_me, active_sub, first_service_date, last_service_date, friend_tier, stream_summary, watch_list, etc.)
+ * Update profile fields (notes, banned_me, banned_by_me, active_sub, first_service_date, last_service_date, friend_tier, stream_summary, watch_list, etc.)
  */
 router.patch('/:username', async (req: Request, res: Response) => {
   try {
@@ -560,6 +565,7 @@ router.patch('/:username', async (req: Request, res: Response) => {
     const {
       notes,
       banned_me,
+      banned_by_me,
       active_sub,
       first_service_date,
       last_service_date,
@@ -595,6 +601,11 @@ router.patch('/:username', async (req: Request, res: Response) => {
       if (banned_me === true) {
         updates.push(`banned_at = COALESCE(banned_at, NOW())`);
       }
+    }
+
+    if (banned_by_me !== undefined) {
+      updates.push(`banned_by_me = $${paramIndex++}`);
+      values.push(banned_by_me);
     }
 
     if (active_sub !== undefined) {
@@ -642,12 +653,13 @@ router.patch('/:username', async (req: Request, res: Response) => {
     if (existingProfile.rows.length === 0) {
       // Create minimal profile if it doesn't exist
       await query(
-        `INSERT INTO profiles (person_id, notes, banned_me, active_sub, first_service_date, last_service_date, friend_tier, stream_summary, watch_list)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO profiles (person_id, notes, banned_me, banned_by_me, active_sub, first_service_date, last_service_date, friend_tier, stream_summary, watch_list)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           person.id,
           notes !== undefined ? notes : null,
           banned_me !== undefined ? banned_me : false,
+          banned_by_me !== undefined ? banned_by_me : false,
           active_sub !== undefined ? active_sub : false,
           first_service_date !== undefined ? first_service_date : null,
           last_service_date !== undefined ? last_service_date : null,
@@ -664,6 +676,7 @@ router.patch('/:username', async (req: Request, res: Response) => {
       logger.info(`Created new profile for ${username}`, {
         notes: !!notes,
         banned_me,
+        banned_by_me,
         active_sub,
         first_service_date,
         last_service_date,
@@ -689,6 +702,7 @@ router.patch('/:username', async (req: Request, res: Response) => {
     logger.info(`Updated profile for ${username}`, {
       notes: !!notes,
       banned_me,
+      banned_by_me,
       active_sub,
       first_service_date,
       last_service_date,
@@ -1987,8 +2001,8 @@ router.post('/visits/backfill', async (req: Request, res: Response) => {
  * Get all communications (DMs, PMs) for a user
  * Classifies messages as:
  * - direct_messages: PRIVATE_MESSAGE where broadcaster is null/empty
- * - pm_my_room: PRIVATE_MESSAGE where broadcaster = 'hudson_cage'
- * - pm_their_room: PRIVATE_MESSAGE where broadcaster is set and != 'hudson_cage'
+ * - pm_my_room: PRIVATE_MESSAGE where broadcaster matches CHATURBATE_USERNAME env var
+ * - pm_their_room: PRIVATE_MESSAGE where broadcaster is set and != our username
  */
 router.get('/:username/communications', async (req: Request, res: Response) => {
   try {
@@ -2006,29 +2020,37 @@ router.get('/:username/communications', async (req: Request, res: Response) => {
     }
 
     // Get all PRIVATE_MESSAGE interactions for this person
+    // Use DISTINCT ON with a subquery to deduplicate messages with same content and timestamp
+    // but maintain proper ORDER BY timestamp DESC for display
     const result = await query(
-      `SELECT
-        id,
-        type,
-        content,
-        timestamp,
-        source,
-        metadata,
-        stream_session_id
-       FROM interactions
-       WHERE person_id = $1
-         AND type = 'PRIVATE_MESSAGE'
+      `SELECT * FROM (
+         SELECT DISTINCT ON (content, DATE_TRUNC('second', timestamp))
+           id,
+           type,
+           content,
+           timestamp,
+           source,
+           metadata,
+           stream_session_id
+         FROM interactions
+         WHERE person_id = $1
+           AND type = 'PRIVATE_MESSAGE'
+         ORDER BY content, DATE_TRUNC('second', timestamp), id
+       ) deduped
        ORDER BY timestamp DESC
        LIMIT $2 OFFSET $3`,
       [person.id, parseInt(limit as string), parseInt(offset as string)]
     );
 
-    // Get total count
+    // Get total count (deduplicated)
     const countResult = await query(
-      `SELECT COUNT(*) as total
-       FROM interactions
-       WHERE person_id = $1
-         AND type = 'PRIVATE_MESSAGE'`,
+      `SELECT COUNT(*) as total FROM (
+         SELECT DISTINCT ON (content, DATE_TRUNC('second', timestamp)) id
+         FROM interactions
+         WHERE person_id = $1
+           AND type = 'PRIVATE_MESSAGE'
+         ORDER BY content, DATE_TRUNC('second', timestamp), id
+       ) deduped`,
       [person.id]
     );
 
@@ -2048,9 +2070,13 @@ router.get('/:username/communications', async (req: Request, res: Response) => {
         stream_session_id: row.stream_session_id,
       };
 
+      // Get broadcaster username from environment
+      const myUsername = process.env.CHATURBATE_USERNAME?.toLowerCase();
+      const broadcasterLower = broadcaster?.toLowerCase();
+
       if (!broadcaster) {
         directMessages.push(message);
-      } else if (broadcaster === 'hudson_cage') {
+      } else if (myUsername && broadcasterLower === myUsername) {
         pmMyRoom.push(message);
       } else {
         pmTheirRoom.push({ ...message, broadcaster });
@@ -2115,30 +2141,36 @@ router.get('/:username/timeline', async (req: Request, res: Response) => {
     const limitParam = selectedTypes.length + 2;
     const offsetParam = selectedTypes.length + 3;
 
-    // Get timeline events - filtered by selected types
+    // Get timeline events - filtered by selected types and deduplicated
     const result = await query(
-      `SELECT
-        id,
-        type,
-        content,
-        timestamp,
-        source,
-        metadata,
-        stream_session_id
-       FROM interactions
-       WHERE person_id = $1
-         AND type IN (${typePlaceholders})
+      `SELECT * FROM (
+         SELECT DISTINCT ON (type, content, DATE_TRUNC('second', timestamp))
+           id,
+           type,
+           content,
+           timestamp,
+           source,
+           metadata,
+           stream_session_id
+         FROM interactions
+         WHERE person_id = $1
+           AND type IN (${typePlaceholders})
+         ORDER BY type, content, DATE_TRUNC('second', timestamp), id
+       ) deduped
        ORDER BY timestamp DESC
        LIMIT $${limitParam} OFFSET $${offsetParam}`,
       [person.id, ...selectedTypes, parseInt(limit as string), parseInt(offset as string)]
     );
 
-    // Get total count for selected types
+    // Get total count for selected types (deduplicated)
     const countResult = await query(
-      `SELECT COUNT(*) as total
-       FROM interactions
-       WHERE person_id = $1
-         AND type IN (${typePlaceholders})`,
+      `SELECT COUNT(*) as total FROM (
+         SELECT DISTINCT ON (type, content, DATE_TRUNC('second', timestamp)) id
+         FROM interactions
+         WHERE person_id = $1
+           AND type IN (${typePlaceholders})
+         ORDER BY type, content, DATE_TRUNC('second', timestamp), id
+       ) deduped`,
       [person.id, ...selectedTypes]
     );
 

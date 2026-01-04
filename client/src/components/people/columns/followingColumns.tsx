@@ -1,432 +1,255 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { FollowingPerson, FollowerPerson, UnfollowedPerson, BannedPerson, TipperPerson, ColumnConfig } from '../../../types/people';
+import {
+  BasePerson,
+  FollowingPerson,
+  FollowerPerson,
+  UnfollowedPerson,
+  BannedPerson,
+  TipperPerson,
+  ColumnConfig,
+} from '../../../types/people';
+import {
+  getUsernameColumn,
+  getImageColumn,
+  getAgeColumn,
+  getTagsColumn,
+  getImagesCountColumn,
+  getLastActiveColumn,
+} from './baseColumns';
+
+/**
+ * All tab columns follow the standard structure:
+ * Username | Image | Age | Tags | Images | Last Active | [Segment Specific] | Actions
+ *
+ * Segment-specific columns are inserted between Last Active and Actions
+ */
 
 // Following tab columns
 export function getFollowingColumns(): ColumnConfig<FollowingPerson>[] {
+  const followingSinceColumn: ColumnConfig<FollowingPerson> = {
+    id: 'following_since',
+    header: 'Following Since',
+    width: '120px',
+    sortable: true,
+    sortField: 'following_since',
+    render: (person, { formatDate }) => (
+      <span>{person.following_since ? formatDate(person.following_since, { includeTime: false }) : '\u2014'}</span>
+    ),
+  };
+
   return [
-    {
-      id: 'username',
-      header: 'Username',
-      width: '200px',
-      sortable: true,
-      sortField: 'username',
-      render: (person, { getRoleBadgeClass, isPersonLive }) => (
-        <div className="flex items-center gap-2">
-          <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem] opacity-80`}>
-            {person.role}
-          </span>
-          <Link
-            to={`/profile/${person.username}`}
-            className="text-mhc-primary font-medium hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {person.username}
-          </Link>
-          {isPersonLive(person) && (
-            <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded animate-pulse">LIVE</span>
-          )}
-        </div>
-      ),
-    },
-    {
-      id: 'image',
-      header: 'Image',
-      width: '140px',
-      render: (person, { getImageUrl }) => {
-        const imageUrl = getImageUrl(person.image_url);
-        return imageUrl ? (
-          <img src={imageUrl} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-        ) : (
-          <span className="text-white/30">&mdash;</span>
-        );
-      },
-    },
-    {
-      id: 'following_since',
-      header: 'Following Since',
-      sortable: true,
-      sortField: 'following_since',
-      render: (person, { formatDate }) => (
-        <span>{person.following_since ? formatDate(person.following_since, { includeTime: false }) : '\u2014'}</span>
-      ),
-    },
-    {
-      id: 'last_active',
-      header: 'Last Active',
-      sortable: true,
-      sortField: 'session_observed_at',
-      render: (person, { getLastActiveTime, formatDate }) => {
-        const lastActive = getLastActiveTime(person);
-        return <span>{lastActive ? formatDate(lastActive, { relative: true }) : '\u2014'}</span>;
-      },
-    },
+    getUsernameColumn<FollowingPerson>(),
+    getImageColumn<FollowingPerson>(),
+    getAgeColumn<FollowingPerson>(),
+    getTagsColumn<FollowingPerson>(),
+    getImagesCountColumn<FollowingPerson>(),
+    getLastActiveColumn<FollowingPerson>(),
+    followingSinceColumn,
   ];
 }
 
 // Followers tab columns
 export function getFollowersColumns(): ColumnConfig<FollowerPerson>[] {
+  const followerSinceColumn: ColumnConfig<FollowerPerson> = {
+    id: 'follower_since',
+    header: 'Follower Since',
+    width: '120px',
+    sortable: true,
+    sortField: 'follower_since',
+    render: (person, { formatDate }) => (
+      <span>{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '\u2014'}</span>
+    ),
+  };
+
   return [
-    {
-      id: 'username',
-      header: 'Username',
-      width: '200px',
-      sortable: true,
-      sortField: 'username',
-      render: (person, { getRoleBadgeClass, isPersonLive }) => (
-        <div className="flex items-center gap-2">
-          <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem] opacity-80`}>
-            {person.role}
-          </span>
-          <Link
-            to={`/profile/${person.username}`}
-            className="text-mhc-primary font-medium hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {person.username}
-          </Link>
-          {isPersonLive(person) && (
-            <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded animate-pulse">LIVE</span>
-          )}
-        </div>
-      ),
-    },
-    {
-      id: 'image',
-      header: 'Image',
-      width: '140px',
-      render: (person, { getImageUrl }) => {
-        const imageUrl = getImageUrl(person.image_url);
-        return imageUrl ? (
-          <img src={imageUrl} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-        ) : (
-          <span className="text-white/30">&mdash;</span>
-        );
-      },
-    },
-    {
-      id: 'follower_since',
-      header: 'Follower Since',
-      sortable: true,
-      sortField: 'follower_since',
-      render: (person, { formatDate }) => (
-        <span>{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '\u2014'}</span>
-      ),
-    },
-    {
-      id: 'last_active',
-      header: 'Last Active',
-      sortable: true,
-      sortField: 'session_observed_at',
-      render: (person, { getLastActiveTime, formatDate }) => {
-        const lastActive = getLastActiveTime(person);
-        return <span>{lastActive ? formatDate(lastActive, { relative: true }) : '\u2014'}</span>;
-      },
-    },
+    getUsernameColumn<FollowerPerson>(),
+    getImageColumn<FollowerPerson>(),
+    getAgeColumn<FollowerPerson>(),
+    getTagsColumn<FollowerPerson>(),
+    getImagesCountColumn<FollowerPerson>(),
+    getLastActiveColumn<FollowerPerson>(),
+    followerSinceColumn,
   ];
 }
 
 // Unfollowed tab columns
 export function getUnfollowedColumns(): ColumnConfig<UnfollowedPerson>[] {
+  const unfollowedAtColumn: ColumnConfig<UnfollowedPerson> = {
+    id: 'unfollower_at',
+    header: 'Unfollowed At',
+    width: '120px',
+    sortable: true,
+    sortField: 'unfollower_at',
+    render: (person, { formatDate }) => (
+      <span>{person.unfollower_at ? formatDate(person.unfollower_at, { relative: true }) : '\u2014'}</span>
+    ),
+  };
+
+  const wasFollowingSinceColumn: ColumnConfig<UnfollowedPerson> = {
+    id: 'follower_since',
+    header: 'Was Following Since',
+    width: '130px',
+    sortable: true,
+    sortField: 'follower_since',
+    render: (person, { formatDate }) => (
+      <span>{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '\u2014'}</span>
+    ),
+  };
+
   return [
-    {
-      id: 'username',
-      header: 'Username',
-      width: '200px',
-      sortable: true,
-      sortField: 'username',
-      render: (person, { getRoleBadgeClass }) => (
-        <div className="flex items-center gap-2">
-          <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem] opacity-80`}>
-            {person.role}
-          </span>
-          <Link
-            to={`/profile/${person.username}`}
-            className="text-mhc-primary font-medium hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {person.username}
-          </Link>
-        </div>
-      ),
-    },
-    {
-      id: 'image',
-      header: 'Image',
-      width: '140px',
-      render: (person, { getImageUrl }) => {
-        const imageUrl = getImageUrl(person.image_url);
-        return imageUrl ? (
-          <img src={imageUrl} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-        ) : (
-          <span className="text-white/30">&mdash;</span>
-        );
-      },
-    },
-    {
-      id: 'unfollower_at',
-      header: 'Unfollowed At',
-      sortable: true,
-      sortField: 'unfollower_at',
-      render: (person, { formatDate }) => (
-        <span>{person.unfollower_at ? formatDate(person.unfollower_at, { relative: true }) : '\u2014'}</span>
-      ),
-    },
-    {
-      id: 'follower_since',
-      header: 'Was Following Since',
-      sortable: true,
-      sortField: 'follower_since',
-      render: (person, { formatDate }) => (
-        <span>{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '\u2014'}</span>
-      ),
-    },
+    getUsernameColumn<UnfollowedPerson>(),
+    getImageColumn<UnfollowedPerson>(),
+    getAgeColumn<UnfollowedPerson>(),
+    getTagsColumn<UnfollowedPerson>(),
+    getImagesCountColumn<UnfollowedPerson>(),
+    getLastActiveColumn<UnfollowedPerson>(),
+    unfollowedAtColumn,
+    wasFollowingSinceColumn,
   ];
 }
 
 // Bans tab columns
 export function getBansColumns(): ColumnConfig<BannedPerson>[] {
+  const bannedAtColumn: ColumnConfig<BannedPerson> = {
+    id: 'banned_at',
+    header: 'Banned At',
+    width: '120px',
+    sortable: true,
+    sortField: 'banned_at',
+    render: (person, { formatDate }) => (
+      <span>{person.banned_at ? formatDate(person.banned_at, { relative: true }) : '\u2014'}</span>
+    ),
+  };
+
   return [
-    {
-      id: 'username',
-      header: 'Username',
-      width: '200px',
-      sortable: true,
-      sortField: 'username',
-      render: (person, { getRoleBadgeClass }) => (
-        <div className="flex items-center gap-2">
-          <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem] opacity-80`}>
-            {person.role}
-          </span>
-          <Link
-            to={`/profile/${person.username}`}
-            className="text-mhc-primary font-medium hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {person.username}
-          </Link>
-          <span className="bg-red-500/20 text-red-400 text-xs px-1.5 py-0.5 rounded border border-red-500/30">
-            BANNED
-          </span>
-        </div>
-      ),
-    },
-    {
-      id: 'image',
-      header: 'Image',
-      width: '140px',
-      render: (person, { getImageUrl }) => {
-        const imageUrl = getImageUrl(person.image_url);
-        return imageUrl ? (
-          <img src={imageUrl} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-        ) : (
-          <span className="text-white/30">&mdash;</span>
-        );
-      },
-    },
-    {
-      id: 'last_active',
-      header: 'Last Active',
-      sortable: true,
-      sortField: 'session_observed_at',
-      render: (person, { getLastActiveTime, formatDate }) => {
-        const lastActive = getLastActiveTime(person);
-        return <span>{lastActive ? formatDate(lastActive, { relative: true }) : '\u2014'}</span>;
-      },
-    },
+    getUsernameColumn<BannedPerson>(),
+    getImageColumn<BannedPerson>(),
+    getAgeColumn<BannedPerson>(),
+    getTagsColumn<BannedPerson>(),
+    getImagesCountColumn<BannedPerson>(),
+    getLastActiveColumn<BannedPerson>(),
+    bannedAtColumn,
   ];
 }
 
 // Watchlist tab columns
-export function getWatchlistColumns(): ColumnConfig<any>[] {
+export function getWatchlistColumns(): ColumnConfig<BasePerson>[] {
+  // Watchlist badge is shown in username column via banned_me/watch_list logic
+  // Add a watch indicator column
+  const watchBadgeColumn: ColumnConfig<BasePerson> = {
+    id: 'watch_badge',
+    header: 'Status',
+    width: '80px',
+    render: () => (
+      <span className="bg-orange-500/20 text-orange-400 text-xs px-1.5 py-0.5 rounded border border-orange-500/30">
+        WATCH
+      </span>
+    ),
+  };
+
   return [
-    {
-      id: 'username',
-      header: 'Username',
-      width: '200px',
-      sortable: true,
-      sortField: 'username',
-      render: (person, { getRoleBadgeClass, isPersonLive }) => (
-        <div className="flex items-center gap-2">
-          <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem] opacity-80`}>
-            {person.role}
-          </span>
-          <Link
-            to={`/profile/${person.username}`}
-            className="text-mhc-primary font-medium hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {person.username}
-          </Link>
-          {isPersonLive(person) && (
-            <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded animate-pulse">LIVE</span>
-          )}
-          <span className="bg-orange-500/20 text-orange-400 text-xs px-1.5 py-0.5 rounded border border-orange-500/30">
-            WATCH
-          </span>
-        </div>
-      ),
-    },
-    {
-      id: 'image',
-      header: 'Image',
-      width: '140px',
-      render: (person, { getImageUrl }) => {
-        const imageUrl = getImageUrl(person.image_url);
-        return imageUrl ? (
-          <img src={imageUrl} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-        ) : (
-          <span className="text-white/30">&mdash;</span>
-        );
-      },
-    },
-    {
-      id: 'last_active',
-      header: 'Last Active',
-      sortable: true,
-      sortField: 'session_observed_at',
-      render: (person, { getLastActiveTime, formatDate }) => {
-        const lastActive = getLastActiveTime(person);
-        return <span>{lastActive ? formatDate(lastActive, { relative: true }) : '\u2014'}</span>;
-      },
-    },
+    getUsernameColumn<BasePerson>(),
+    getImageColumn<BasePerson>(),
+    getAgeColumn<BasePerson>(),
+    getTagsColumn<BasePerson>(),
+    getImagesCountColumn<BasePerson>(),
+    getLastActiveColumn<BasePerson>(),
+    watchBadgeColumn,
   ];
 }
 
 // Tipped By Me tab columns
 export function getTippedByMeColumns(): ColumnConfig<TipperPerson>[] {
+  const totalTokensColumn: ColumnConfig<TipperPerson> = {
+    id: 'total_tokens',
+    header: 'Total Tokens',
+    width: '110px',
+    align: 'center',
+    sortable: true,
+    sortField: 'total_tokens',
+    render: (person) => (
+      <span className="font-mono text-amber-400">{(person.total_tokens || 0).toLocaleString()}</span>
+    ),
+  };
+
+  const tipCountColumn: ColumnConfig<TipperPerson> = {
+    id: 'tip_count',
+    header: 'Tips',
+    width: '70px',
+    align: 'center',
+    sortable: true,
+    sortField: 'tip_count',
+    render: (person) => <span>{(person.tip_count || 0).toLocaleString()}</span>,
+  };
+
+  const lastTipColumn: ColumnConfig<TipperPerson> = {
+    id: 'last_tip_date',
+    header: 'Last Tip',
+    width: '110px',
+    sortable: true,
+    sortField: 'last_tip_date',
+    render: (person, { formatDate }) => (
+      <span>{person.last_tip_date ? formatDate(person.last_tip_date, { relative: true }) : '\u2014'}</span>
+    ),
+  };
+
   return [
-    {
-      id: 'username',
-      header: 'Username',
-      width: '200px',
-      sortable: true,
-      sortField: 'username',
-      render: (person, { getRoleBadgeClass }) => (
-        <div className="flex items-center gap-2">
-          <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem] opacity-80`}>
-            {person.role}
-          </span>
-          <Link
-            to={`/profile/${person.username}`}
-            className="text-mhc-primary font-medium hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {person.username}
-          </Link>
-        </div>
-      ),
-    },
-    {
-      id: 'image',
-      header: 'Image',
-      width: '140px',
-      render: (person, { getImageUrl }) => {
-        const imageUrl = getImageUrl(person.image_url);
-        return imageUrl ? (
-          <img src={imageUrl} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-        ) : (
-          <span className="text-white/30">&mdash;</span>
-        );
-      },
-    },
-    {
-      id: 'total_tokens',
-      header: 'Total Tokens',
-      width: '120px',
-      align: 'center',
-      sortable: true,
-      sortField: 'total_tokens',
-      render: (person, { formatNumber }) => (
-        <span className="font-mono text-amber-400">{formatNumber(person.total_tokens || 0)}</span>
-      ),
-    },
-    {
-      id: 'tip_count',
-      header: 'Tip Count',
-      width: '100px',
-      align: 'center',
-      sortable: true,
-      sortField: 'tip_count',
-      render: (person) => <span>{person.tip_count || 0}</span>,
-    },
-    {
-      id: 'last_tip_date',
-      header: 'Last Tip',
-      sortable: true,
-      sortField: 'last_tip_date',
-      render: (person, { formatDate }) => (
-        <span>{person.last_tip_date ? formatDate(person.last_tip_date, { relative: true }) : '\u2014'}</span>
-      ),
-    },
+    getUsernameColumn<TipperPerson>(),
+    getImageColumn<TipperPerson>(),
+    getAgeColumn<TipperPerson>(),
+    getTagsColumn<TipperPerson>(),
+    getImagesCountColumn<TipperPerson>(),
+    getLastActiveColumn<TipperPerson>(),
+    totalTokensColumn,
+    tipCountColumn,
+    lastTipColumn,
   ];
 }
 
 // Tipped Me tab columns
 export function getTippedMeColumns(): ColumnConfig<TipperPerson>[] {
+  const totalTokensColumn: ColumnConfig<TipperPerson> = {
+    id: 'total_tokens',
+    header: 'Total Tokens',
+    width: '110px',
+    align: 'center',
+    sortable: true,
+    sortField: 'total_tokens',
+    render: (person) => (
+      <span className="font-mono text-emerald-400">{(person.total_tokens || 0).toLocaleString()}</span>
+    ),
+  };
+
+  const tipCountColumn: ColumnConfig<TipperPerson> = {
+    id: 'tip_count',
+    header: 'Tips',
+    width: '70px',
+    align: 'center',
+    sortable: true,
+    sortField: 'tip_count',
+    render: (person) => <span>{(person.tip_count || 0).toLocaleString()}</span>,
+  };
+
+  const lastTipColumn: ColumnConfig<TipperPerson> = {
+    id: 'last_tip_date',
+    header: 'Last Tip',
+    width: '110px',
+    sortable: true,
+    sortField: 'last_tip_date',
+    render: (person, { formatDate }) => (
+      <span>{person.last_tip_date ? formatDate(person.last_tip_date, { relative: true }) : '\u2014'}</span>
+    ),
+  };
+
   return [
-    {
-      id: 'username',
-      header: 'Username',
-      width: '200px',
-      sortable: true,
-      sortField: 'username',
-      render: (person, { getRoleBadgeClass }) => (
-        <div className="flex items-center gap-2">
-          <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem] opacity-80`}>
-            {person.role}
-          </span>
-          <Link
-            to={`/profile/${person.username}`}
-            className="text-mhc-primary font-medium hover:underline"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {person.username}
-          </Link>
-        </div>
-      ),
-    },
-    {
-      id: 'image',
-      header: 'Image',
-      width: '140px',
-      render: (person, { getImageUrl }) => {
-        const imageUrl = getImageUrl(person.image_url);
-        return imageUrl ? (
-          <img src={imageUrl} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-        ) : (
-          <span className="text-white/30">&mdash;</span>
-        );
-      },
-    },
-    {
-      id: 'total_tokens',
-      header: 'Total Tokens',
-      width: '120px',
-      align: 'center',
-      sortable: true,
-      sortField: 'total_tokens',
-      render: (person, { formatNumber }) => (
-        <span className="font-mono text-emerald-400">{formatNumber(person.total_tokens || 0)}</span>
-      ),
-    },
-    {
-      id: 'tip_count',
-      header: 'Tip Count',
-      width: '100px',
-      align: 'center',
-      sortable: true,
-      sortField: 'tip_count',
-      render: (person) => <span>{person.tip_count || 0}</span>,
-    },
-    {
-      id: 'last_tip_date',
-      header: 'Last Tip',
-      sortable: true,
-      sortField: 'last_tip_date',
-      render: (person, { formatDate }) => (
-        <span>{person.last_tip_date ? formatDate(person.last_tip_date, { relative: true }) : '\u2014'}</span>
-      ),
-    },
+    getUsernameColumn<TipperPerson>(),
+    getImageColumn<TipperPerson>(),
+    getAgeColumn<TipperPerson>(),
+    getTagsColumn<TipperPerson>(),
+    getImagesCountColumn<TipperPerson>(),
+    getLastActiveColumn<TipperPerson>(),
+    totalTokensColumn,
+    tipCountColumn,
+    lastTipColumn,
   ];
 }

@@ -37,6 +37,8 @@ export type { UserCardProps } from './UserCard';
 // Column configurations
 export {
   getDirectoryColumns,
+  getRelationshipColumns,
+  // Legacy exports for backwards compatibility
   getFriendsColumns,
   getSubsColumns,
   getDomsColumns,

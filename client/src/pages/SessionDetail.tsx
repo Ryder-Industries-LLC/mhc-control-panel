@@ -54,7 +54,7 @@ const SessionDetail: React.FC = () => {
   const [audience, setAudience] = useState<Audience | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabType>('summary');
+  const [activeTab, setActiveTab] = useState<TabType>('events');
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesValue, setNotesValue] = useState('');
   const [tagsValue, setTagsValue] = useState('');

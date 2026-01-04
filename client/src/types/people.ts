@@ -214,6 +214,17 @@ export interface PersonWithRelationship extends BasePerson {
   relationship?: Relationship | null;
 }
 
+// API response item from /api/relationship/list
+export interface RelationshipListItem {
+  relationship: Relationship;
+  person: BasePerson;
+}
+
+// Unified type for relationship tabs (Friends/Subs/Doms)
+export interface RelationshipPerson extends BasePerson {
+  relationship: Relationship;
+}
+
 // Page size options constant
 export const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 
@@ -334,7 +345,7 @@ export const getRelationshipStatusClass = (status: RelationshipStatus): string =
   }
 };
 
-// Utility function: Get service level badge class (for Doms)
+// Utility function: Get service level badge class (for Doms - legacy)
 export const getServiceLevelClass = (level: string): string => {
   switch (level) {
     case 'Actively Serving':
@@ -348,4 +359,65 @@ export const getServiceLevelClass = (level: string): string => {
     default:
       return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
   }
+};
+
+// Utility function: Get role chip class for relationship roles
+export const getRoleChipClass = (role: RoleType): string => {
+  switch (role) {
+    case 'Dom':
+      return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
+    case 'Sub':
+      return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
+    case 'Friend':
+      return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+    case 'Custom':
+      return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+    default:
+      return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+  }
+};
+
+/**
+ * Build standard filter counts from any list of persons
+ * Standard 8 filters: All | Live Now | With Media | Models | Viewers | Following | Friends | Watchlist
+ */
+export const buildStandardCounts = <T extends BasePerson>(
+  data: T[],
+  options?: {
+    includeAll?: boolean;
+    allLabel?: string;
+  }
+): CountItem[] => {
+  const { includeAll = true, allLabel = 'All People' } = options || {};
+
+  const counts: CountItem[] = [];
+
+  if (includeAll) {
+    counts.push({
+      id: 'all',
+      label: allLabel,
+      value: data.length,
+      color: 'default',
+      clickable: false,
+    });
+  }
+
+  counts.push(
+    { id: 'live', label: 'Live Now', value: data.filter(p => isPersonLive(p)).length, color: 'red' },
+    { id: 'with_image', label: 'With Media', value: data.filter(p => p.image_url).length, color: 'primary' },
+    { id: 'models', label: 'Models', value: data.filter(p => p.role === 'MODEL').length, color: 'purple' },
+    { id: 'viewers', label: 'Viewers', value: data.filter(p => p.role === 'VIEWER').length, color: 'blue' },
+    { id: 'following', label: 'Following', value: data.filter(p => p.following).length, color: 'emerald' },
+    { id: 'friends', label: 'Friends', value: data.filter(p => p.friend_tier).length, color: 'yellow' },
+    { id: 'watchlist', label: 'Watchlist', value: data.filter(p => p.watch_list).length, color: 'orange' },
+  );
+
+  return counts;
+};
+
+/**
+ * Format a number with locale-aware thousand separators
+ */
+export const formatNumber = (num: number): string => {
+  return num.toLocaleString();
 };

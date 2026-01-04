@@ -16,7 +16,7 @@ import { RelationshipHistoryViewer } from '../components/RelationshipHistoryView
 
 interface ProfilePageProps {}
 
-type TabType = 'snapshot' | 'sessions' | 'interactions' | 'timeline' | 'images';
+type TabType = 'snapshot' | 'sessions' | 'interactions' | 'timeline';
 interface ProfileNote {
   id: string;
   profile_id: number;
@@ -107,7 +107,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
   const [username, setUsername] = useState(urlUsername || '');
   const [lookupCollapsed, setLookupCollapsed] = useState(!!urlUsername);
-  const [activeTab, setActiveTab] = useState<TabType>(tabFromUrl || 'images');
+  const [activeTab, setActiveTab] = useState<TabType>(tabFromUrl || 'snapshot');
   const [loading, setLoading] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -127,9 +127,12 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [editingNoteDate, setEditingNoteDate] = useState('');
   const [notesSaving, setNotesSaving] = useState(false);
   const [notesMessage, setNotesMessage] = useState<string | null>(null);
+  const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
+  const [noteLineLimit, setNoteLineLimit] = useState(6); // Configurable line limit for Read More
 
   // Profile attributes state
   const [bannedMe, setBannedMe] = useState(false);
+  const [bannedByMe, setBannedByMe] = useState(false);
   const [watchList, setWatchList] = useState(false);
 
   // Top mover badge state
@@ -251,9 +254,28 @@ const Profile: React.FC<ProfilePageProps> = () => {
   useEffect(() => {
     if (profileData?.profile) {
       setBannedMe(profileData.profile.banned_me || false);
+      setBannedByMe(profileData.profile.banned_by_me || false);
       setWatchList(profileData.profile.watch_list || false);
     }
   }, [profileData?.profile]);
+
+  // Fetch note line limit setting
+  useEffect(() => {
+    const fetchNoteLineLimit = async () => {
+      try {
+        const response = await fetch('/api/settings/note_line_limit');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.value) {
+            setNoteLineLimit(parseInt(data.value, 10) || 6);
+          }
+        }
+      } catch (err) {
+        // Use default value on error
+      }
+    };
+    fetchNoteLineLimit();
+  }, []);
 
   // Fetch notes when profile changes
   useEffect(() => {
@@ -263,6 +285,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
       setNewNoteContent('');
       setEditingNoteId(null);
       setEditingNoteContent('');
+      setExpandedNoteIds(new Set());
       // Fetch notes
       const fetchProfileNotes = async () => {
         setNotesLoading(true);
@@ -270,7 +293,12 @@ const Profile: React.FC<ProfilePageProps> = () => {
           const response = await fetch(`/api/profile/${profileData.person.username}/notes`);
           if (response.ok) {
             const data = await response.json();
-            setProfileNotes(data.notes || []);
+            const notes = data.notes || [];
+            setProfileNotes(notes);
+            // Auto-expand the last (most recent) note
+            if (notes.length > 0) {
+              setExpandedNoteIds(new Set([notes[0].id]));
+            }
           }
         } catch (err) {
           console.error('Error fetching notes:', err);
@@ -451,9 +479,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
     }
   }, [profileData?.profile?.social_links]);
 
-  // Fetch uploaded images when Images tab is selected
+  // Fetch uploaded images when profile loads
   useEffect(() => {
-    if (activeTab === 'images' && profileData?.person?.username) {
+    if (profileData?.person?.username) {
       setImageUploadLoading(true);
       fetch(`/api/profile/${profileData.person.username}/images`)
         .then(response => response.json())
@@ -468,7 +496,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
           setImageUploadLoading(false);
         });
     }
-  }, [activeTab, profileData?.person?.username]);
+  }, [profileData?.person?.username]);
 
   const handleLookup = async (lookupUsername?: string) => {
     const usernameToLookup = lookupUsername || username;
@@ -891,6 +919,24 @@ const Profile: React.FC<ProfilePageProps> = () => {
     } catch (err) {
       // Revert on error
       setBannedMe(!newValue);
+    }
+  };
+
+  const handleBannedByMeToggle = async () => {
+    if (!profileData?.person?.username) return;
+
+    const newValue = !bannedByMe;
+    setBannedByMe(newValue);
+
+    try {
+      await fetch(`/api/profile/${profileData.person.username}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ banned_by_me: newValue }),
+      });
+    } catch (err) {
+      // Revert on error
+      setBannedByMe(!newValue);
     }
   };
 
@@ -1383,49 +1429,330 @@ const Profile: React.FC<ProfilePageProps> = () => {
             </div>
           </div>
 
-          {/* Flags Section (Collapsible) - Standalone */}
+          {/* Media Section (Collapsible) - At top, collapsed by default */}
           <div className="mb-5">
             <CollapsibleSection
               title={
                 <div className="flex items-center gap-2">
-                  <span>Flags</span>
-                  {(bannedMe || watchList) && (
-                    <span className="text-xs text-white/50 font-normal">
-                      ({[bannedMe && 'Banned', watchList && 'Watchlist'].filter(Boolean).join(', ')})
-                    </span>
-                  )}
+                  <span>Media</span>
+                  <span className="text-xs text-white/50 font-normal">({uploadedImages.length})</span>
                 </div>
               }
               defaultCollapsed={true}
               className="bg-mhc-surface"
             >
-              <div className="flex flex-wrap items-center gap-6">
-                {/* Banned Toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={bannedMe}
-                    onChange={handleBannedToggle}
-                    className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
-                  />
-                  <span className="text-mhc-text font-medium">Banned Me</span>
-                </label>
+              {/* Upload Media Section */}
+              <div className="mb-6 p-4 bg-mhc-surface-light rounded-lg">
+                <h4 className="text-sm text-mhc-text-muted font-semibold uppercase tracking-wider mb-4">Upload</h4>
+                {imageUploadError && (
+                  <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm mb-4 whitespace-pre-line">
+                    {imageUploadError}
+                  </div>
+                )}
+                <div className="space-y-4">
+                  {/* Drag & Drop Zone */}
+                  <div
+                    ref={dropZoneRef}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                    onClick={() => !imageUploadLoading && fileInputRef.current?.click()}
+                    className={`relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
+                      isDragging
+                        ? 'border-mhc-primary bg-mhc-primary/10'
+                        : 'border-white/20 hover:border-mhc-primary/50 hover:bg-white/5'
+                    } ${imageUploadLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/gif,image/webp"
+                      multiple
+                      onChange={e => {
+                        const files = Array.from(e.target.files || []);
+                        if (files.length > 0) handleImageUpload(files);
+                      }}
+                      disabled={imageUploadLoading}
+                      className="hidden"
+                    />
+                    <div className="flex flex-col items-center gap-2">
+                      <svg className={`w-8 h-8 ${isDragging ? 'text-mhc-primary' : 'text-white/40'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <div className="text-white/70 text-sm">
+                        {isDragging ? (
+                          <span className="text-mhc-primary font-medium">Drop images here</span>
+                        ) : (
+                          <>
+                            <span className="text-mhc-primary font-medium">Click to upload</span> or drag and drop
+                          </>
+                        )}
+                      </div>
+                      <div className="text-white/40 text-xs">
+                        JPEG, PNG, GIF, or WebP (max 10MB each)
+                      </div>
+                    </div>
+                  </div>
 
-                {/* Watchlist Toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={watchList}
-                    onChange={handleWatchListToggle}
-                    className="w-5 h-5 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
-                  />
-                  <span className="text-mhc-text font-medium">Watchlist</span>
-                </label>
+                  <div className="flex items-center gap-4">
+                    <select
+                      value={selectedImageSource}
+                      onChange={e => setSelectedImageSource(e.target.value as 'manual_upload' | 'screensnap' | 'external')}
+                      className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-mhc-primary"
+                    >
+                      <option value="manual_upload">Manual Upload</option>
+                      <option value="screensnap">Screen Capture</option>
+                      <option value="external">External Source</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={imageDescription}
+                      onChange={e => setImageDescription(e.target.value)}
+                      placeholder="Description (optional)"
+                      className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 focus:outline-none focus:border-mhc-primary"
+                    />
+                  </div>
+
+                  {imageUploadLoading && (
+                    <div className="flex items-center gap-3 text-mhc-text-muted text-sm">
+                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      {uploadProgress ? (
+                        <span>Uploading {uploadProgress.current} of {uploadProgress.total}...</span>
+                      ) : (
+                        <span>Uploading...</span>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* Media Section with Tabs */}
+              {(() => {
+                const images = uploadedImages.filter(img => img.media_type !== 'video');
+                const videos = uploadedImages.filter(img => img.media_type === 'video');
+
+                return (
+                  <div>
+                    {/* Media Type Tabs */}
+                    <div className="flex border-b border-white/10 mb-4">
+                      <button
+                        onClick={() => setMediaSubTab('images')}
+                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                          mediaSubTab === 'images'
+                            ? 'border-mhc-primary text-mhc-primary'
+                            : 'border-transparent text-mhc-text-muted hover:text-mhc-text hover:border-white/30'
+                        }`}
+                      >
+                        Images ({images.length})
+                      </button>
+                      <button
+                        onClick={() => setMediaSubTab('videos')}
+                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                          mediaSubTab === 'videos'
+                            ? 'border-mhc-primary text-mhc-primary'
+                            : 'border-transparent text-mhc-text-muted hover:text-mhc-text hover:border-white/30'
+                        }`}
+                      >
+                        Videos ({videos.length})
+                      </button>
+                    </div>
+
+                    {/* Images Tab Content */}
+                    {mediaSubTab === 'images' && (
+                      <div>
+                        {images.length > 0 ? (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                            {images.map((image, index) => {
+                              const imageUrl = image.source === 'affiliate_api'
+                                ? `/images/${image.file_path}`
+                                : `/images/profiles/${image.file_path}`;
+                              const imageDate = image.captured_at || image.uploaded_at;
+                              const isUploaded = image.source !== 'affiliate_api';
+                              const isProfileSource = image.source === 'profile';
+
+                              return (
+                                <div
+                                  key={image.id}
+                                  className={`group relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer hover:border-mhc-primary hover:-translate-y-1 hover:shadow-lg ${
+                                    currentImageIndex === index ? 'border-mhc-primary ring-2 ring-mhc-primary/50' : 'border-white/10'
+                                  }`}
+                                  onClick={() => setCurrentImageIndex(index)}
+                                  onMouseEnter={() => setPreviewImageUrl(imageUrl)}
+                                  onMouseLeave={() => setPreviewImageUrl(null)}
+                                >
+                                  <div className="aspect-[4/3]">
+                                    <img
+                                      src={imageUrl}
+                                      alt={image.title || `${profileData.person.username} - ${new Date(imageDate).toLocaleDateString()}`}
+                                      className="w-full h-full object-cover"
+                                      loading="lazy"
+                                    />
+                                  </div>
+                                  {/* Overlay with info */}
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="absolute bottom-0 left-0 right-0 p-2 text-white text-xs">
+                                      {isProfileSource && image.title ? (
+                                        <>
+                                          <div className="font-semibold truncate">{image.title}</div>
+                                          {image.photoset_id && (
+                                            <div className="text-white/70 text-[10px]">Photoset #{image.photoset_id}</div>
+                                          )}
+                                        </>
+                                      ) : (
+                                        <div className="font-semibold">
+                                          {new Date(imageDate).toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric'
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {/* Source badge */}
+                                  <div className={`absolute top-1 left-1 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                                    image.source === 'affiliate_api' ? 'bg-blue-500/80' :
+                                    image.source === 'profile' ? 'bg-cyan-500/80' :
+                                    image.source === 'screensnap' ? 'bg-purple-500/80' :
+                                    image.source === 'external' ? 'bg-orange-500/80' :
+                                    'bg-green-500/80'
+                                  }`}>
+                                    {image.source === 'affiliate_api' ? 'Auto' :
+                                     image.source === 'profile' ? 'Profile' :
+                                     image.source === 'screensnap' ? 'Snap' :
+                                     image.source === 'external' ? 'Ext' :
+                                     'Upload'}
+                                  </div>
+                                  {/* Action buttons */}
+                                  <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {!image.is_current && (
+                                      <button
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          const isAffiliate = image.source === 'affiliate_api';
+                                          handleSetAsCurrent(
+                                            image.id,
+                                            isAffiliate,
+                                            isAffiliate ? {
+                                              imageUrl: `/images/${image.file_path}`,
+                                              capturedAt: image.captured_at || image.uploaded_at,
+                                              viewers: image.viewers,
+                                            } : undefined
+                                          );
+                                        }}
+                                        className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded shadow-lg border border-white/30"
+                                        title="Set as current"
+                                      >
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                      </button>
+                                    )}
+                                    {isUploaded && (
+                                      <button
+                                        onClick={e => {
+                                          e.stopPropagation();
+                                          handleDeleteImage(image.id);
+                                        }}
+                                        className="p-1 bg-red-500/80 hover:bg-red-500 text-white rounded"
+                                        title="Delete"
+                                      >
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                      </button>
+                                    )}
+                                  </div>
+                                  {image.is_current && (
+                                    <div className="absolute bottom-1 right-1 bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                                      Current
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : imageUploadLoading ? (
+                          <div className="flex items-center justify-center py-8">
+                            <div className="text-mhc-text-muted text-sm">Loading images...</div>
+                          </div>
+                        ) : (
+                          <p className="text-mhc-text-muted text-sm py-4 text-center">No images saved yet.</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Videos Tab Content */}
+                    {mediaSubTab === 'videos' && (
+                      <div>
+                        {videos.length > 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                            {videos.map((video) => {
+                              const videoUrl = `/images/profiles/${video.file_path}`;
+                              const videoDate = video.captured_at || video.uploaded_at;
+                              const fileSizeMB = video.file_size ? (video.file_size / (1024 * 1024)).toFixed(1) : null;
+
+                              return (
+                                <div
+                                  key={video.id}
+                                  className="group relative rounded-lg overflow-hidden border-2 border-white/10 hover:border-mhc-primary transition-all"
+                                >
+                                  <div className="aspect-video bg-black">
+                                    <video
+                                      src={videoUrl}
+                                      controls
+                                      preload="metadata"
+                                      className="w-full h-full object-contain"
+                                    >
+                                      Your browser does not support the video tag.
+                                    </video>
+                                  </div>
+                                  <div className="p-2 bg-mhc-surface-light">
+                                    <div className="flex items-center justify-between text-xs text-mhc-text-muted">
+                                      <span>
+                                        {new Date(videoDate).toLocaleDateString('en-US', {
+                                          month: 'short',
+                                          day: 'numeric',
+                                          year: 'numeric'
+                                        })}
+                                      </span>
+                                      {fileSizeMB && <span>{fileSizeMB} MB</span>}
+                                    </div>
+                                    {video.title && (
+                                      <div className="text-sm text-mhc-text mt-1 truncate">{video.title}</div>
+                                    )}
+                                  </div>
+                                  <div className="absolute top-2 left-2 bg-cyan-500/80 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                                    Profile
+                                  </div>
+                                  <button
+                                    onClick={() => handleDeleteImage(video.id)}
+                                    className="absolute top-2 right-2 p-1 bg-red-500/80 hover:bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                    title="Delete video"
+                                  >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p className="text-mhc-text-muted text-sm py-4 text-center">No videos saved yet.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </CollapsibleSection>
           </div>
 
-          {/* Names Section (Collapsible) - New */}
+          {/* Names Section (Collapsible) */}
           <div className="mb-5">
             <CollapsibleSection
               title={
@@ -1650,7 +1977,44 @@ const Profile: React.FC<ProfilePageProps> = () => {
                               </button>
                             </div>
                           </div>
-                          <p className="text-mhc-text text-sm whitespace-pre-wrap m-0">{note.content}</p>
+                          {(() => {
+                            const lines = note.content.split('\n');
+                            const isLong = lines.length > noteLineLimit;
+                            const isExpanded = expandedNoteIds.has(note.id);
+                            const displayContent = isLong && !isExpanded
+                              ? lines.slice(0, noteLineLimit).join('\n')
+                              : note.content;
+
+                            return (
+                              <>
+                                <p className="text-mhc-text text-sm whitespace-pre-wrap m-0">{displayContent}</p>
+                                {isLong && !isExpanded && (
+                                  <button
+                                    onClick={() => setExpandedNoteIds(prev => {
+                                      const next = new Set(Array.from(prev));
+                                      next.add(note.id);
+                                      return next;
+                                    })}
+                                    className="text-mhc-primary hover:text-mhc-primary-light text-sm mt-2 transition-colors"
+                                  >
+                                    Read More...
+                                  </button>
+                                )}
+                                {isLong && isExpanded && (
+                                  <button
+                                    onClick={() => setExpandedNoteIds(prev => {
+                                      const next = new Set(Array.from(prev));
+                                      next.delete(note.id);
+                                      return next;
+                                    })}
+                                    className="text-mhc-primary hover:text-mhc-primary-light text-sm mt-2 transition-colors"
+                                  >
+                                    Show Less
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
                         </>
                       )}
                     </div>
@@ -1658,6 +2022,44 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 </div>
               )}
             </CollapsibleSection>
+          </div>
+
+          {/* Flags - Always visible at bottom of profile overview */}
+          <div className="mb-5 p-4 bg-mhc-surface rounded-lg border border-white/10">
+            <div className="flex flex-wrap items-center gap-6">
+              {/* Banned Me Toggle */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={bannedMe}
+                  onChange={handleBannedToggle}
+                  className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
+                />
+                <span className="text-mhc-text font-medium">Banned Me</span>
+              </label>
+
+              {/* Watchlist Toggle */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={watchList}
+                  onChange={handleWatchListToggle}
+                  className="w-5 h-5 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
+                />
+                <span className="text-mhc-text font-medium">Watchlist</span>
+              </label>
+
+              {/* Banned by Me Toggle */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={bannedByMe}
+                  onChange={handleBannedByMeToggle}
+                  className="w-5 h-5 rounded border-2 border-orange-500/50 bg-mhc-surface-light text-orange-500 focus:ring-orange-500 cursor-pointer"
+                />
+                <span className="text-mhc-text font-medium">Banned by Me</span>
+              </label>
+            </div>
           </div>
 
           {/* Communications Section (Collapsible) */}
@@ -1669,16 +2071,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
           {/* Tabs */}
           <div className="flex gap-1 bg-mhc-surface rounded-t-lg pt-2.5 px-2.5 shadow-lg flex-wrap">
-            <button
-              className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
-                activeTab === 'images'
-                  ? 'bg-mhc-primary text-white'
-                  : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
-              }`}
-              onClick={() => setActiveTab('images')}
-            >
-              Images ({uploadedImages.length + imageHistory.length})
-            </button>
             <button
               className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
                 activeTab === 'snapshot'
@@ -2042,350 +2434,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
             {activeTab === 'interactions' && (
               <InteractionsTab interactions={profileData.interactions || []} />
-            )}
-
-            {activeTab === 'images' && (
-              <div>
-                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Media</h3>
-
-                {/* Upload Media Section */}
-                <CollapsibleSection title="Upload Media" defaultCollapsed={true} className="mb-6">
-                  {imageUploadError && (
-                    <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm mb-4 whitespace-pre-line">
-                      {imageUploadError}
-                    </div>
-                  )}
-                  <div className="space-y-4">
-                    {/* Drag & Drop Zone */}
-                    <div
-                      ref={dropZoneRef}
-                      onDragEnter={handleDragEnter}
-                      onDragLeave={handleDragLeave}
-                      onDragOver={handleDragOver}
-                      onDrop={handleDrop}
-                      onClick={() => !imageUploadLoading && fileInputRef.current?.click()}
-                      className={`relative border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all ${
-                        isDragging
-                          ? 'border-mhc-primary bg-mhc-primary/10'
-                          : 'border-white/20 hover:border-mhc-primary/50 hover:bg-white/5'
-                      } ${imageUploadLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/gif,image/webp"
-                        multiple
-                        onChange={e => {
-                          const files = Array.from(e.target.files || []);
-                          if (files.length > 0) handleImageUpload(files);
-                        }}
-                        disabled={imageUploadLoading}
-                        className="hidden"
-                      />
-                      <div className="flex flex-col items-center gap-2">
-                        <svg className={`w-10 h-10 ${isDragging ? 'text-mhc-primary' : 'text-white/40'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <div className="text-white/70">
-                          {isDragging ? (
-                            <span className="text-mhc-primary font-medium">Drop images here</span>
-                          ) : (
-                            <>
-                              <span className="text-mhc-primary font-medium">Click to upload</span> or drag and drop
-                            </>
-                          )}
-                        </div>
-                        <div className="text-white/40 text-sm">
-                          JPEG, PNG, GIF, or WebP (max 10MB each)
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      <select
-                        value={selectedImageSource}
-                        onChange={e => setSelectedImageSource(e.target.value as 'manual_upload' | 'screensnap' | 'external')}
-                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-mhc-primary"
-                      >
-                        <option value="manual_upload">Manual Upload</option>
-                        <option value="screensnap">Screen Capture</option>
-                        <option value="external">External Source</option>
-                      </select>
-                      <input
-                        type="text"
-                        value={imageDescription}
-                        onChange={e => setImageDescription(e.target.value)}
-                        placeholder="Description (optional - applies to all)"
-                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 focus:outline-none focus:border-mhc-primary"
-                      />
-                    </div>
-
-                    {imageUploadLoading && (
-                      <div className="flex items-center gap-3 text-mhc-text-muted text-sm">
-                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                        </svg>
-                        {uploadProgress ? (
-                          <span>Uploading {uploadProgress.current} of {uploadProgress.total}...</span>
-                        ) : (
-                          <span>Uploading...</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </CollapsibleSection>
-
-                {/* Media Section with Tabs */}
-                {(() => {
-                  const images = uploadedImages.filter(img => img.media_type !== 'video');
-                  const videos = uploadedImages.filter(img => img.media_type === 'video');
-
-                  return (
-                    <div>
-                      {/* Media Type Tabs */}
-                      <div className="flex border-b border-white/10 mb-6">
-                        <button
-                          onClick={() => setMediaSubTab('images')}
-                          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                            mediaSubTab === 'images'
-                              ? 'border-mhc-primary text-mhc-primary'
-                              : 'border-transparent text-mhc-text-muted hover:text-mhc-text hover:border-white/30'
-                          }`}
-                        >
-                          Images ({images.length})
-                        </button>
-                        <button
-                          onClick={() => setMediaSubTab('videos')}
-                          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                            mediaSubTab === 'videos'
-                              ? 'border-mhc-primary text-mhc-primary'
-                              : 'border-transparent text-mhc-text-muted hover:text-mhc-text hover:border-white/30'
-                          }`}
-                        >
-                          Videos ({videos.length})
-                        </button>
-                      </div>
-
-                      {/* Images Tab Content */}
-                      {mediaSubTab === 'images' && (
-                        <div className="mb-8">
-                          {images.length > 0 ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                              {images.map((image, index) => {
-                                const imageUrl = image.source === 'affiliate_api'
-                                  ? `/images/${image.file_path}`
-                                  : `/images/profiles/${image.file_path}`;
-                                const imageDate = image.captured_at || image.uploaded_at;
-                                const isUploaded = image.source !== 'affiliate_api';
-                                const isProfileSource = image.source === 'profile';
-
-                                return (
-                                  <div
-                                    key={image.id}
-                                    className={`group relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer hover:border-mhc-primary hover:-translate-y-1 hover:shadow-lg ${
-                                      currentImageIndex === index ? 'border-mhc-primary ring-2 ring-mhc-primary/50' : 'border-white/10'
-                                    }`}
-                                    onClick={() => setCurrentImageIndex(index)}
-                                    onMouseEnter={() => setPreviewImageUrl(imageUrl)}
-                                    onMouseLeave={() => setPreviewImageUrl(null)}
-                                  >
-                                    <div className="aspect-[4/3]">
-                                      <img
-                                        src={imageUrl}
-                                        alt={image.title || `${profileData.person.username} - ${new Date(imageDate).toLocaleDateString()}`}
-                                        className="w-full h-full object-cover"
-                                        loading="lazy"
-                                      />
-                                    </div>
-                                    {/* Overlay with info - show title for profile images, date for others */}
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <div className="absolute bottom-0 left-0 right-0 p-2 text-white text-xs">
-                                        {isProfileSource && image.title ? (
-                                          <>
-                                            <div className="font-semibold truncate">{image.title}</div>
-                                            {image.photoset_id && (
-                                              <div className="text-white/70 text-[10px]">Photoset #{image.photoset_id}</div>
-                                            )}
-                                          </>
-                                        ) : (
-                                          <>
-                                            <div className="font-semibold">
-                                              {new Date(imageDate).toLocaleDateString('en-US', {
-                                                month: 'short',
-                                                day: 'numeric',
-                                                year: 'numeric'
-                                              })}
-                                            </div>
-                                            <div className="text-white/70">
-                                              {new Date(imageDate).toLocaleTimeString('en-US', {
-                                                hour: 'numeric',
-                                                minute: '2-digit'
-                                              })}
-                                            </div>
-                                          </>
-                                        )}
-                                        {image.viewers > 0 && (
-                                          <div className="text-white/70 mt-1">
-                                            {image.viewers.toLocaleString()} viewers
-                                          </div>
-                                        )}
-                                        {image.description && (
-                                          <div className="text-white/70 mt-1 truncate">
-                                            {image.description}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                    {/* Source badge */}
-                                    <div className={`absolute top-1 left-1 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                                      image.source === 'affiliate_api' ? 'bg-blue-500/80' :
-                                      image.source === 'profile' ? 'bg-cyan-500/80' :
-                                      image.source === 'screensnap' ? 'bg-purple-500/80' :
-                                      image.source === 'external' ? 'bg-orange-500/80' :
-                                      'bg-green-500/80'
-                                    }`}>
-                                      {image.source === 'affiliate_api' ? 'Auto' :
-                                       image.source === 'profile' ? 'Profile' :
-                                       image.source === 'screensnap' ? 'Snap' :
-                                       image.source === 'external' ? 'Ext' :
-                                       'Upload'}
-                                    </div>
-                                    {/* Action buttons - show on hover */}
-                                    <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      {/* Set as Current button */}
-                                      {!image.is_current && (
-                                        <button
-                                          onClick={e => {
-                                            e.stopPropagation();
-                                            const isAffiliate = image.source === 'affiliate_api';
-                                            handleSetAsCurrent(
-                                              image.id,
-                                              isAffiliate,
-                                              isAffiliate ? {
-                                                imageUrl: `/images/${image.file_path}`,
-                                                capturedAt: image.captured_at || image.uploaded_at,
-                                                viewers: image.viewers,
-                                              } : undefined
-                                            );
-                                          }}
-                                          className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded shadow-lg border border-white/30"
-                                          title={image.source === 'affiliate_api' ? 'Import and set as current' : 'Set as current image'}
-                                        >
-                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                          </svg>
-                                        </button>
-                                      )}
-                                      {/* Delete button for uploaded images */}
-                                      {isUploaded && (
-                                        <button
-                                          onClick={e => {
-                                            e.stopPropagation();
-                                            handleDeleteImage(image.id);
-                                          }}
-                                          className="p-1 bg-red-500/80 hover:bg-red-500 text-white rounded"
-                                          title="Delete image"
-                                        >
-                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                          </svg>
-                                        </button>
-                                      )}
-                                    </div>
-                                    {/* Current indicator */}
-                                    {image.is_current && (
-                                      <div className="absolute bottom-1 right-1 bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
-                                        Current
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : imageUploadLoading ? (
-                            <div className="flex items-center justify-center py-12">
-                              <div className="text-mhc-text-muted">Loading images...</div>
-                            </div>
-                          ) : (
-                            <p className="text-mhc-text-muted">No images saved yet. Images are captured when the user broadcasts, or you can upload them above.</p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Videos Tab Content */}
-                      {mediaSubTab === 'videos' && (
-                        <div className="mb-8">
-                          {videos.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                              {videos.map((video) => {
-                                const videoUrl = `/images/profiles/${video.file_path}`;
-                                const videoDate = video.captured_at || video.uploaded_at;
-                                const fileSizeMB = video.file_size ? (video.file_size / (1024 * 1024)).toFixed(1) : null;
-
-                                return (
-                                  <div
-                                    key={video.id}
-                                    className="group relative rounded-lg overflow-hidden border-2 border-white/10 hover:border-mhc-primary transition-all"
-                                  >
-                                    <div className="aspect-video bg-black">
-                                      <video
-                                        src={videoUrl}
-                                        controls
-                                        preload="metadata"
-                                        className="w-full h-full object-contain"
-                                      >
-                                        Your browser does not support the video tag.
-                                      </video>
-                                    </div>
-                                    {/* Video info */}
-                                    <div className="p-3 bg-mhc-surface-light">
-                                      <div className="flex items-center justify-between text-xs text-mhc-text-muted">
-                                        <span>
-                                          {new Date(videoDate).toLocaleDateString('en-US', {
-                                            month: 'short',
-                                            day: 'numeric',
-                                            year: 'numeric'
-                                          })}
-                                        </span>
-                                        {fileSizeMB && (
-                                          <span>{fileSizeMB} MB</span>
-                                        )}
-                                      </div>
-                                      {video.title && (
-                                        <div className="text-sm text-mhc-text mt-1 truncate">{video.title}</div>
-                                      )}
-                                      {video.photoset_id && (
-                                        <div className="text-xs text-mhc-text-muted mt-1">Photoset #{video.photoset_id}</div>
-                                      )}
-                                    </div>
-                                    {/* Source badge */}
-                                    <div className="absolute top-2 left-2 bg-cyan-500/80 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
-                                      Profile
-                                    </div>
-                                    {/* Delete button */}
-                                    <button
-                                      onClick={() => handleDeleteImage(video.id)}
-                                      className="absolute top-2 right-2 p-1 bg-red-500/80 hover:bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                                      title="Delete video"
-                                    >
-                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                      </svg>
-                                    </button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <p className="text-mhc-text-muted">No videos saved yet. Videos are downloaded from profile photosets during scraping.</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
             )}
 
             {activeTab === 'timeline' && (

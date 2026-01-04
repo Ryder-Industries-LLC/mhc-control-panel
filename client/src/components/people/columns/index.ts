@@ -1,5 +1,22 @@
+// Base column building blocks
+export {
+  getUsernameColumn,
+  getImageColumn,
+  getAgeColumn,
+  getTagsColumn,
+  getImagesCountColumn,
+  getLastActiveColumn,
+  getBaseColumns,
+} from './baseColumns';
+
 export { getDirectoryColumns } from './directoryColumns';
-export { getFriendsColumns, getSubsColumns, getDomsColumns } from './relationshipColumns';
+export {
+  getRelationshipColumns,
+  // Legacy exports for backwards compatibility
+  getFriendsColumns,
+  getSubsColumns,
+  getDomsColumns,
+} from './relationshipColumns';
 export {
   getFollowingColumns,
   getFollowersColumns,
