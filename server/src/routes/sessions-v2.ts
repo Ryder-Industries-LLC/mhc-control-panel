@@ -144,10 +144,10 @@ router.get('/current', async (_req: Request, res: Response) => {
     );
 
     if (result.rows.length === 0) {
-      return res.json(null);
+      return res.json({ session: null });
     }
 
-    res.json(formatSession(result.rows[0]));
+    res.json({ session: formatSession(result.rows[0]) });
   } catch (error) {
     logger.error('Error fetching current session', { error });
     res.status(500).json({ error: 'Failed to fetch current session' });
