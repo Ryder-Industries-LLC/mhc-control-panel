@@ -684,6 +684,10 @@ const Users: React.FC = () => {
   // Render Directory Tab
   const renderDirectoryTab = () => (
     <>
+      <div className="flex justify-between items-center my-6">
+        <h2 className="text-2xl text-white font-semibold">Directory ({persons.length})</h2>
+      </div>
+
       {/* Filters Panel with Counts inside */}
       <FiltersPanel
         defaultExpanded={true}
@@ -1249,6 +1253,16 @@ const Users: React.FC = () => {
           <h2 className="text-2xl text-white font-semibold">Bans ({bannedUsers.length})</h2>
         </div>
 
+        <FiltersPanel />
+
+        <ActiveFiltersBar
+          filters={[]}
+          resultCount={bannedUsers.length}
+          onRemoveFilter={() => {}}
+          onClearAll={() => {}}
+          className="mt-4"
+        />
+
         <ResultsToolbar
           viewMode={viewMode}
           onViewModeChange={setViewMode}
@@ -1281,6 +1295,16 @@ const Users: React.FC = () => {
         <div className="flex justify-between items-center my-6">
           <h2 className="text-2xl text-white font-semibold">Watchlist ({watchlistUsers.length})</h2>
         </div>
+
+        <FiltersPanel />
+
+        <ActiveFiltersBar
+          filters={[]}
+          resultCount={watchlistUsers.length}
+          onRemoveFilter={() => {}}
+          onClearAll={() => {}}
+          className="mt-4"
+        />
 
         <ResultsToolbar
           viewMode={viewMode}
@@ -1315,6 +1339,16 @@ const Users: React.FC = () => {
           <h2 className="text-2xl text-white font-semibold">Tipped By Me ({tippedByMeUsers.length})</h2>
         </div>
 
+        <FiltersPanel />
+
+        <ActiveFiltersBar
+          filters={[]}
+          resultCount={tippedByMeUsers.length}
+          onRemoveFilter={() => {}}
+          onClearAll={() => {}}
+          className="mt-4"
+        />
+
         <ResultsToolbar
           viewMode="list"
           onViewModeChange={() => {}}
@@ -1346,6 +1380,16 @@ const Users: React.FC = () => {
         <div className="flex justify-between items-center my-6">
           <h2 className="text-2xl text-white font-semibold">Tipped Me ({tippedMeUsers.length})</h2>
         </div>
+
+        <FiltersPanel />
+
+        <ActiveFiltersBar
+          filters={[]}
+          resultCount={tippedMeUsers.length}
+          onRemoveFilter={() => {}}
+          onClearAll={() => {}}
+          className="mt-4"
+        />
 
         <ResultsToolbar
           viewMode="list"
