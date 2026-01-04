@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api, LookupResponse } from '../api/client';
-import { formatDate, formatNumber } from '../utils/formatting';
 import {
   BasePerson,
   FollowingPerson,
@@ -20,9 +19,6 @@ import {
   TAG_PRESETS,
   DIRECTORY_SORT_OPTIONS,
   isPersonLive,
-  getLastActiveTime,
-  getImageUrl,
-  getRoleBadgeClass,
   getFriendTierBadge,
 } from '../types/people';
 import {
@@ -37,6 +33,13 @@ import {
   getFriendsColumns,
   getSubsColumns,
   getDomsColumns,
+  getFollowingColumns,
+  getFollowersColumns,
+  getUnfollowedColumns,
+  getBansColumns,
+  getWatchlistColumns,
+  getTippedByMeColumns,
+  getTippedMeColumns,
 } from '../components/people';
 
 const Users: React.FC = () => {
@@ -47,7 +50,7 @@ const Users: React.FC = () => {
   // Directory tab state
   const [persons, setPersons] = useState<BasePerson[]>([]);
   const [priorityLookups, setPriorityLookups] = useState<PriorityLookup[]>([]);
-  const [_cacheStatus, setCacheStatus] = useState<{ lastUpdated: string } | null>(null);
+  const [, setCacheStatus] = useState<{ lastUpdated: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortField, setSortField] = useState<keyof BasePerson>('session_observed_at');
@@ -71,20 +74,20 @@ const Users: React.FC = () => {
 
   // Lookup/Queue integration state
   const [lookupUsername, setLookupUsername] = useState('');
-  const [_lookupResult, setLookupResult] = useState<LookupResponse | null>(null);
-  const [_usernameSuggestions, setUsernameSuggestions] = useState<string[]>([]);
+  const [, setLookupResult] = useState<LookupResponse | null>(null);
+  const [, setUsernameSuggestions] = useState<string[]>([]);
 
   // Following tab state
   const [followingUsers, setFollowingUsers] = useState<FollowingPerson[]>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
-  const [_followingStats, setFollowingStats] = useState<any>(null);
+  const [, setFollowingStats] = useState<any>(null);
   const [followingFilter, setFollowingFilter] = useState<'all' | 'live' | 'with_image' | 'models' | 'viewers' | 'unknown'>('all');
 
   // Followers tab state
   const [followerUsers, setFollowerUsers] = useState<FollowerPerson[]>([]);
   const [followersLoading, setFollowersLoading] = useState(false);
-  const [_followersStats, setFollowersStats] = useState<any>(null);
-  const [_followerRoleFilter, setFollowerRoleFilter] = useState<string>('ALL');
+  const [, setFollowersStats] = useState<any>(null);
+  const [, setFollowerRoleFilter] = useState<string>('ALL');
   const [followersFilter, setFollowersFilter] = useState<'all' | 'live' | 'with_image' | 'models' | 'viewers' | 'unknown'>('all');
 
   // Unfollowed tab state
@@ -808,6 +811,12 @@ const Users: React.FC = () => {
       { id: 'unknown', label: 'Unknown', value: unknown, color: 'default' },
     ];
 
+    const followingColumns = getFollowingColumns();
+
+    const activeFilters: ActiveFilter[] = followingFilter !== 'all'
+      ? [{ id: followingFilter, label: followingFilter.replace('_', ' '), type: 'stat' as const }]
+      : [];
+
     return (
       <>
         <div className="flex justify-between items-center my-6">
@@ -828,70 +837,30 @@ const Users: React.FC = () => {
               onCountFilterToggle={(id) => setFollowingFilter(id === followingFilter ? 'all' : id as typeof followingFilter)}
             />
 
-            <div className="flex items-center justify-between mt-4 mb-4">
-              <div className="flex rounded-lg overflow-hidden border border-white/10">
-                <button
-                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                  onClick={() => setViewMode('list')}
-                >
-                  List
-                </button>
-                <button
-                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                  onClick={() => setViewMode('grid')}
-                >
-                  Grid
-                </button>
-              </div>
-              <span className="text-white/50 text-sm">{filteredFollowing.length} users</span>
-            </div>
+            <ActiveFiltersBar
+              filters={activeFilters}
+              resultCount={filteredFollowing.length}
+              onRemoveFilter={() => setFollowingFilter('all')}
+              onClearAll={() => setFollowingFilter('all')}
+              className="mt-4"
+            />
+
+            <ResultsToolbar
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              totalItems={filteredFollowing.length}
+              className="mt-4"
+            />
 
             {viewMode === 'grid' ? (
-              <PeopleGrid data={filteredFollowing} onTagClick={setTagFilter} />
+              <PeopleGrid data={filteredFollowing} onTagClick={setTagFilter} className="mt-4" />
             ) : (
-              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Following Since</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredFollowing.map((person) => (
-                      <tr
-                        key={person.id}
-                        className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
-                        onClick={() => navigate(`/profile/${person.username}`)}
-                      >
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-2">
-                            <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                            <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
-                              {person.username}
-                            </Link>
-                            {isPersonLive(person) && (
-                              <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded animate-pulse">LIVE</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-2 py-2">
-                          {person.image_url && (
-                            <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-white/80">{person.following_since ? formatDate(person.following_since, { includeTime: false }) : '—'}</td>
-                        <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {filteredFollowing.length === 0 && (
-                  <div className="p-12 text-center text-white/50">No following users found.</div>
-                )}
-              </div>
+              <PeopleTable
+                data={filteredFollowing}
+                columns={followingColumns}
+                emptyMessage="No following users found."
+                className="mt-4"
+              />
             )}
           </>
         )}
@@ -899,7 +868,7 @@ const Users: React.FC = () => {
     );
   };
 
-  // Render Followers Tab (similar structure to Following)
+  // Render Followers Tab
   const renderFollowersTab = () => {
     const withImages = followerUsers.filter(p => p.image_url).length;
     const models = followerUsers.filter(p => p.role === 'MODEL').length;
@@ -927,6 +896,12 @@ const Users: React.FC = () => {
       { id: 'unknown', label: 'Unknown', value: unknown, color: 'default' },
     ];
 
+    const followersColumns = getFollowersColumns();
+
+    const activeFilters: ActiveFilter[] = followersFilter !== 'all'
+      ? [{ id: followersFilter, label: followersFilter.replace('_', ' '), type: 'stat' as const }]
+      : [];
+
     return (
       <>
         <div className="flex justify-between items-center my-6">
@@ -947,70 +922,30 @@ const Users: React.FC = () => {
               onCountFilterToggle={(id) => setFollowersFilter(id === followersFilter ? 'all' : id as typeof followersFilter)}
             />
 
-            <div className="flex items-center justify-between mt-4 mb-4">
-              <div className="flex rounded-lg overflow-hidden border border-white/10">
-                <button
-                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                  onClick={() => setViewMode('list')}
-                >
-                  List
-                </button>
-                <button
-                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                  onClick={() => setViewMode('grid')}
-                >
-                  Grid
-                </button>
-              </div>
-              <span className="text-white/50 text-sm">{filteredFollowers.length} users</span>
-            </div>
+            <ActiveFiltersBar
+              filters={activeFilters}
+              resultCount={filteredFollowers.length}
+              onRemoveFilter={() => setFollowersFilter('all')}
+              onClearAll={() => setFollowersFilter('all')}
+              className="mt-4"
+            />
+
+            <ResultsToolbar
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              totalItems={filteredFollowers.length}
+              className="mt-4"
+            />
 
             {viewMode === 'grid' ? (
-              <PeopleGrid data={filteredFollowers} onTagClick={setTagFilter} />
+              <PeopleGrid data={filteredFollowers} onTagClick={setTagFilter} className="mt-4" />
             ) : (
-              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Follower Since</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredFollowers.map((person) => (
-                      <tr
-                        key={person.id}
-                        className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
-                        onClick={() => navigate(`/profile/${person.username}`)}
-                      >
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-2">
-                            <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                            <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
-                              {person.username}
-                            </Link>
-                            {isPersonLive(person) && (
-                              <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded animate-pulse">LIVE</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-2 py-2">
-                          {person.image_url && (
-                            <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-white/80">{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '—'}</td>
-                        <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {filteredFollowers.length === 0 && (
-                  <div className="p-12 text-center text-white/50">No followers found.</div>
-                )}
-              </div>
+              <PeopleTable
+                data={filteredFollowers}
+                columns={followersColumns}
+                emptyMessage="No followers found."
+                className="mt-4"
+              />
             )}
           </>
         )}
@@ -1021,6 +956,10 @@ const Users: React.FC = () => {
   // Render Friends Tab with FiltersPanel
   const renderFriendsTab = () => {
     const friendsColumns = getFriendsColumns();
+
+    const activeFilters: ActiveFilter[] = friendTierFilter !== null
+      ? [{ id: `tier-${friendTierFilter}`, label: `Tier ${friendTierFilter}`, type: 'stat' as const }]
+      : [];
 
     return (
       <>
@@ -1057,36 +996,34 @@ const Users: React.FC = () => {
           }
         />
 
+        <ActiveFiltersBar
+          filters={activeFilters}
+          resultCount={friendUsers.length}
+          onRemoveFilter={() => setFriendTierFilter(null)}
+          onClearAll={() => setFriendTierFilter(null)}
+          className="mt-4"
+        />
+
         {friendsLoading ? (
           <div className="p-12 text-center text-white/50">Loading friends...</div>
         ) : (
           <>
-            <div className="flex items-center justify-between mt-4 mb-4">
-              <div className="flex rounded-lg overflow-hidden border border-white/10">
-                <button
-                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                  onClick={() => setViewMode('list')}
-                >
-                  List
-                </button>
-                <button
-                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                  onClick={() => setViewMode('grid')}
-                >
-                  Grid
-                </button>
-              </div>
-              <span className="text-white/50 text-sm">{friendUsers.length} friends</span>
-            </div>
+            <ResultsToolbar
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              totalItems={friendUsers.length}
+              className="mt-4"
+            />
 
             {viewMode === 'grid' ? (
-              <PeopleGrid data={friendUsers} onTagClick={setTagFilter} />
+              <PeopleGrid data={friendUsers} onTagClick={setTagFilter} className="mt-4" />
             ) : (
               <PeopleTable
                 data={friendUsers}
                 columns={friendsColumns}
                 emptyMessage="No friends found."
                 emptySubMessage="Add friend tiers on user profiles."
+                className="mt-4"
               />
             )}
           </>
@@ -1098,6 +1035,10 @@ const Users: React.FC = () => {
   // Render Subs Tab with FiltersPanel
   const renderSubsTab = () => {
     const subsColumns = getSubsColumns();
+
+    const activeFilters: ActiveFilter[] = subsFilter !== 'all'
+      ? [{ id: subsFilter, label: subsFilter, type: 'stat' as const }]
+      : [];
 
     return (
       <>
@@ -1123,35 +1064,33 @@ const Users: React.FC = () => {
           }
         />
 
+        <ActiveFiltersBar
+          filters={activeFilters}
+          resultCount={subUsers.length}
+          onRemoveFilter={() => setSubsFilter('all')}
+          onClearAll={() => setSubsFilter('all')}
+          className="mt-4"
+        />
+
         {subsLoading ? (
           <div className="p-12 text-center text-white/50">Loading subs...</div>
         ) : (
           <>
-            <div className="flex items-center justify-between mt-4 mb-4">
-              <div className="flex rounded-lg overflow-hidden border border-white/10">
-                <button
-                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                  onClick={() => setViewMode('list')}
-                >
-                  List
-                </button>
-                <button
-                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                  onClick={() => setViewMode('grid')}
-                >
-                  Grid
-                </button>
-              </div>
-              <span className="text-white/50 text-sm">{subUsers.length} subs</span>
-            </div>
+            <ResultsToolbar
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              totalItems={subUsers.length}
+              className="mt-4"
+            />
 
             {viewMode === 'grid' ? (
-              <PeopleGrid data={subUsers} onTagClick={setTagFilter} />
+              <PeopleGrid data={subUsers} onTagClick={setTagFilter} className="mt-4" />
             ) : (
               <PeopleTable
                 data={subUsers}
                 columns={subsColumns}
                 emptyMessage="No subscribers found."
+                className="mt-4"
               />
             )}
           </>
@@ -1164,6 +1103,10 @@ const Users: React.FC = () => {
   const renderDomsTab = () => {
     const domsColumns = getDomsColumns();
     const domLevels = ['all', 'Potential', 'Actively Serving', 'Ended', 'Paused'];
+
+    const activeFilters: ActiveFilter[] = domsFilter !== 'all'
+      ? [{ id: domsFilter, label: domsFilter, type: 'stat' as const }]
+      : [];
 
     return (
       <>
@@ -1189,36 +1132,34 @@ const Users: React.FC = () => {
           }
         />
 
+        <ActiveFiltersBar
+          filters={activeFilters}
+          resultCount={domUsers.length}
+          onRemoveFilter={() => setDomsFilter('all')}
+          onClearAll={() => setDomsFilter('all')}
+          className="mt-4"
+        />
+
         {domsLoading ? (
           <div className="p-12 text-center text-white/50">Loading doms...</div>
         ) : (
           <>
-            <div className="flex items-center justify-between mt-4 mb-4">
-              <div className="flex rounded-lg overflow-hidden border border-white/10">
-                <button
-                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                  onClick={() => setViewMode('list')}
-                >
-                  List
-                </button>
-                <button
-                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                  onClick={() => setViewMode('grid')}
-                >
-                  Grid
-                </button>
-              </div>
-              <span className="text-white/50 text-sm">{domUsers.length} doms</span>
-            </div>
+            <ResultsToolbar
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              totalItems={domUsers.length}
+              className="mt-4"
+            />
 
             {viewMode === 'grid' ? (
-              <PeopleGrid data={domUsers} onTagClick={setTagFilter} />
+              <PeopleGrid data={domUsers} onTagClick={setTagFilter} className="mt-4" />
             ) : (
               <PeopleTable
                 data={domUsers}
                 columns={domsColumns}
                 emptyMessage="No doms found."
                 emptySubMessage="Add Dom relationships from the profile page."
+                className="mt-4"
               />
             )}
           </>
@@ -1235,6 +1176,12 @@ const Users: React.FC = () => {
       const daysAgo = (Date.now() - unfollowDate.getTime()) / (1000 * 60 * 60 * 24);
       return daysAgo <= timeframeFilter;
     });
+
+    const unfollowedColumns = getUnfollowedColumns();
+
+    const activeFilters: ActiveFilter[] = [
+      { id: `days-${timeframeFilter}`, label: `Last ${timeframeFilter} days`, type: 'stat' as const }
+    ];
 
     return (
       <>
@@ -1261,325 +1208,166 @@ const Users: React.FC = () => {
           }
         />
 
+        <ActiveFiltersBar
+          filters={activeFilters}
+          resultCount={filteredUnfollowed.length}
+          onRemoveFilter={() => setTimeframeFilter(30)}
+          onClearAll={() => setTimeframeFilter(30)}
+          className="mt-4"
+        />
+
+        <ResultsToolbar
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          totalItems={filteredUnfollowed.length}
+          className="mt-4"
+        />
+
         {unfollowedLoading ? (
           <div className="p-12 text-center text-white/50">Loading unfollowed users...</div>
+        ) : viewMode === 'grid' ? (
+          <PeopleGrid data={filteredUnfollowed} onTagClick={setTagFilter} className="mt-4" />
         ) : (
-          <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden mt-4">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-gray-500/30">Username</th>
-                  <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-gray-500/30">Image</th>
-                  <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-gray-500/30">Follower Since</th>
-                  <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-gray-500/30">Unfollowed At</th>
-                  <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-gray-500/30">Days Followed</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUnfollowed.map((person) => (
-                  <tr
-                    key={person.id}
-                    className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
-                    onClick={() => navigate(`/profile/${person.username}`)}
-                  >
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                        <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
-                          {person.username}
-                        </Link>
-                      </div>
-                    </td>
-                    <td className="px-2 py-2">
-                      {person.image_url && (
-                        <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-                      )}
-                    </td>
-                    <td className="px-4 py-4 text-white/80">{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '—'}</td>
-                    <td className="px-4 py-4 text-white/80">{person.unfollower_at ? formatDate(person.unfollower_at, { includeTime: false }) : '—'}</td>
-                    <td className="px-4 py-4 text-white/80">{person.days_followed || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {filteredUnfollowed.length === 0 && (
-              <div className="p-12 text-center text-white/50">No unfollowed users in this timeframe.</div>
-            )}
-          </div>
+          <PeopleTable
+            data={filteredUnfollowed}
+            columns={unfollowedColumns}
+            emptyMessage="No unfollowed users in this timeframe."
+            className="mt-4"
+          />
         )}
       </>
     );
   };
 
   // Render Bans Tab
-  const renderBansTab = () => (
-    <>
-      <div className="flex justify-between items-center my-6">
-        <h2 className="text-2xl text-white font-semibold">Bans ({bannedUsers.length})</h2>
-      </div>
+  const renderBansTab = () => {
+    const bansColumns = getBansColumns();
 
-      {bansLoading ? (
-        <div className="p-12 text-center text-white/50">Loading banned users...</div>
-      ) : (
-        <>
-          <div className="flex items-center justify-between mt-4 mb-4">
-            <div className="flex rounded-lg overflow-hidden border border-white/10">
-              <button
-                className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                onClick={() => setViewMode('list')}
-              >
-                List
-              </button>
-              <button
-                className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                onClick={() => setViewMode('grid')}
-              >
-                Grid
-              </button>
-            </div>
-            <span className="text-white/50 text-sm">{bannedUsers.length} users who banned you</span>
-          </div>
+    return (
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Bans ({bannedUsers.length})</h2>
+        </div>
 
-          {viewMode === 'grid' ? (
-            <PeopleGrid data={bannedUsers} onTagClick={setTagFilter} />
-          ) : (
-            <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-red-500/30">Username</th>
-                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-red-500/30">Image</th>
-                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-red-500/30">Banned At</th>
-                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-red-500/30">Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bannedUsers.map((person) => (
-                    <tr
-                      key={person.id}
-                      className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
-                      onClick={() => navigate(`/profile/${person.username}`)}
-                    >
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-2">
-                          <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                          <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
-                            {person.username}
-                          </Link>
-                          <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
-                        </div>
-                      </td>
-                      <td className="px-2 py-2">
-                        {person.image_url && (
-                          <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-                        )}
-                      </td>
-                      <td className="px-4 py-4 text-white/80">{person.banned_at ? formatDate(person.banned_at, { includeTime: false }) : '—'}</td>
-                      <td className="px-4 py-4 text-white/70 max-w-[200px] truncate">{person.notes || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {bannedUsers.length === 0 && (
-                <div className="p-12 text-center text-white/50">No banned users found.</div>
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </>
-  );
+        <ResultsToolbar
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          totalItems={bannedUsers.length}
+          className="mt-4"
+        />
+
+        {bansLoading ? (
+          <div className="p-12 text-center text-white/50">Loading banned users...</div>
+        ) : viewMode === 'grid' ? (
+          <PeopleGrid data={bannedUsers} onTagClick={setTagFilter} className="mt-4" />
+        ) : (
+          <PeopleTable
+            data={bannedUsers}
+            columns={bansColumns}
+            emptyMessage="No banned users found."
+            className="mt-4"
+          />
+        )}
+      </>
+    );
+  };
 
   // Render Watchlist Tab
-  const renderWatchlistTab = () => (
-    <>
-      <div className="flex justify-between items-center my-6">
-        <h2 className="text-2xl text-white font-semibold">Watchlist ({watchlistUsers.length})</h2>
-      </div>
+  const renderWatchlistTab = () => {
+    const watchlistColumns = getWatchlistColumns();
 
-      {watchlistLoading ? (
-        <div className="p-12 text-center text-white/50">Loading watchlist...</div>
-      ) : (
-        <>
-          <div className="flex items-center justify-between mt-4 mb-4">
-            <div className="flex rounded-lg overflow-hidden border border-white/10">
-              <button
-                className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                onClick={() => setViewMode('list')}
-              >
-                List
-              </button>
-              <button
-                className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
-                onClick={() => setViewMode('grid')}
-              >
-                Grid
-              </button>
-            </div>
-            <span className="text-white/50 text-sm">{watchlistUsers.length} users on watchlist</span>
-          </div>
+    return (
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Watchlist ({watchlistUsers.length})</h2>
+        </div>
 
-          {viewMode === 'grid' ? (
-            <PeopleGrid data={watchlistUsers} onTagClick={setTagFilter} />
-          ) : (
-            <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-orange-500/30">Username</th>
-                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-orange-500/30">Image</th>
-                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-orange-500/30">Last Active</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {watchlistUsers.map((person) => (
-                    <tr
-                      key={person.id}
-                      className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
-                      onClick={() => navigate(`/profile/${person.username}`)}
-                    >
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-2">
-                          <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                          <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
-                            {person.username}
-                          </Link>
-                          {isPersonLive(person) && (
-                            <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded animate-pulse">LIVE</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-2 py-2">
-                        {person.image_url && (
-                          <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-                        )}
-                      </td>
-                      <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {watchlistUsers.length === 0 && (
-                <div className="p-12 text-center text-white/50">No users on watchlist.</div>
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </>
-  );
+        <ResultsToolbar
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          totalItems={watchlistUsers.length}
+          className="mt-4"
+        />
+
+        {watchlistLoading ? (
+          <div className="p-12 text-center text-white/50">Loading watchlist...</div>
+        ) : viewMode === 'grid' ? (
+          <PeopleGrid data={watchlistUsers} onTagClick={setTagFilter} className="mt-4" />
+        ) : (
+          <PeopleTable
+            data={watchlistUsers}
+            columns={watchlistColumns}
+            emptyMessage="No users on watchlist."
+            className="mt-4"
+          />
+        )}
+      </>
+    );
+  };
 
   // Render Tipped By Me Tab
-  const renderTippedByMeTab = () => (
-    <>
-      <div className="flex justify-between items-center my-6">
-        <h2 className="text-2xl text-white font-semibold">Tipped By Me ({tippedByMeUsers.length})</h2>
-      </div>
+  const renderTippedByMeTab = () => {
+    const tippedByMeColumns = getTippedByMeColumns();
 
-      {tippedByMeLoading ? (
-        <div className="p-12 text-center text-white/50">Loading users you tipped...</div>
-      ) : (
-        <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Username</th>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Image</th>
-                <th className="px-4 py-4 text-center font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Total Tokens</th>
-                <th className="px-4 py-4 text-center font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Tip Count</th>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Last Tip</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tippedByMeUsers.map((person) => (
-                <tr
-                  key={person.id}
-                  className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
-                  onClick={() => navigate(`/profile/${person.username}`)}
-                >
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                      <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
-                        {person.username}
-                      </Link>
-                    </div>
-                  </td>
-                  <td className="px-2 py-2">
-                    {person.image_url && (
-                      <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-                    )}
-                  </td>
-                  <td className="px-4 py-4 text-center font-mono text-amber-400">{formatNumber(person.total_tokens || 0)}</td>
-                  <td className="px-4 py-4 text-center text-white/80">{person.tip_count || 0}</td>
-                  <td className="px-4 py-4 text-white/80">{person.last_tip_date ? formatDate(person.last_tip_date, { relative: true }) : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {tippedByMeUsers.length === 0 && (
-            <div className="p-12 text-center text-white/50">No tip records found.</div>
-          )}
+    return (
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Tipped By Me ({tippedByMeUsers.length})</h2>
         </div>
-      )}
-    </>
-  );
+
+        <ResultsToolbar
+          viewMode="list"
+          onViewModeChange={() => {}}
+          totalItems={tippedByMeUsers.length}
+          showViewToggle={false}
+          className="mt-4"
+        />
+
+        {tippedByMeLoading ? (
+          <div className="p-12 text-center text-white/50">Loading users you tipped...</div>
+        ) : (
+          <PeopleTable
+            data={tippedByMeUsers}
+            columns={tippedByMeColumns}
+            emptyMessage="No tip records found."
+            className="mt-4"
+          />
+        )}
+      </>
+    );
+  };
 
   // Render Tipped Me Tab
-  const renderTippedMeTab = () => (
-    <>
-      <div className="flex justify-between items-center my-6">
-        <h2 className="text-2xl text-white font-semibold">Tipped Me ({tippedMeUsers.length})</h2>
-      </div>
+  const renderTippedMeTab = () => {
+    const tippedMeColumns = getTippedMeColumns();
 
-      {tippedMeLoading ? (
-        <div className="p-12 text-center text-white/50">Loading users who tipped you...</div>
-      ) : (
-        <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Username</th>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Image</th>
-                <th className="px-4 py-4 text-center font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Total Tokens</th>
-                <th className="px-4 py-4 text-center font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Tip Count</th>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Last Tip</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tippedMeUsers.map((person) => (
-                <tr
-                  key={person.id}
-                  className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
-                  onClick={() => navigate(`/profile/${person.username}`)}
-                >
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                      <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
-                        {person.username}
-                      </Link>
-                    </div>
-                  </td>
-                  <td className="px-2 py-2">
-                    {person.image_url && (
-                      <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
-                    )}
-                  </td>
-                  <td className="px-4 py-4 text-center font-mono text-emerald-400">{formatNumber(person.total_tokens || 0)}</td>
-                  <td className="px-4 py-4 text-center text-white/80">{person.tip_count || 0}</td>
-                  <td className="px-4 py-4 text-white/80">{person.last_tip_date ? formatDate(person.last_tip_date, { relative: true }) : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {tippedMeUsers.length === 0 && (
-            <div className="p-12 text-center text-white/50">No tip records found.</div>
-          )}
+    return (
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Tipped Me ({tippedMeUsers.length})</h2>
         </div>
-      )}
-    </>
-  );
+
+        <ResultsToolbar
+          viewMode="list"
+          onViewModeChange={() => {}}
+          totalItems={tippedMeUsers.length}
+          showViewToggle={false}
+          className="mt-4"
+        />
+
+        {tippedMeLoading ? (
+          <div className="p-12 text-center text-white/50">Loading users who tipped you...</div>
+        ) : (
+          <PeopleTable
+            data={tippedMeUsers}
+            columns={tippedMeColumns}
+            emptyMessage="No tip records found."
+            className="mt-4"
+          />
+        )}
+      </>
+    );
+  };
 
   // Main render
   return (

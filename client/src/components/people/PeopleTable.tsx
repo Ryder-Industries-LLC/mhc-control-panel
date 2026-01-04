@@ -48,6 +48,7 @@ export function PeopleTable<T extends BasePerson>({
   // Create render helpers for column render functions
   const helpers: RenderHelpers = {
     formatDate: (date, options) => formatDate(date, options),
+    formatNumber: (num: number) => num.toLocaleString(),
     getImageUrl,
     isPersonLive,
     getLastActiveTime,

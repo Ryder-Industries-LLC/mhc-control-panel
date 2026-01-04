@@ -172,6 +172,7 @@ export interface ColumnConfig<T> {
 // Render helpers passed to column render functions
 export interface RenderHelpers {
   formatDate: (date: string, options?: { relative?: boolean; includeTime?: boolean }) => string;
+  formatNumber: (num: number) => string;
   getImageUrl: (url: string | null) => string | null;
   isPersonLive: (person: BasePerson) => boolean;
   getLastActiveTime: (person: BasePerson) => string | null;

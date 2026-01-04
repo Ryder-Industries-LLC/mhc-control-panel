@@ -40,4 +40,11 @@ export {
   getFriendsColumns,
   getSubsColumns,
   getDomsColumns,
+  getFollowingColumns,
+  getFollowersColumns,
+  getUnfollowedColumns,
+  getBansColumns,
+  getWatchlistColumns,
+  getTippedByMeColumns,
+  getTippedMeColumns,
 } from './columns';
