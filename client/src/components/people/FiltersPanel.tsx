@@ -82,8 +82,7 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
   const hasSearchInputs = onSearchChange || onTextFilterChange || onTagFilterChange;
   const hasAnyContent = counts || tagPresets || hasSearchInputs || showRoleFilter || customFilters;
 
-  if (!hasAnyContent) return null;
-
+  // Always render container for consistent layout spacing
   return (
     <div className={`bg-white/3 border border-white/10 rounded-lg overflow-hidden ${className}`}>
       {/* Header / Toggle */}
@@ -98,6 +97,11 @@ export const FiltersPanel: React.FC<FiltersPanelProps> = ({
       {/* Collapsible content */}
       {expanded && (
         <div className="px-4 pb-4 space-y-4">
+          {/* Show message if no filters available */}
+          {!hasAnyContent && (
+            <p className="text-white/40 text-sm italic">No filters available for this view.</p>
+          )}
+
           {/* Counts Grid (stats cards) */}
           {counts && counts.length > 0 && onCountFilterToggle && (
             <CountsGrid

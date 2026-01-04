@@ -831,42 +831,38 @@ const Users: React.FC = () => {
           </label>
         </div>
 
+        <FiltersPanel
+          counts={followingCounts}
+          activeCountFilters={new Set([followingFilter === 'all' ? '' : followingFilter])}
+          onCountFilterToggle={(id) => setFollowingFilter(id === followingFilter ? 'all' : id as typeof followingFilter)}
+        />
+
+        <ActiveFiltersBar
+          filters={activeFilters}
+          resultCount={filteredFollowing.length}
+          onRemoveFilter={() => setFollowingFilter('all')}
+          onClearAll={() => setFollowingFilter('all')}
+          className="mt-4"
+        />
+
+        <ResultsToolbar
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          totalItems={filteredFollowing.length}
+          className="mt-4"
+        />
+
         {followingLoading ? (
           <div className="p-12 text-center text-white/50">Loading following users...</div>
+        ) : viewMode === 'grid' ? (
+          <PeopleGrid data={filteredFollowing} onTagClick={setTagFilter} className="mt-4" />
         ) : (
-          <>
-            <FiltersPanel
-              counts={followingCounts}
-              activeCountFilters={new Set([followingFilter === 'all' ? '' : followingFilter])}
-              onCountFilterToggle={(id) => setFollowingFilter(id === followingFilter ? 'all' : id as typeof followingFilter)}
-            />
-
-            <ActiveFiltersBar
-              filters={activeFilters}
-              resultCount={filteredFollowing.length}
-              onRemoveFilter={() => setFollowingFilter('all')}
-              onClearAll={() => setFollowingFilter('all')}
-              className="mt-4"
-            />
-
-            <ResultsToolbar
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              totalItems={filteredFollowing.length}
-              className="mt-4"
-            />
-
-            {viewMode === 'grid' ? (
-              <PeopleGrid data={filteredFollowing} onTagClick={setTagFilter} className="mt-4" />
-            ) : (
-              <PeopleTable
-                data={filteredFollowing}
-                columns={followingColumns}
-                emptyMessage="No following users found."
-                className="mt-4"
-              />
-            )}
-          </>
+          <PeopleTable
+            data={filteredFollowing}
+            columns={followingColumns}
+            emptyMessage="No following users found."
+            className="mt-4"
+          />
         )}
       </>
     );
@@ -916,42 +912,38 @@ const Users: React.FC = () => {
           </label>
         </div>
 
+        <FiltersPanel
+          counts={followerCounts}
+          activeCountFilters={new Set([followersFilter === 'all' ? '' : followersFilter])}
+          onCountFilterToggle={(id) => setFollowersFilter(id === followersFilter ? 'all' : id as typeof followersFilter)}
+        />
+
+        <ActiveFiltersBar
+          filters={activeFilters}
+          resultCount={filteredFollowers.length}
+          onRemoveFilter={() => setFollowersFilter('all')}
+          onClearAll={() => setFollowersFilter('all')}
+          className="mt-4"
+        />
+
+        <ResultsToolbar
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          totalItems={filteredFollowers.length}
+          className="mt-4"
+        />
+
         {followersLoading ? (
           <div className="p-12 text-center text-white/50">Loading followers...</div>
+        ) : viewMode === 'grid' ? (
+          <PeopleGrid data={filteredFollowers} onTagClick={setTagFilter} className="mt-4" />
         ) : (
-          <>
-            <FiltersPanel
-              counts={followerCounts}
-              activeCountFilters={new Set([followersFilter === 'all' ? '' : followersFilter])}
-              onCountFilterToggle={(id) => setFollowersFilter(id === followersFilter ? 'all' : id as typeof followersFilter)}
-            />
-
-            <ActiveFiltersBar
-              filters={activeFilters}
-              resultCount={filteredFollowers.length}
-              onRemoveFilter={() => setFollowersFilter('all')}
-              onClearAll={() => setFollowersFilter('all')}
-              className="mt-4"
-            />
-
-            <ResultsToolbar
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              totalItems={filteredFollowers.length}
-              className="mt-4"
-            />
-
-            {viewMode === 'grid' ? (
-              <PeopleGrid data={filteredFollowers} onTagClick={setTagFilter} className="mt-4" />
-            ) : (
-              <PeopleTable
-                data={filteredFollowers}
-                columns={followersColumns}
-                emptyMessage="No followers found."
-                className="mt-4"
-              />
-            )}
-          </>
+          <PeopleTable
+            data={filteredFollowers}
+            columns={followersColumns}
+            emptyMessage="No followers found."
+            className="mt-4"
+          />
         )}
       </>
     );
@@ -1008,29 +1000,25 @@ const Users: React.FC = () => {
           className="mt-4"
         />
 
+        <ResultsToolbar
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          totalItems={friendUsers.length}
+          className="mt-4"
+        />
+
         {friendsLoading ? (
           <div className="p-12 text-center text-white/50">Loading friends...</div>
+        ) : viewMode === 'grid' ? (
+          <PeopleGrid data={friendUsers} onTagClick={setTagFilter} className="mt-4" />
         ) : (
-          <>
-            <ResultsToolbar
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              totalItems={friendUsers.length}
-              className="mt-4"
-            />
-
-            {viewMode === 'grid' ? (
-              <PeopleGrid data={friendUsers} onTagClick={setTagFilter} className="mt-4" />
-            ) : (
-              <PeopleTable
-                data={friendUsers}
-                columns={friendsColumns}
-                emptyMessage="No friends found."
-                emptySubMessage="Add friend tiers on user profiles."
-                className="mt-4"
-              />
-            )}
-          </>
+          <PeopleTable
+            data={friendUsers}
+            columns={friendsColumns}
+            emptyMessage="No friends found."
+            emptySubMessage="Add friend tiers on user profiles."
+            className="mt-4"
+          />
         )}
       </>
     );
@@ -1076,28 +1064,24 @@ const Users: React.FC = () => {
           className="mt-4"
         />
 
+        <ResultsToolbar
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          totalItems={subUsers.length}
+          className="mt-4"
+        />
+
         {subsLoading ? (
           <div className="p-12 text-center text-white/50">Loading subs...</div>
+        ) : viewMode === 'grid' ? (
+          <PeopleGrid data={subUsers} onTagClick={setTagFilter} className="mt-4" />
         ) : (
-          <>
-            <ResultsToolbar
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              totalItems={subUsers.length}
-              className="mt-4"
-            />
-
-            {viewMode === 'grid' ? (
-              <PeopleGrid data={subUsers} onTagClick={setTagFilter} className="mt-4" />
-            ) : (
-              <PeopleTable
-                data={subUsers}
-                columns={subsColumns}
-                emptyMessage="No subscribers found."
-                className="mt-4"
-              />
-            )}
-          </>
+          <PeopleTable
+            data={subUsers}
+            columns={subsColumns}
+            emptyMessage="No subscribers found."
+            className="mt-4"
+          />
         )}
       </>
     );
@@ -1144,29 +1128,25 @@ const Users: React.FC = () => {
           className="mt-4"
         />
 
+        <ResultsToolbar
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          totalItems={domUsers.length}
+          className="mt-4"
+        />
+
         {domsLoading ? (
           <div className="p-12 text-center text-white/50">Loading doms...</div>
+        ) : viewMode === 'grid' ? (
+          <PeopleGrid data={domUsers} onTagClick={setTagFilter} className="mt-4" />
         ) : (
-          <>
-            <ResultsToolbar
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              totalItems={domUsers.length}
-              className="mt-4"
-            />
-
-            {viewMode === 'grid' ? (
-              <PeopleGrid data={domUsers} onTagClick={setTagFilter} className="mt-4" />
-            ) : (
-              <PeopleTable
-                data={domUsers}
-                columns={domsColumns}
-                emptyMessage="No doms found."
-                emptySubMessage="Add Dom relationships from the profile page."
-                className="mt-4"
-              />
-            )}
-          </>
+          <PeopleTable
+            data={domUsers}
+            columns={domsColumns}
+            emptyMessage="No doms found."
+            emptySubMessage="Add Dom relationships from the profile page."
+            className="mt-4"
+          />
         )}
       </>
     );
