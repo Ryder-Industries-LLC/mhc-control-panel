@@ -100,4 +100,47 @@ export class SettingsService {
     }
     return this.getBroadcastMergeGapMinutes();
   }
+
+  // Image upload size limits (in bytes)
+  static readonly DEFAULT_IMAGE_LIMIT = 20 * 1024 * 1024; // 20MB
+
+  /**
+   * Get image upload limit for manual uploads (in bytes)
+   */
+  static async getImageUploadLimitManual(): Promise<number> {
+    const value = await this.get<number>('image_upload_limit_manual');
+    return value ?? this.DEFAULT_IMAGE_LIMIT;
+  }
+
+  /**
+   * Get image upload limit for external URL imports (in bytes)
+   */
+  static async getImageUploadLimitExternal(): Promise<number> {
+    const value = await this.get<number>('image_upload_limit_external');
+    return value ?? this.DEFAULT_IMAGE_LIMIT;
+  }
+
+  /**
+   * Get image upload limit for screenshots (in bytes)
+   */
+  static async getImageUploadLimitScreenshot(): Promise<number> {
+    const value = await this.get<number>('image_upload_limit_screenshot');
+    return value ?? this.DEFAULT_IMAGE_LIMIT;
+  }
+
+  /**
+   * Get all image upload limits
+   */
+  static async getImageUploadLimits(): Promise<{
+    manual: number;
+    external: number;
+    screenshot: number;
+  }> {
+    const [manual, external, screenshot] = await Promise.all([
+      this.getImageUploadLimitManual(),
+      this.getImageUploadLimitExternal(),
+      this.getImageUploadLimitScreenshot(),
+    ]);
+    return { manual, external, screenshot };
+  }
 }

@@ -1,135 +1,56 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { api, LookupResponse } from '../api/client';
 import { formatDate, formatNumber } from '../utils/formatting';
-// Users.css removed - fully migrated to Tailwind CSS
-
-interface PersonWithSource {
-  id: string;
-  username: string;
-  platform: string;
-  role: string;
-  rid: number | null;
-  did: number | null;
-  first_seen_at: string;
-  last_seen_at: string;
-  source: string;
-  interaction_count: number;
-  snapshot_count: number;
-  image_count: number;
-  image_url: string | null;
-  current_show: string | null;
-  session_observed_at: string | null;
-  tags: string[] | null;
-  age: number | null;
-  following: boolean;
-  follower: boolean;
-  banned_me?: boolean;
-  active_sub?: boolean;
-  friend_tier?: number | null;
-  watch_list?: boolean;
-}
-
-interface FollowingUser extends PersonWithSource {
-  following_since: string | null;
-}
-
-interface FollowerUser extends PersonWithSource {
-  follower_since: string | null;
-}
-
-interface UnfollowedUser extends PersonWithSource {
-  follower_since: string | null;
-  unfollower_at: string | null;
-  days_followed: number | null;
-}
-
-interface SubUser extends PersonWithSource {
-  active_sub: boolean;
-  first_service_date: string | null;
-  last_service_date: string | null;
-  notes: string | null;
-  friend_tier: number | null;
-  banned_me: boolean;
-}
-
-interface FriendUser extends PersonWithSource {
-  friend_tier: number;
-  notes: string | null;
-  active_sub: boolean;
-  first_service_date: string | null;
-  last_service_date: string | null;
-  banned_me: boolean;
-}
-
-interface BannedUser extends PersonWithSource {
-  banned_me: boolean;
-  banned_at: string | null;
-  notes: string | null;
-  friend_tier: number | null;
-  active_sub: boolean;
-}
-
-interface DomUser extends PersonWithSource {
-  service_level: string;
-  service_types: string[];
-  dom_started_at: string | null;
-  dom_ended_at: string | null;
-  dom_notes: string | null;
-  friend_tier: number | null;
-}
-
-interface PriorityLookup {
-  id: string;
-  username: string;
-  priority_level: 1 | 2;
-  status: 'pending' | 'completed' | 'active';
-  created_at: string;
-  completed_at: string | null;
-  last_checked_at: string | null;
-  notes: string | null;
-}
-
-interface FeedCacheStatus {
-  exists: boolean;
-  fresh: boolean;
-  timestamp: string | null;
-  ageMs: number | null;
-  roomCount: number;
-  totalCount: number;
-}
-
-type TabType = 'directory' | 'following' | 'followers' | 'unfollowed' | 'subs' | 'doms' | 'friends' | 'bans' | 'watchlist' | 'tipped-by-me' | 'tipped-me';
-type StatFilter = 'all' | 'live' | 'priority2' | 'priority1' | 'with_image' | 'models' | 'viewers';
-
-const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
-
-// Check if a session is currently live (observed within the last 30 minutes)
-const isPersonLive = (person: PersonWithSource): boolean => {
-  if (!person.session_observed_at || !person.current_show) return false;
-  const observedAt = new Date(person.session_observed_at);
-  const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
-  return observedAt > thirtyMinutesAgo;
-};
-
-// Get the best "last active on Chaturbate" time - prioritize session_observed_at (actual CB activity)
-const getLastActiveTime = (person: PersonWithSource): string | null => {
-  // session_observed_at is when we saw them live on CB (actual activity)
-  // last_seen_at is just when our system last touched the record
-  return person.session_observed_at || null;
-};
+import {
+  BasePerson,
+  FollowingPerson,
+  FollowerPerson,
+  UnfollowedPerson,
+  SubPerson,
+  FriendPerson,
+  DomPerson,
+  BannedPerson,
+  TipperPerson,
+  TabType,
+  StatFilter,
+  PriorityLookup,
+  CountItem,
+  ActiveFilter,
+  TAG_PRESETS,
+  DIRECTORY_SORT_OPTIONS,
+  isPersonLive,
+  getLastActiveTime,
+  getImageUrl,
+  getRoleBadgeClass,
+  getFriendTierBadge,
+} from '../types/people';
+import {
+  PeopleLayout,
+  FiltersPanel,
+  ActiveFiltersBar,
+  ResultsToolbar,
+  Pagination,
+  PeopleTable,
+  PeopleGrid,
+  getDirectoryColumns,
+  getFriendsColumns,
+  getSubsColumns,
+  getDomsColumns,
+} from '../components/people';
 
 const Users: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>('directory');
 
   // Directory tab state
-  const [persons, setPersons] = useState<PersonWithSource[]>([]);
+  const [persons, setPersons] = useState<BasePerson[]>([]);
   const [priorityLookups, setPriorityLookups] = useState<PriorityLookup[]>([]);
-  const [cacheStatus, setCacheStatus] = useState<FeedCacheStatus | null>(null);
+  const [_cacheStatus, setCacheStatus] = useState<{ lastUpdated: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sortField, setSortField] = useState<keyof PersonWithSource>('session_observed_at');
+  const [sortField, setSortField] = useState<keyof BasePerson>('session_observed_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [roleFilter, setRoleFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -143,58 +64,61 @@ const Users: React.FC = () => {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  const [statFilter, setStatFilter] = useState<StatFilter>('all');
+  const [statFilters, setStatFilters] = useState<Set<StatFilter>>(new Set());
+
+  // Text filter for username search within filtered results
+  const [textFilter, setTextFilter] = useState('');
 
   // Lookup/Queue integration state
   const [lookupUsername, setLookupUsername] = useState('');
-  const [lookupResult, setLookupResult] = useState<LookupResponse | null>(null);
-  const [usernameSuggestions, setUsernameSuggestions] = useState<string[]>([]);
+  const [_lookupResult, setLookupResult] = useState<LookupResponse | null>(null);
+  const [_usernameSuggestions, setUsernameSuggestions] = useState<string[]>([]);
 
   // Following tab state
-  const [followingUsers, setFollowingUsers] = useState<FollowingUser[]>([]);
+  const [followingUsers, setFollowingUsers] = useState<FollowingPerson[]>([]);
   const [followingLoading, setFollowingLoading] = useState(false);
-  const [followingStats, setFollowingStats] = useState<any>(null);
+  const [_followingStats, setFollowingStats] = useState<any>(null);
   const [followingFilter, setFollowingFilter] = useState<'all' | 'live' | 'with_image' | 'models' | 'viewers' | 'unknown'>('all');
 
   // Followers tab state
-  const [followerUsers, setFollowerUsers] = useState<FollowerUser[]>([]);
+  const [followerUsers, setFollowerUsers] = useState<FollowerPerson[]>([]);
   const [followersLoading, setFollowersLoading] = useState(false);
-  const [followersStats, setFollowersStats] = useState<any>(null);
-  const [followerRoleFilter, setFollowerRoleFilter] = useState<string>('ALL');
+  const [_followersStats, setFollowersStats] = useState<any>(null);
+  const [_followerRoleFilter, setFollowerRoleFilter] = useState<string>('ALL');
   const [followersFilter, setFollowersFilter] = useState<'all' | 'live' | 'with_image' | 'models' | 'viewers' | 'unknown'>('all');
 
   // Unfollowed tab state
-  const [unfollowedUsers, setUnfollowedUsers] = useState<UnfollowedUser[]>([]);
+  const [unfollowedUsers, setUnfollowedUsers] = useState<UnfollowedPerson[]>([]);
   const [unfollowedLoading, setUnfollowedLoading] = useState(false);
-  const [timeframeFilter, setTimeframeFilter] = useState<number>(30); // days
+  const [timeframeFilter, setTimeframeFilter] = useState<number>(30);
 
   // Subs tab state
-  const [subUsers, setSubUsers] = useState<SubUser[]>([]);
+  const [subUsers, setSubUsers] = useState<SubPerson[]>([]);
   const [subsLoading, setSubsLoading] = useState(false);
   const [subsFilter, setSubsFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   // Friends tab state
-  const [friendUsers, setFriendUsers] = useState<FriendUser[]>([]);
+  const [friendUsers, setFriendUsers] = useState<FriendPerson[]>([]);
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [friendTierFilter, setFriendTierFilter] = useState<number | null>(null);
 
   // Bans tab state
-  const [bannedUsers, setBannedUsers] = useState<BannedUser[]>([]);
+  const [bannedUsers, setBannedUsers] = useState<BannedPerson[]>([]);
   const [bansLoading, setBansLoading] = useState(false);
 
   // Doms tab state
-  const [domUsers, setDomUsers] = useState<DomUser[]>([]);
+  const [domUsers, setDomUsers] = useState<DomPerson[]>([]);
   const [domsLoading, setDomsLoading] = useState(false);
   const [domsFilter, setDomsFilter] = useState<string>('all');
 
   // Watchlist tab state
-  const [watchlistUsers, setWatchlistUsers] = useState<PersonWithSource[]>([]);
+  const [watchlistUsers, setWatchlistUsers] = useState<BasePerson[]>([]);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
 
   // Tippers tabs state
-  const [tippedByMeUsers, setTippedByMeUsers] = useState<any[]>([]);
+  const [tippedByMeUsers, setTippedByMeUsers] = useState<TipperPerson[]>([]);
   const [tippedByMeLoading, setTippedByMeLoading] = useState(false);
-  const [tippedMeUsers, setTippedMeUsers] = useState<any[]>([]);
+  const [tippedMeUsers, setTippedMeUsers] = useState<TipperPerson[]>([]);
   const [tippedMeLoading, setTippedMeLoading] = useState(false);
 
   // View mode state (list or grid)
@@ -255,25 +179,22 @@ const Users: React.FC = () => {
     }
   }, [domsFilter]);
 
-  // Handle URL query parameters (username, tab, role)
+  // Handle URL query parameters
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const usernameParam = params.get('username');
     const tabParam = params.get('tab') as TabType | null;
     const roleParam = params.get('role');
 
-    // Handle username lookup
     if (usernameParam && lookupUsername !== usernameParam) {
       setLookupUsername(usernameParam);
       setActiveTab('directory');
     }
 
-    // Handle tab navigation from System Stats
     if (tabParam && ['directory', 'following', 'followers', 'unfollowed', 'subs', 'doms', 'friends', 'bans', 'watchlist'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
 
-    // Handle role filter from System Stats
     if (roleParam && ['MODEL', 'VIEWER', 'UNKNOWN'].includes(roleParam)) {
       setRoleFilter(roleParam);
       setActiveTab('directory');
@@ -299,6 +220,7 @@ const Users: React.FC = () => {
     return () => clearTimeout(timer);
   }, [lookupUsername]);
 
+  // Data loading functions
   const loadData = async () => {
     await Promise.all([
       loadPersons(),
@@ -311,7 +233,6 @@ const Users: React.FC = () => {
     try {
       setLoading(true);
       setError(null);
-      // Load all users - use a high limit to get everyone
       const data = await api.getAllPersons(250000, 0);
       setPersons(data.persons);
     } catch (err) {
@@ -344,7 +265,6 @@ const Users: React.FC = () => {
     try {
       setFollowingLoading(true);
       setError(null);
-      // Use the dedicated following endpoint which returns all following users
       const response = await fetch('/api/followers/following');
       const data = await response.json();
       setFollowingUsers(data.following || []);
@@ -360,7 +280,6 @@ const Users: React.FC = () => {
     try {
       setFollowersLoading(true);
       setError(null);
-      // Use the dedicated followers endpoint which returns all followers
       const response = await fetch('/api/followers/followers');
       const data = await response.json();
       setFollowerUsers(data.followers || []);
@@ -497,26 +416,7 @@ const Users: React.FC = () => {
     }
   };
 
-  const handleLookup = async () => {
-    if (!lookupUsername) {
-      setError('Please enter a username');
-      return;
-    }
-
-    // Check if user exists in directory
-    const existingUser = persons.find(p => p.username.toLowerCase() === lookupUsername.toLowerCase());
-
-    if (existingUser) {
-      // User exists - trigger refresh
-      handleOnDemandLookup(lookupUsername);
-    } else {
-      // User not found - show add to queue option
-      setError(`User "${lookupUsername}" not found in database.`);
-      setSelectedUsername(lookupUsername);
-      setShowPriorityModal(true);
-    }
-  };
-
+  // Action handlers
   const handleUpdateFollowing = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -579,11 +479,12 @@ const Users: React.FC = () => {
     }
   };
 
-  const handleSort = (field: keyof PersonWithSource) => {
-    if (sortField === field) {
+  const handleSort = (field: string) => {
+    const typedField = field as keyof BasePerson;
+    if (sortField === typedField) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
-      setSortField(field);
+      setSortField(typedField);
       setSortDirection('desc');
     }
   };
@@ -609,20 +510,6 @@ const Users: React.FC = () => {
     }
   };
 
-  const handleRemoveFromPriority = async (username: string) => {
-    if (!window.confirm(`Remove ${username} from priority queue?`)) {
-      return;
-    }
-
-    try {
-      await api.removePriorityLookup(username);
-      await loadPriorityLookups();
-    } catch (err) {
-      setError('Failed to remove from priority queue');
-      console.error(err);
-    }
-  };
-
   const handleOnDemandLookup = async (username: string) => {
     try {
       setLookupLoading(username);
@@ -636,44 +523,66 @@ const Users: React.FC = () => {
     }
   };
 
-  const getPriorityLookup = (username: string): PriorityLookup | undefined => {
-    return priorityLookups.find(p => p.username.toLowerCase() === username.toLowerCase());
+  const getPriorityLookup = (username: string): PriorityLookup | null => {
+    return priorityLookups.find(p => p.username.toLowerCase() === username.toLowerCase()) || null;
   };
 
+  const handleStatClick = (filter: StatFilter) => {
+    setStatFilters(prev => {
+      const newFilters = new Set(prev);
+      if (newFilters.has(filter)) {
+        newFilters.delete(filter);
+      } else {
+        newFilters.add(filter);
+      }
+      return newFilters;
+    });
+  };
+
+  const clearAllFilters = () => {
+    setStatFilters(new Set());
+    setTextFilter('');
+    setTagFilter('');
+    setSearchQuery('');
+    setRoleFilter('ALL');
+  };
+
+  // Filtering logic
   const filteredPersons = persons.filter(p => {
-    if (roleFilter !== 'ALL' && p.role !== roleFilter) {
-      return false;
-    }
-    if (searchQuery && !p.username.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
-    }
+    if (roleFilter !== 'ALL' && p.role !== roleFilter) return false;
+    if (searchQuery && !p.username.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (tagFilter) {
       if (!p.tags || p.tags.length === 0) return false;
       const hasTag = p.tags.some(tag => tag.toLowerCase().includes(tagFilter.toLowerCase()));
       if (!hasTag) return false;
     }
-    // Apply stat filter
-    if (statFilter !== 'all') {
-      const priority = getPriorityLookup(p.username);
-      switch (statFilter) {
-        case 'live':
-          if (!isPersonLive(p)) return false;
-          break;
-        case 'priority2':
-          if (!priority || priority.status !== 'active') return false;
-          break;
-        case 'priority1':
-          if (!priority || priority.status !== 'pending') return false;
-          break;
-        case 'with_image':
-          if (!p.image_url) return false;
-          break;
-        case 'models':
-          if (p.role !== 'MODEL') return false;
-          break;
-        case 'viewers':
-          if (p.role !== 'VIEWER') return false;
-          break;
+    if (textFilter && !p.username.toLowerCase().includes(textFilter.toLowerCase())) return false;
+
+    if (statFilters.size > 0) {
+      for (const filter of Array.from(statFilters)) {
+        switch (filter) {
+          case 'live':
+            if (!isPersonLive(p)) return false;
+            break;
+          case 'with_image':
+            if (!p.image_url) return false;
+            break;
+          case 'models':
+            if (p.role !== 'MODEL') return false;
+            break;
+          case 'viewers':
+            if (p.role !== 'VIEWER') return false;
+            break;
+          case 'following':
+            if (!p.following) return false;
+            break;
+          case 'friends':
+            if (!p.friend_tier) return false;
+            break;
+          case 'watchlist':
+            if (!p.watch_list) return false;
+            break;
+        }
       }
     }
     return true;
@@ -682,15 +591,9 @@ const Users: React.FC = () => {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [roleFilter, searchQuery, tagFilter, statFilter]);
+  }, [roleFilter, searchQuery, tagFilter, statFilters, textFilter]);
 
-  const filteredUnfollowed = unfollowedUsers.filter(u => {
-    if (!u.unfollower_at) return false;
-    const unfollowDate = new Date(u.unfollower_at);
-    const daysAgo = (Date.now() - unfollowDate.getTime()) / (1000 * 60 * 60 * 24);
-    return daysAgo <= timeframeFilter;
-  });
-
+  // Sorting
   const sortedPersons = [...filteredPersons].sort((a, b) => {
     const aValue = a[sortField];
     const bValue = b[sortField];
@@ -700,7 +603,6 @@ const Users: React.FC = () => {
 
     let comparison = 0;
 
-    // Handle date fields (ISO strings)
     if (sortField === 'last_seen_at' || sortField === 'first_seen_at' || sortField === 'session_observed_at') {
       const aDate = new Date(aValue as string).getTime();
       const bDate = new Date(bValue as string).getTime();
@@ -716,7 +618,7 @@ const Users: React.FC = () => {
     return sortDirection === 'asc' ? comparison : -comparison;
   });
 
-  // Pagination calculations
+  // Pagination
   const totalPages = Math.ceil(sortedPersons.length / pageSize);
   const startIndex = (currentPage - 1) * pageSize;
   const endIndex = startIndex + pageSize;
@@ -724,676 +626,161 @@ const Users: React.FC = () => {
 
   const handlePageChange = (page: number) => {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
-    // Scroll to top of table
     document.querySelector('.users-content')?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleStatClick = (filter: StatFilter) => {
-    setStatFilter(statFilter === filter ? 'all' : filter);
-  };
+  // Build counts for Directory stats grid
+  const directoryCounts: CountItem[] = [
+    { id: 'all', label: 'All People', value: persons.length, color: 'default', clickable: false },
+    { id: 'live', label: 'Live Now', value: persons.filter(p => isPersonLive(p)).length, color: 'red' },
+    { id: 'with_image', label: 'With Images', value: persons.filter(p => p.image_url).length, color: 'primary' },
+    { id: 'models', label: 'Models', value: persons.filter(p => p.role === 'MODEL').length, color: 'purple' },
+    { id: 'viewers', label: 'Viewers', value: persons.filter(p => p.role === 'VIEWER').length, color: 'blue' },
+    { id: 'following', label: 'Following', value: persons.filter(p => p.following).length, color: 'emerald' },
+    { id: 'friends', label: 'Friends', value: persons.filter(p => p.friend_tier).length, color: 'yellow' },
+    { id: 'watchlist', label: 'Watchlist', value: persons.filter(p => p.watch_list).length, color: 'orange' },
+  ];
 
-  // Helper functions for styling
-  const getRoleBadgeClass = (role: string) => {
-    const base = "inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide";
-    switch (role) {
-      case 'MODEL':
-        return `${base} bg-purple-500/20 text-purple-400 border border-purple-500/30`;
-      case 'VIEWER':
-        return `${base} bg-blue-500/20 text-blue-400 border border-blue-500/30`;
-      default:
-        return `${base} bg-gray-500/20 text-gray-400 border border-gray-500/30`;
+  // Build active filters array for display
+  const activeFiltersArray: ActiveFilter[] = [
+    ...Array.from(statFilters).map(f => ({
+      id: f,
+      label: f.replace('_', ' '),
+      type: 'stat' as const,
+    })),
+    ...(textFilter ? [{ id: 'text', label: `"${textFilter}"`, type: 'text' as const }] : []),
+    ...(tagFilter ? [{ id: 'tag', label: `#${tagFilter}`, type: 'tag' as const }] : []),
+    ...(roleFilter !== 'ALL' ? [{ id: 'role', label: roleFilter, type: 'role' as const }] : []),
+  ];
+
+  const handleRemoveFilter = (filterId: string) => {
+    if (filterId === 'text') {
+      setTextFilter('');
+    } else if (filterId === 'tag') {
+      setTagFilter('');
+    } else if (filterId === 'role') {
+      setRoleFilter('ALL');
+    } else {
+      setStatFilters(prev => {
+        const newFilters = new Set(prev);
+        newFilters.delete(filterId as StatFilter);
+        return newFilters;
+      });
     }
   };
 
-  const getPriorityBadgeClass = (priority: PriorityLookup) => {
-    const base = "inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide";
-    if (priority.priority_level === 1 && priority.status === 'pending') {
-      return `${base} bg-yellow-500/20 text-yellow-400 border border-yellow-500/30`;
-    }
-    if (priority.priority_level === 1 && priority.status === 'completed') {
-      return `${base} bg-emerald-500/20 text-emerald-400 border border-emerald-500/30`;
-    }
-    if (priority.priority_level === 2 && priority.status === 'active') {
-      return `${base} bg-red-500/20 text-red-400 border border-red-500/30 animate-pulse`;
-    }
-    return base;
-  };
-
-  const getFriendTierBadge = (tier: number | null) => {
-    const base = "inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide";
-    switch (tier) {
-      case 1:
-        return { class: `${base} bg-yellow-500/20 text-yellow-400 border border-yellow-500/30`, label: 'Special' };
-      case 2:
-        return { class: `${base} bg-emerald-500/20 text-emerald-400 border border-emerald-500/30`, label: 'Tipper' };
-      case 3:
-        return { class: `${base} bg-blue-500/20 text-blue-400 border border-blue-500/30`, label: 'Regular' };
-      case 4:
-        return { class: `${base} bg-gray-500/20 text-gray-400 border border-gray-500/30`, label: 'Drive-by' };
-      default:
-        return null;
-    }
-  };
-
-  const formatCacheAge = (ageMs: number | null): string => {
-    if (ageMs === null) return 'N/A';
-    const seconds = Math.floor(ageMs / 1000);
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 1) return `${seconds}s`;
-    return `${minutes}m ${seconds % 60}s`;
-  };
-
-  const calculateDaysFollowed = (since: string | null, until: string | null): number | null => {
-    if (!since || !until) return null;
-    const start = new Date(since);
-    const end = new Date(until);
-    return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-  };
-
-  // Get image URL with fallback handling
-  const getImageUrl = (imageUrl: string | null): string | null => {
-    if (!imageUrl) return null;
-    return imageUrl.startsWith('http') ? imageUrl : `/images/${imageUrl}`;
-  };
-
-  // View mode toggle component
-  const renderViewModeToggle = () => (
-    <div className="flex gap-1 bg-mhc-surface-light rounded-lg p-1">
-      <button
-        onClick={() => setViewMode('list')}
-        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${
-          viewMode === 'list'
-            ? 'bg-gradient-primary text-white shadow-md'
-            : 'text-white/60 hover:text-white hover:bg-white/10'
-        }`}
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-        List
-      </button>
-      <button
-        onClick={() => setViewMode('grid')}
-        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-1.5 ${
-          viewMode === 'grid'
-            ? 'bg-gradient-primary text-white shadow-md'
-            : 'text-white/60 hover:text-white hover:bg-white/10'
-        }`}
-      >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-        </svg>
-        Grid
-      </button>
-    </div>
+  // Directory columns with actions
+  const directoryColumns = getDirectoryColumns(
+    getPriorityLookup,
+    handleAddToPriority,
+    handleOnDemandLookup,
+    handleDelete,
+    lookupLoading
   );
 
-  // User grid card component
-  const renderUserGridCard = (person: PersonWithSource) => {
-    const imageUrl = getImageUrl(person.image_url);
-    const isLive = isPersonLive(person);
-
-    return (
-      <div
-        key={person.id}
-        className="group block bg-mhc-surface rounded-lg overflow-hidden border border-white/5 transition-all hover:border-mhc-primary/50 hover:-translate-y-1 hover:shadow-lg hover:shadow-mhc-primary/20"
-      >
-        {/* Image container with 4:3 aspect ratio */}
-        <Link to={`/profile/${person.username}`} className="relative aspect-[4/3] bg-mhc-surface-light overflow-hidden block">
-          {imageUrl ? (
-            <img
-              src={imageUrl}
-              alt={person.username}
-              className="w-full h-full object-cover transition-transform group-hover:scale-105"
-              loading="lazy"
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full text-5xl text-white/20">
-              <svg className="w-16 h-16" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-              </svg>
-            </div>
-          )}
-          {/* Live indicator */}
-          {isLive && (
-            <div className="absolute top-2 right-2 bg-red-500/90 text-white px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wide animate-pulse flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-white rounded-full" />
-              LIVE
-            </div>
-          )}
-          {/* Priority indicator */}
-          {getPriorityLookup(person.username) && (
-            <div className="absolute top-2 left-2 bg-yellow-500/90 text-black px-1.5 py-0.5 rounded text-xs font-bold">
-              P{getPriorityLookup(person.username)?.priority_level}
-            </div>
-          )}
-          {/* Following/Follower indicators */}
-          <div className="absolute bottom-2 left-2 flex gap-1">
-            {person.following && (
-              <div className="bg-emerald-500/90 text-white px-1.5 py-0.5 rounded text-[0.6rem] font-medium flex items-center gap-0.5" title="You follow this user">
-                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
-                  <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/>
-                </svg>
-              </div>
-            )}
-            {person.follower && (
-              <div className="bg-blue-500/90 text-white px-1.5 py-0.5 rounded text-[0.6rem] font-medium flex items-center gap-0.5" title="Follows you">
-                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
-                </svg>
-              </div>
-            )}
-          </div>
-        </Link>
-        {/* Info section */}
-        <div className="p-3">
-          {/* Role badge, Active Sub badge, and Banned badge - left aligned above username */}
-          <div className="mb-1 flex items-center gap-1 flex-wrap">
-            <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem]`}>
-              {person.role}
-            </span>
-            {person.active_sub && (
-              <span className="inline-block px-1.5 py-0.5 rounded text-[0.6rem] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold">
-                SUB
-              </span>
-            )}
-            {person.watch_list && (
-              <span className="inline-block px-1.5 py-0.5 rounded text-[0.6rem] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 font-semibold">
-                WATCH
-              </span>
-            )}
-            {person.banned_me && (
-              <span className="inline-block px-1.5 py-0.5 rounded text-[0.6rem] bg-red-500/20 text-red-400 border border-red-500/30">
-                Banned
-              </span>
-            )}
-          </div>
-          {/* Username */}
-          <Link to={`/profile/${person.username}`} className="block font-semibold text-white truncate hover:text-mhc-primary transition-colors no-underline">
-            {person.username}
-          </Link>
-          {/* Last active on CB (left) + Image count (right) */}
-          <div className="flex items-center justify-between mt-1.5 text-xs">
-            <span className="text-white/50">
-              {getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}
-            </span>
-            {person.image_count > 1 && (
-              <Link
-                to={`/profile/${person.username}?tab=images`}
-                className="flex items-center gap-1 text-white/50 hover:text-mhc-primary transition-colors"
-                title="View all images"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clipRule="evenodd" />
-                </svg>
-                {person.image_count}
-              </Link>
-            )}
-          </div>
-          {/* Tags */}
-          {person.tags && person.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-2">
-              {person.tags.slice(0, 5).map((tag, idx) => (
-                <span key={idx} className="text-[0.6rem] px-1.5 py-0.5 bg-purple-500/15 text-purple-400 rounded">
-                  {tag}
-                </span>
-              ))}
-              {person.tags.length > 5 && (
-                <span className="text-[0.6rem] text-white/30">+{person.tags.length - 5}</span>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // Pagination component
-  const renderPagination = () => {
-    if (totalPages <= 1) return null;
-
-    const pages: (number | string)[] = [];
-    const maxVisible = 5;
-
-    if (totalPages <= maxVisible + 2) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (currentPage > 3) pages.push('...');
-
-      const start = Math.max(2, currentPage - 1);
-      const end = Math.min(totalPages - 1, currentPage + 1);
-
-      for (let i = start; i <= end; i++) pages.push(i);
-
-      if (currentPage < totalPages - 2) pages.push('...');
-      pages.push(totalPages);
-    }
-
-    return (
-      <div className="flex items-center justify-center gap-2 p-4 my-4 flex-wrap">
-        <button
-          className="px-3 py-2 bg-white/5 border border-white/10 rounded-md text-white/70 text-sm cursor-pointer transition-all hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
-          onClick={() => handlePageChange(currentPage - 1)}
-          disabled={currentPage === 1}
-        >
-          ‹ Prev
-        </button>
-
-        {pages.map((page, idx) => (
-          typeof page === 'number' ? (
-            <button
-              key={idx}
-              className={`min-w-[40px] px-3 py-2 border rounded-md text-sm cursor-pointer transition-all text-center ${
-                currentPage === page
-                  ? 'bg-gradient-primary text-white border-transparent'
-                  : 'bg-white/5 border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-              }`}
-              onClick={() => handlePageChange(page)}
-            >
-              {page}
-            </button>
-          ) : (
-            <span key={idx} className="text-white/40 px-1">...</span>
-          )
-        ))}
-
-        <button
-          className="px-3 py-2 bg-white/5 border border-white/10 rounded-md text-white/70 text-sm cursor-pointer transition-all hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
-          onClick={() => handlePageChange(currentPage + 1)}
-          disabled={currentPage === totalPages}
-        >
-          Next ›
-        </button>
-
-        <select
-          className="ml-4 px-3 py-2 bg-white/5 border border-white/10 rounded-md text-white cursor-pointer text-sm focus:outline-none focus:border-mhc-primary"
-          value={pageSize}
-          onChange={(e) => {
-            setPageSize(Number(e.target.value));
-            setCurrentPage(1);
-          }}
-        >
-          {PAGE_SIZE_OPTIONS.map(size => (
-            <option key={size} value={size} className="bg-mhc-surface text-white">{size} per page</option>
-          ))}
-        </select>
-
-        <span className="ml-4 text-white/50 text-sm">
-          {startIndex + 1}-{Math.min(endIndex, sortedPersons.length)} of {sortedPersons.length}
-        </span>
-      </div>
-    );
-  };
-
+  // Render Directory Tab
   const renderDirectoryTab = () => (
     <>
-      {/* Stats Cards - Clickable to filter */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mt-4">
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            statFilter === 'all' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleStatClick('all')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{persons.length}</div>
-          <div className="text-sm text-white/70">Total Users</div>
-        </div>
-        <div
-          className={`border rounded-lg p-4 text-center cursor-pointer transition-all hover:-translate-y-0.5 ${
-            statFilter === 'live'
-              ? 'border-red-500 bg-red-500/20 shadow-lg shadow-red-500/30'
-              : 'border-red-500/30 bg-red-500/10 hover:border-red-500/50'
-          }`}
-          onClick={() => handleStatClick('live')}
-        >
-          <div className="text-3xl font-bold text-red-400 mb-1">{persons.filter(p => isPersonLive(p)).length}</div>
-          <div className="text-sm text-red-300">Live Now</div>
-        </div>
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            statFilter === 'with_image' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleStatClick('with_image')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{persons.filter(p => p.image_url).length}</div>
-          <div className="text-sm text-white/70">With Images</div>
-        </div>
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            statFilter === 'priority2' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleStatClick('priority2')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{priorityLookups.filter(p => p.status === 'active').length}</div>
-          <div className="text-sm text-white/70">Priority 2 (Active)</div>
-        </div>
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            statFilter === 'priority1' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleStatClick('priority1')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{priorityLookups.filter(p => p.status === 'pending').length}</div>
-          <div className="text-sm text-white/70">Priority 1 (Pending)</div>
-        </div>
-        {cacheStatus && (
-          <div className={`border rounded-lg p-4 text-center ${
-            cacheStatus.fresh ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-orange-500/30 bg-orange-500/10'
-          }`}>
-            <div className="text-3xl font-bold text-white mb-1">{cacheStatus.roomCount}</div>
-            <div className="text-sm text-white/70">
-              Cached ({cacheStatus.fresh ? formatCacheAge(cacheStatus.ageMs) : 'Stale'})
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Filters Panel with Counts inside */}
+      <FiltersPanel
+        defaultExpanded={true}
+        counts={directoryCounts}
+        activeCountFilters={statFilters as Set<string>}
+        onCountFilterToggle={(id) => handleStatClick(id as StatFilter)}
+        tagPresets={TAG_PRESETS}
+        activeTagPreset={tagFilter}
+        onTagPresetSelect={setTagFilter}
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        textFilterValue={textFilter}
+        onTextFilterChange={setTextFilter}
+        tagFilterValue={tagFilter}
+        onTagFilterChange={setTagFilter}
+        showRoleFilter={true}
+        roleFilter={roleFilter}
+        onRoleFilterChange={setRoleFilter}
+        roleCounts={{
+          all: persons.length,
+          model: persons.filter(p => p.role === 'MODEL').length,
+          viewer: persons.filter(p => p.role === 'VIEWER').length,
+        }}
+        className="mt-4"
+      />
 
-      {/* Active filter indicator */}
-      {statFilter !== 'all' && (
-        <div className="flex items-center gap-4 px-4 py-3 bg-mhc-primary/15 border border-mhc-primary/30 rounded-lg mt-4 text-indigo-300 text-sm">
-          Filtering by: <strong className="text-white capitalize">{statFilter.replace('_', ' ')}</strong>
-          <button
-            onClick={() => setStatFilter('all')}
-            className="ml-auto bg-transparent border border-white/20 text-white/70 px-3 py-1 rounded text-xs cursor-pointer transition-all hover:bg-white/10 hover:text-white"
-          >
-            Clear ✕
-          </button>
-        </div>
-      )}
+      {/* Active Filters Bar */}
+      <ActiveFiltersBar
+        filters={activeFiltersArray}
+        resultCount={sortedPersons.length}
+        onRemoveFilter={handleRemoveFilter}
+        onClearAll={clearAllFilters}
+        className="mt-4"
+      />
 
-      {/* Filters */}
-      <div className="flex gap-4 flex-wrap items-center mt-4">
-        <div className="flex-1 min-w-[250px]">
-          <input
-            type="text"
-            placeholder="Search usernames..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white text-base placeholder:text-white/40 focus:outline-none focus:border-mhc-primary focus:bg-white/8"
-          />
-        </div>
+      {/* Results Toolbar */}
+      <ResultsToolbar
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        sortOptions={DIRECTORY_SORT_OPTIONS}
+        sortValue={`${sortField}-${sortDirection}`}
+        onSortChange={(value) => {
+          const [field, dir] = value.split('-') as [keyof BasePerson, 'asc' | 'desc'];
+          setSortField(field);
+          setSortDirection(dir);
+        }}
+        totalItems={sortedPersons.length}
+        currentPage={currentPage}
+        pageSize={pageSize}
+        totalPages={totalPages}
+        onPageChange={handlePageChange}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setCurrentPage(1);
+        }}
+        className="mt-4"
+      />
 
-        <div className="relative flex-1 min-w-[200px]">
-          <input
-            type="text"
-            placeholder="Filter by tag..."
-            value={tagFilter}
-            onChange={(e) => setTagFilter(e.target.value)}
-            className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg text-white text-base placeholder:text-white/40 focus:outline-none focus:border-mhc-primary focus:bg-white/8"
-          />
-          {tagFilter && (
-            <button
-              className="absolute right-3 top-1/2 -translate-y-1/2 bg-transparent border-none text-white/40 cursor-pointer text-base p-1 transition-colors hover:text-red-400"
-              onClick={() => setTagFilter('')}
-            >
-              ✕
-            </button>
-          )}
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-              roleFilter === 'ALL'
-                ? 'bg-gradient-primary text-white border-transparent'
-                : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-            }`}
-            onClick={() => setRoleFilter('ALL')}
-          >
-            All ({persons.length})
-          </button>
-          <button
-            className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-              roleFilter === 'MODEL'
-                ? 'bg-gradient-primary text-white border-transparent'
-                : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-            }`}
-            onClick={() => setRoleFilter('MODEL')}
-          >
-            Models ({persons.filter(p => p.role === 'MODEL').length})
-          </button>
-          <button
-            className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-              roleFilter === 'VIEWER'
-                ? 'bg-gradient-primary text-white border-transparent'
-                : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-            }`}
-            onClick={() => setRoleFilter('VIEWER')}
-          >
-            Viewers ({persons.filter(p => p.role === 'VIEWER').length})
-          </button>
-        </div>
-      </div>
-
-      {/* Preset Tag Filters */}
-      <div className="flex flex-wrap gap-2 mt-4 p-4 bg-white/3 rounded-lg border border-white/5">
-        {['smoke', 'master', 'leather', 'bdsm', 'findom', 'dirty', 'fetish', 'daddy', 'alpha', 'dom', 'slave', 'bulge'].map(tag => (
-          <button
-            key={tag}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium cursor-pointer transition-all ${
-              tagFilter.toLowerCase() === tag
-                ? 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white border-transparent shadow-lg shadow-purple-500/40'
-                : 'bg-purple-500/10 border border-purple-500/20 text-purple-400 hover:bg-purple-500/20 hover:border-purple-500/40 hover:-translate-y-0.5'
-            }`}
-            onClick={() => setTagFilter(tagFilter.toLowerCase() === tag ? '' : tag)}
-          >
-            #{tag}
-          </button>
-        ))}
-      </div>
-
-      {/* View Mode Toggle, Sort & Pagination Row */}
-      <div className="flex items-center justify-between mt-4 flex-wrap gap-4">
-        <div className="flex items-center gap-4">
-          {renderViewModeToggle()}
-          {/* Sort dropdown */}
-          <div className="flex items-center gap-2">
-            <span className="text-white/50 text-sm">Sort:</span>
-            <select
-              value={`${sortField}-${sortDirection}`}
-              onChange={(e) => {
-                const [field, dir] = e.target.value.split('-') as [keyof PersonWithSource, 'asc' | 'desc'];
-                setSortField(field);
-                setSortDirection(dir);
-              }}
-              className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-md text-white text-sm cursor-pointer focus:outline-none focus:border-mhc-primary"
-            >
-              <option value="session_observed_at-desc" className="bg-mhc-surface">Last Active (Newest)</option>
-              <option value="session_observed_at-asc" className="bg-mhc-surface">Last Active (Oldest)</option>
-              <option value="username-asc" className="bg-mhc-surface">Username (A-Z)</option>
-              <option value="username-desc" className="bg-mhc-surface">Username (Z-A)</option>
-              <option value="interaction_count-desc" className="bg-mhc-surface">Most Interactions</option>
-              <option value="image_count-desc" className="bg-mhc-surface">Most Images</option>
-              <option value="first_seen_at-desc" className="bg-mhc-surface">First Seen (Newest)</option>
-              <option value="first_seen_at-asc" className="bg-mhc-surface">First Seen (Oldest)</option>
-            </select>
-          </div>
-        </div>
-        <div className="flex-1">{renderPagination()}</div>
-      </div>
-
-      {/* Directory Content - Grid or List */}
+      {/* Results */}
       {viewMode === 'grid' ? (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 mt-4">
-            {paginatedPersons.map(person => renderUserGridCard(person))}
-          </div>
-          {paginatedPersons.length === 0 && (
-            <div className="p-12 text-center text-white/50 bg-white/5 border border-white/10 rounded-xl mt-4">
-              <p>No users found matching your filters.</p>
-            </div>
-          )}
-        </>
+        <PeopleGrid
+          data={paginatedPersons}
+          loading={false}
+          emptyMessage="No users found matching your filters."
+          getPriorityLookup={getPriorityLookup}
+          onTagClick={setTagFilter}
+          className="mt-4"
+        />
       ) : (
-      /* Directory Table */
-      <div className="users-content bg-white/5 border border-white/10 rounded-xl overflow-auto max-h-[calc(100vh-400px)] min-h-[400px] mt-4">
-        <table className="w-full border-collapse">
-          <thead className="sticky top-0 z-10">
-            <tr>
-              <th
-                onClick={() => handleSort('username')}
-                className="w-[180px] px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30 cursor-pointer select-none hover:bg-white/8"
-              >
-                Username {sortField === 'username' && (sortDirection === 'asc' ? '↑' : '↓')}
-              </th>
-              <th className="w-[140px] px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
-              <th
-                onClick={() => handleSort('age')}
-                className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30 cursor-pointer select-none hover:bg-white/8"
-              >
-                Age {sortField === 'age' && (sortDirection === 'asc' ? '↑' : '↓')}
-              </th>
-              <th className="w-[200px] px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Tags</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Priority</th>
-              <th
-                onClick={() => handleSort('interaction_count')}
-                className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30 cursor-pointer select-none hover:bg-white/8"
-              >
-                Events {sortField === 'interaction_count' && (sortDirection === 'asc' ? '↑' : '↓')}
-              </th>
-              <th
-                onClick={() => handleSort('snapshot_count')}
-                className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30 cursor-pointer select-none hover:bg-white/8"
-              >
-                Snapshots {sortField === 'snapshot_count' && (sortDirection === 'asc' ? '↑' : '↓')}
-              </th>
-              <th
-                onClick={() => handleSort('session_observed_at')}
-                className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30 cursor-pointer select-none hover:bg-white/8"
-              >
-                Last Active {sortField === 'session_observed_at' && (sortDirection === 'asc' ? '↑' : '↓')}
-              </th>
-              <th className="w-[150px] px-4 py-4 text-center font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedPersons.map((person) => {
-              const priority = getPriorityLookup(person.username);
-              return (
-                <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
-                  <td className="px-4 py-4 text-white/80">
-                    <div className="flex items-center gap-2">
-                      <Link to={`/profile/${person.username}`} className="text-white no-underline font-semibold text-base transition-colors hover:text-mhc-primary hover:underline">
-                        {person.username}
-                      </Link>
-                      <span className={`${getRoleBadgeClass(person.role)} !px-2 !py-0.5 !text-[0.6rem] opacity-80`}>{person.role}</span>
-                      {person.banned_me && (
-                        <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-2 py-2">
-                    {person.image_url && (
-                      <div className="relative w-[120px] h-[90px] cursor-pointer group">
-                        <img
-                          src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
-                          alt={person.username}
-                          className="w-full h-full object-cover rounded-md border-2 border-white/10 transition-all group-hover:border-mhc-primary group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-mhc-primary/40"
-                        />
-                        {isPersonLive(person) && (
-                          <span className="absolute top-0.5 right-0.5 text-red-500 text-xs animate-pulse drop-shadow-[0_0_4px_rgba(239,68,68,0.8)]">●</span>
-                        )}
-                        <div className="hidden group-hover:block absolute left-[130px] top-1/2 -translate-y-1/2 z-[100] bg-[#1a1a2e] border-2 border-white/20 rounded-lg p-2 shadow-2xl pointer-events-none">
-                          <img src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`} alt={person.username} className="w-[360px] h-[270px] object-cover rounded" />
-                          {isPersonLive(person) && (
-                            <div className="absolute top-3 left-3 bg-red-500/90 text-white px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide animate-pulse">● LIVE</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 text-white/80">{person.age || '—'}</td>
-                  <td className="px-2 py-2">
-                    {person.tags && person.tags.length > 0 ? (
-                      <div className="flex flex-wrap gap-1 items-center">
-                        {person.tags.slice(0, 5).map((tag, idx) => (
-                          <span
-                            key={idx}
-                            className="inline-block px-2 py-0.5 bg-purple-500/15 border border-purple-500/30 rounded-xl text-xs text-purple-400 cursor-pointer transition-all whitespace-nowrap hover:bg-purple-500/25 hover:border-purple-500/50 hover:scale-105"
-                            onClick={() => setTagFilter(tag)}
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                        {person.tags.length > 5 && (
-                          <span className="text-xs text-white/40 font-medium">+{person.tags.length - 5}</span>
-                        )}
-                      </div>
-                    ) : (
-                      <span className="text-white/30">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-4">
-                    {priority ? (
-                      <div className="flex items-center gap-2">
-                        <span className={getPriorityBadgeClass(priority)}>
-                          P{priority.priority_level} - {priority.status.toUpperCase()}
-                        </span>
-                        <button
-                          className="bg-transparent border-none text-white/40 cursor-pointer text-sm px-2 py-1 transition-colors hover:text-red-400"
-                          onClick={() => handleRemoveFromPriority(person.username)}
-                          title="Remove from priority queue"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-white/30">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 text-center font-mono text-white/60">{person.interaction_count}</td>
-                  <td className="px-4 py-4 text-center font-mono text-white/60">{person.snapshot_count}</td>
-                  <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
-                  <td className="px-4 py-4 text-center">
-                    <div className="flex gap-2 justify-center">
-                      {!priority && (
-                        <button
-                          className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-yellow-500/20 hover:border-yellow-500/30 hover:scale-110"
-                          onClick={() => handleAddToPriority(person.username)}
-                          title="Add to priority queue"
-                        >
-                          ★
-                        </button>
-                      )}
-                      <button
-                        className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-blue-500/20 hover:border-blue-500/30 hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
-                        onClick={() => handleOnDemandLookup(person.username)}
-                        disabled={lookupLoading === person.username}
-                        title="On-demand lookup"
-                      >
-                        {lookupLoading === person.username ? '⟳' : '🔍'}
-                      </button>
-                      <button
-                        className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-red-500/20 hover:border-red-500/30 hover:scale-110"
-                        onClick={() => handleDelete(person.id, person.username)}
-                        title="Delete user"
-                      >
-                        🗑
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        {paginatedPersons.length === 0 && (
-          <div className="p-12 text-center text-white/50">
-            <p>No users found matching your filters.</p>
-          </div>
-        )}
-      </div>
+        <PeopleTable
+          data={paginatedPersons}
+          columns={directoryColumns}
+          loading={false}
+          emptyMessage="No users found matching your filters."
+          sortField={String(sortField)}
+          sortDirection={sortDirection}
+          onSort={handleSort}
+          onTagClick={setTagFilter}
+          className="mt-4 users-content"
+        />
       )}
 
-      {/* Pagination - Bottom */}
-      {renderPagination()}
+      {/* Bottom Pagination */}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        pageSize={pageSize}
+        totalItems={sortedPersons.length}
+        startIndex={startIndex}
+        endIndex={endIndex}
+        onPageChange={handlePageChange}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setCurrentPage(1);
+        }}
+      />
     </>
   );
 
+  // Render Following Tab
   const renderFollowingTab = () => {
     const withImages = followingUsers.filter(p => p.image_url).length;
     const models = followingUsers.filter(p => p.role === 'MODEL').length;
@@ -1401,7 +788,6 @@ const Users: React.FC = () => {
     const unknown = followingUsers.length - models - viewers;
     const liveFollowing = followingUsers.filter(p => isPersonLive(p)).length;
 
-    // Filter following users based on selected filter
     const filteredFollowing = followingUsers.filter(p => {
       switch (followingFilter) {
         case 'live': return isPersonLive(p);
@@ -1413,193 +799,107 @@ const Users: React.FC = () => {
       }
     });
 
-    const handleFollowingFilterClick = (filter: typeof followingFilter) => {
-      setFollowingFilter(followingFilter === filter ? 'all' : filter);
-    };
+    const followingCounts: CountItem[] = [
+      { id: 'all', label: 'All', value: followingUsers.length, color: 'default' },
+      { id: 'live', label: 'Live', value: liveFollowing, color: 'red' },
+      { id: 'with_image', label: 'With Images', value: withImages, color: 'primary' },
+      { id: 'models', label: 'Models', value: models, color: 'purple' },
+      { id: 'viewers', label: 'Viewers', value: viewers, color: 'blue' },
+      { id: 'unknown', label: 'Unknown', value: unknown, color: 'default' },
+    ];
 
     return (
-    <>
-      <div className="flex justify-between items-center my-6">
-        <h2 className="text-2xl text-white font-semibold">Following</h2>
-        <div className="flex gap-4">
-          <label className="bg-gradient-primary text-white px-6 py-3 rounded-md font-medium cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-mhc-primary/40">
-            {followingLoading ? 'Updating...' : 'Update Following List'}
-            <input
-              type="file"
-              accept=".html,.htm"
-              onChange={handleUpdateFollowing}
-              className="hidden"
-              disabled={followingLoading}
-            />
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Following ({followingUsers.length})</h2>
+          <label className="px-4 py-2 bg-mhc-primary/20 text-mhc-primary border border-mhc-primary/30 rounded-lg cursor-pointer hover:bg-mhc-primary/30 transition-colors">
+            <input type="file" accept=".html" onChange={handleUpdateFollowing} className="hidden" />
+            Upload Following HTML
           </label>
         </div>
-      </div>
 
-      {/* Stats Cards for Following - Clickable */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mt-4">
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            followingFilter === 'all' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleFollowingFilterClick('all')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{followingUsers.length}</div>
-          <div className="text-sm text-white/70">Total Following</div>
-        </div>
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            followingFilter === 'live' ? 'border-red-500 bg-red-500/15 shadow-lg shadow-red-500/30' : 'border-white/10 hover:border-red-500/40'
-          }`}
-          onClick={() => handleFollowingFilterClick('live')}
-        >
-          <div className="text-3xl font-bold text-red-400 mb-1">{liveFollowing}</div>
-          <div className="text-sm text-white/70">Live Now</div>
-        </div>
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            followingFilter === 'with_image' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleFollowingFilterClick('with_image')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{withImages}</div>
-          <div className="text-sm text-white/70">With Images</div>
-        </div>
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            followingFilter === 'models' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleFollowingFilterClick('models')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{models}</div>
-          <div className="text-sm text-white/70">Models</div>
-        </div>
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            followingFilter === 'viewers' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleFollowingFilterClick('viewers')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{viewers}</div>
-          <div className="text-sm text-white/70">Viewers</div>
-        </div>
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            followingFilter === 'unknown' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleFollowingFilterClick('unknown')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{unknown}</div>
-          <div className="text-sm text-white/70">Unknown</div>
-        </div>
-      </div>
+        {followingLoading ? (
+          <div className="p-12 text-center text-white/50">Loading following users...</div>
+        ) : (
+          <>
+            <FiltersPanel
+              counts={followingCounts}
+              activeCountFilters={new Set([followingFilter === 'all' ? '' : followingFilter])}
+              onCountFilterToggle={(id) => setFollowingFilter(id === followingFilter ? 'all' : id as typeof followingFilter)}
+            />
 
-      {/* Active filter indicator */}
-      {followingFilter !== 'all' && (
-        <div className="flex items-center gap-4 px-4 py-3 bg-mhc-primary/15 border border-mhc-primary/30 rounded-lg mt-4 text-indigo-300 text-sm">
-          Filtering by: <strong className="text-white capitalize">{followingFilter.replace('_', ' ')}</strong> ({filteredFollowing.length} users)
-          <button onClick={() => setFollowingFilter('all')} className="ml-auto bg-transparent border border-white/20 text-white/70 px-3 py-1 rounded text-xs cursor-pointer transition-all hover:bg-white/10 hover:text-white">Clear X</button>
-        </div>
-      )}
-
-      {followingStats && (
-        <div className="flex gap-8 p-4 bg-mhc-primary/10 border border-mhc-primary/30 rounded-lg mb-4 mt-4">
-          <div className="text-white text-sm">New Follows: {followingStats.newFollows}</div>
-          <div className="text-white text-sm">Unfollowed: {followingStats.unfollows}</div>
-          <div className="text-white text-sm">Total: {followingStats.total}</div>
-        </div>
-      )}
-
-      {/* View Mode Toggle */}
-      <div className="flex items-center justify-between mt-4 mb-4">
-        {renderViewModeToggle()}
-        <span className="text-white/50 text-sm">{filteredFollowing.length} users</span>
-      </div>
-
-      {/* Following Content - Grid or List */}
-      {viewMode === 'grid' ? (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {filteredFollowing.map(person => renderUserGridCard(person))}
-          </div>
-          {filteredFollowing.length === 0 && (
-            <div className="p-12 text-center text-white/50 bg-white/5 border border-white/10 rounded-xl mt-4">
-              <p>{followingUsers.length === 0 ? 'No following users. Upload your following list to populate this tab.' : 'No users match the selected filter.'}</p>
+            <div className="flex items-center justify-between mt-4 mb-4">
+              <div className="flex rounded-lg overflow-hidden border border-white/10">
+                <button
+                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                  onClick={() => setViewMode('list')}
+                >
+                  List
+                </button>
+                <button
+                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                  onClick={() => setViewMode('grid')}
+                >
+                  Grid
+                </button>
+              </div>
+              <span className="text-white/50 text-sm">{filteredFollowing.length} users</span>
             </div>
-          )}
-        </>
-      ) : (
-      <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Age</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Tags</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Following Since</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredFollowing.map((person) => (
-              <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
-                <td className="px-4 py-4">
-                  <div className="flex items-center gap-2">
-                    <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                    <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
-                    {person.banned_me && (
-                      <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-2 py-2">
-                  {person.image_url && (
-                    <img
-                      src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
-                      alt={person.username}
-                      className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
-                    />
-                  )}
-                </td>
-                <td className="px-4 py-4 text-white/80">{person.age || '—'}</td>
-                <td className="px-2 py-2">
-                  {person.tags && person.tags.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {person.tags.slice(0, 5).map((tag, idx) => (
-                        <span key={idx} className="inline-block px-2 py-0.5 bg-purple-500/15 border border-purple-500/30 rounded-xl text-xs text-purple-400">{tag}</span>
-                      ))}
-                      {person.tags.length > 5 && <span className="text-xs text-white/40">+{person.tags.length - 5}</span>}
-                    </div>
-                  ) : <span className="text-white/30">—</span>}
-                </td>
-                <td className="px-4 py-4 text-white/80">{person.following_since ? formatDate(person.following_since, { includeTime: false }) : '—'}</td>
-                <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
-                <td className="px-4 py-4 text-center">
-                  <button
-                    className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-blue-500/20 hover:border-blue-500/30 hover:scale-110"
-                    onClick={() => handleOnDemandLookup(person.username)}
-                    title="Refresh data"
-                  >
-                    🔍
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
 
-        {filteredFollowing.length === 0 && (
-          <div className="p-12 text-center text-white/50">
-            <p>{followingUsers.length === 0 ? 'No following users. Upload your following list to populate this tab.' : 'No users match the selected filter.'}</p>
-          </div>
+            {viewMode === 'grid' ? (
+              <PeopleGrid data={filteredFollowing} onTagClick={setTagFilter} />
+            ) : (
+              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Following Since</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredFollowing.map((person) => (
+                      <tr
+                        key={person.id}
+                        className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
+                        onClick={() => navigate(`/profile/${person.username}`)}
+                      >
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
+                            <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
+                              {person.username}
+                            </Link>
+                            {isPersonLive(person) && (
+                              <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded animate-pulse">LIVE</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-2 py-2">
+                          {person.image_url && (
+                            <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-white/80">{person.following_since ? formatDate(person.following_since, { includeTime: false }) : '—'}</td>
+                        <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {filteredFollowing.length === 0 && (
+                  <div className="p-12 text-center text-white/50">No following users found.</div>
+                )}
+              </div>
+            )}
+          </>
         )}
-      </div>
-      )}
-    </>
-  );
+      </>
+    );
   };
 
+  // Render Followers Tab (similar structure to Following)
   const renderFollowersTab = () => {
     const withImages = followerUsers.filter(p => p.image_url).length;
     const models = followerUsers.filter(p => p.role === 'MODEL').length;
@@ -1607,8 +907,7 @@ const Users: React.FC = () => {
     const unknown = followerUsers.length - models - viewers;
     const liveFollowers = followerUsers.filter(p => isPersonLive(p)).length;
 
-    // Filter followers based on selected filter
-    const filteredFollowersList = followerUsers.filter(p => {
+    const filteredFollowers = followerUsers.filter(p => {
       switch (followersFilter) {
         case 'live': return isPersonLive(p);
         case 'with_image': return !!p.image_url;
@@ -1619,376 +918,55 @@ const Users: React.FC = () => {
       }
     });
 
-    const handleFollowersFilterClick = (filter: typeof followersFilter) => {
-      setFollowersFilter(followersFilter === filter ? 'all' : filter);
-    };
+    const followerCounts: CountItem[] = [
+      { id: 'all', label: 'All', value: followerUsers.length, color: 'default' },
+      { id: 'live', label: 'Live', value: liveFollowers, color: 'red' },
+      { id: 'with_image', label: 'With Images', value: withImages, color: 'primary' },
+      { id: 'models', label: 'Models', value: models, color: 'purple' },
+      { id: 'viewers', label: 'Viewers', value: viewers, color: 'blue' },
+      { id: 'unknown', label: 'Unknown', value: unknown, color: 'default' },
+    ];
 
     return (
-    <>
-      <div className="flex justify-between items-center my-6">
-        <h2 className="text-2xl text-white font-semibold">Followers</h2>
-        <div className="flex gap-4">
-          <label className="bg-gradient-primary text-white px-6 py-3 rounded-md font-medium cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-mhc-primary/40">
-            {followersLoading ? 'Updating...' : 'Update Followers List'}
-            <input
-              type="file"
-              accept=".html,.htm"
-              onChange={handleUpdateFollowers}
-              className="hidden"
-              disabled={followersLoading}
-            />
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Followers ({followerUsers.length})</h2>
+          <label className="px-4 py-2 bg-mhc-primary/20 text-mhc-primary border border-mhc-primary/30 rounded-lg cursor-pointer hover:bg-mhc-primary/30 transition-colors">
+            <input type="file" accept=".html" onChange={handleUpdateFollowers} className="hidden" />
+            Upload Followers HTML
           </label>
         </div>
-      </div>
 
-      {/* Stats Cards for Followers - Clickable */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mt-4">
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            followersFilter === 'all' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleFollowersFilterClick('all')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{followerUsers.length}</div>
-          <div className="text-sm text-white/70">Total Followers</div>
-        </div>
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            followersFilter === 'live' ? 'border-red-500 bg-red-500/15 shadow-lg shadow-red-500/30' : 'border-white/10 hover:border-red-500/40'
-          }`}
-          onClick={() => handleFollowersFilterClick('live')}
-        >
-          <div className="text-3xl font-bold text-red-400 mb-1">{liveFollowers}</div>
-          <div className="text-sm text-white/70">Live Now</div>
-        </div>
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            followersFilter === 'with_image' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleFollowersFilterClick('with_image')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{withImages}</div>
-          <div className="text-sm text-white/70">With Images</div>
-        </div>
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            followersFilter === 'models' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleFollowersFilterClick('models')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{models}</div>
-          <div className="text-sm text-white/70">Models</div>
-        </div>
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            followersFilter === 'viewers' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleFollowersFilterClick('viewers')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{viewers}</div>
-          <div className="text-sm text-white/70">Viewers</div>
-        </div>
-        <div
-          className={`bg-white/5 border rounded-lg p-4 text-center cursor-pointer transition-all hover:bg-white/8 hover:-translate-y-0.5 ${
-            followersFilter === 'unknown' ? 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30' : 'border-white/10 hover:border-mhc-primary/40'
-          }`}
-          onClick={() => handleFollowersFilterClick('unknown')}
-        >
-          <div className="text-3xl font-bold text-white mb-1">{unknown}</div>
-          <div className="text-sm text-white/70">Unknown</div>
-        </div>
-      </div>
-
-      {/* Active filter indicator */}
-      {followersFilter !== 'all' && (
-        <div className="flex items-center gap-4 px-4 py-3 bg-mhc-primary/15 border border-mhc-primary/30 rounded-lg mt-4 text-indigo-300 text-sm">
-          Filtering by: <strong className="text-white capitalize">{followersFilter.replace('_', ' ')}</strong> ({filteredFollowersList.length} users)
-          <button onClick={() => setFollowersFilter('all')} className="ml-auto bg-transparent border border-white/20 text-white/70 px-3 py-1 rounded text-xs cursor-pointer transition-all hover:bg-white/10 hover:text-white">Clear X</button>
-        </div>
-      )}
-
-      {followersStats && (
-        <div className="flex gap-8 p-4 bg-mhc-primary/10 border border-mhc-primary/30 rounded-lg mb-4 mt-4">
-          <div className="text-white text-sm">New Followers: {followersStats.newFollowers}</div>
-          <div className="text-white text-sm">Unfollowers: {followersStats.unfollowers}</div>
-          <div className="text-white text-sm">Total: {followersStats.total}</div>
-        </div>
-      )}
-
-      {/* View Mode Toggle */}
-      <div className="flex items-center justify-between mt-4 mb-4">
-        {renderViewModeToggle()}
-        <span className="text-white/50 text-sm">{filteredFollowersList.length} users</span>
-      </div>
-
-      {/* Followers Content - Grid or List */}
-      {viewMode === 'grid' ? (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {filteredFollowersList.map(person => renderUserGridCard(person))}
-          </div>
-          {filteredFollowersList.length === 0 && (
-            <div className="p-12 text-center text-white/50 bg-white/5 border border-white/10 rounded-xl mt-4">
-              <p>{followerUsers.length === 0 ? 'No followers found. Upload your followers list to populate this tab.' : 'No users match the selected filter.'}</p>
-            </div>
-          )}
-        </>
-      ) : (
-      <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Age</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Follower Since</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
-              <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredFollowersList.map((person) => (
-              <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
-                <td className="px-4 py-4">
-                  <div className="flex items-center gap-2">
-                    <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                    <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
-                    {person.banned_me && (
-                      <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-2 py-2">
-                  {person.image_url && (
-                    <img
-                      src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
-                      alt={person.username}
-                      className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
-                    />
-                  )}
-                </td>
-                <td className="px-4 py-4 text-white/80">{person.age || '—'}</td>
-                <td className="px-4 py-4 text-white/80">{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '—'}</td>
-                <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
-                <td className="px-4 py-4 text-center">
-                  <button
-                    className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-blue-500/20 hover:border-blue-500/30 hover:scale-110"
-                    onClick={() => handleOnDemandLookup(person.username)}
-                    title="Refresh data"
-                  >
-                    🔍
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {filteredFollowersList.length === 0 && (
-          <div className="p-12 text-center text-white/50">
-            <p>{followerUsers.length === 0 ? 'No followers found. Upload your followers list to populate this tab.' : 'No users match the selected filter.'}</p>
-          </div>
-        )}
-      </div>
-      )}
-    </>
-  );
-  };
-
-  const renderUnfollowedTab = () => {
-    const totalUnfollows = filteredUnfollowed.length;
-    const avgDuration = totalUnfollows > 0
-      ? filteredUnfollowed.reduce((sum, u) => sum + (u.days_followed || 0), 0) / totalUnfollows
-      : 0;
-
-    return (
-      <>
-        <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Unfollowed ({totalUnfollows})</h2>
-          <div className="flex gap-2">
-            <button
-              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                timeframeFilter === 7
-                  ? 'bg-gradient-primary text-white border-transparent'
-                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-              }`}
-              onClick={() => setTimeframeFilter(7)}
-            >
-              Last 7 Days
-            </button>
-            <button
-              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                timeframeFilter === 30
-                  ? 'bg-gradient-primary text-white border-transparent'
-                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-              }`}
-              onClick={() => setTimeframeFilter(30)}
-            >
-              Last 30 Days
-            </button>
-            <button
-              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                timeframeFilter === 90
-                  ? 'bg-gradient-primary text-white border-transparent'
-                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-              }`}
-              onClick={() => setTimeframeFilter(90)}
-            >
-              Last 90 Days
-            </button>
-          </div>
-        </div>
-
-        {totalUnfollows > 0 && (
-          <div className="flex gap-8 p-6 bg-purple-500/10 border border-purple-500/30 rounded-lg mb-4">
-            <div className="text-center">
-              <div className="text-4xl font-bold text-purple-400 mb-1">{totalUnfollows}</div>
-              <div className="text-sm text-white/70">Total Unfollows</div>
-            </div>
-            <div className="text-center">
-              <div className="text-4xl font-bold text-purple-400 mb-1">{avgDuration.toFixed(1)}</div>
-              <div className="text-sm text-white/70">Avg Days Followed</div>
-            </div>
-          </div>
-        )}
-
-        {/* View Mode Toggle */}
-        <div className="flex items-center justify-between mt-4 mb-4">
-          {renderViewModeToggle()}
-          <span className="text-white/50 text-sm">{filteredUnfollowed.length} users</span>
-        </div>
-
-        {/* Unfollowed Content - Grid or List */}
-        {viewMode === 'grid' ? (
-          <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-              {filteredUnfollowed.map(person => renderUserGridCard(person))}
-            </div>
-            {filteredUnfollowed.length === 0 && (
-              <div className="p-12 text-center text-white/50 bg-white/5 border border-white/10 rounded-xl mt-4">
-                <p>No unfollowed users in the selected timeframe.</p>
-              </div>
-            )}
-          </>
-        ) : (
-        <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Age</th>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Followed On</th>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Unfollowed On</th>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Days Followed</th>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
-                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredUnfollowed.map((person) => (
-                <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
-                  <td className="px-4 py-4">
-                    <div className="flex items-center gap-2">
-                      <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                      <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
-                      {person.banned_me && (
-                        <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-2 py-2">
-                    {person.image_url && (
-                      <img
-                        src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
-                        alt={person.username}
-                        className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
-                      />
-                    )}
-                  </td>
-                  <td className="px-4 py-4 text-white/80">{person.age || '—'}</td>
-                  <td className="px-4 py-4 text-white/80">{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '—'}</td>
-                  <td className="px-4 py-4 text-white/80">{person.unfollower_at ? formatDate(person.unfollower_at, { includeTime: false }) : '—'}</td>
-                  <td className="px-4 py-4 text-white/80">{person.days_followed !== null ? `${person.days_followed} days` : '—'}</td>
-                  <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
-                  <td className="px-4 py-4 text-center">
-                    <button
-                      className="p-2 bg-white/5 border border-white/10 rounded-md cursor-pointer transition-all text-base hover:bg-blue-500/20 hover:border-blue-500/30 hover:scale-110"
-                      onClick={() => handleOnDemandLookup(person.username)}
-                      title="Refresh data"
-                    >
-                      🔍
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {filteredUnfollowed.length === 0 && (
-            <div className="p-12 text-center text-white/50">
-              <p>No unfollowed users in the selected timeframe.</p>
-            </div>
-          )}
-        </div>
-        )}
-      </>
-    );
-  };
-
-  const renderSubsTab = () => {
-    return (
-      <>
-        <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold" title="Users you have identified as subs (not platform subscribers)">Identified Subs ({subUsers.length})</h2>
-          <div className="flex gap-2">
-            <button
-              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                subsFilter === 'all'
-                  ? 'bg-gradient-primary text-white border-transparent'
-                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-              }`}
-              onClick={() => setSubsFilter('all')}
-            >
-              All
-            </button>
-            <button
-              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                subsFilter === 'active'
-                  ? 'bg-gradient-primary text-white border-transparent'
-                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-              }`}
-              onClick={() => setSubsFilter('active')}
-            >
-              Active
-            </button>
-            <button
-              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                subsFilter === 'inactive'
-                  ? 'bg-gradient-primary text-white border-transparent'
-                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-              }`}
-              onClick={() => setSubsFilter('inactive')}
-            >
-              Past
-            </button>
-          </div>
-        </div>
-
-        {subsLoading ? (
-          <div className="p-12 text-center text-white/50">Loading identified subs...</div>
+        {followersLoading ? (
+          <div className="p-12 text-center text-white/50">Loading followers...</div>
         ) : (
           <>
-            {/* View Mode Toggle */}
+            <FiltersPanel
+              counts={followerCounts}
+              activeCountFilters={new Set([followersFilter === 'all' ? '' : followersFilter])}
+              onCountFilterToggle={(id) => setFollowersFilter(id === followersFilter ? 'all' : id as typeof followersFilter)}
+            />
+
             <div className="flex items-center justify-between mt-4 mb-4">
-              {renderViewModeToggle()}
-              <span className="text-white/50 text-sm">{subUsers.length} identified subs</span>
+              <div className="flex rounded-lg overflow-hidden border border-white/10">
+                <button
+                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                  onClick={() => setViewMode('list')}
+                >
+                  List
+                </button>
+                <button
+                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                  onClick={() => setViewMode('grid')}
+                >
+                  Grid
+                </button>
+              </div>
+              <span className="text-white/50 text-sm">{filteredFollowers.length} users</span>
             </div>
 
             {viewMode === 'grid' ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {subUsers.map(person => renderUserGridCard(person))}
-              </div>
+              <PeopleGrid data={filteredFollowers} onTagClick={setTagFilter} />
             ) : (
               <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
                 <table className="w-full border-collapse">
@@ -1996,63 +974,41 @@ const Users: React.FC = () => {
                     <tr>
                       <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
                       <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Status</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">First Service</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Service</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Friend Tier</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Notes</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Follower Since</th>
+                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {subUsers.map((person) => {
-                      const tierBadge = getFriendTierBadge(person.friend_tier);
-                      return (
-                        <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-2">
-                              <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                              <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
-                              {person.banned_me && (
-                                <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-2 py-2">
-                            {person.image_url && (
-                              <img
-                                src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
-                                alt={person.username}
-                                className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
-                              />
+                    {filteredFollowers.map((person) => (
+                      <tr
+                        key={person.id}
+                        className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
+                        onClick={() => navigate(`/profile/${person.username}`)}
+                      >
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
+                            <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
+                              {person.username}
+                            </Link>
+                            {isPersonLive(person) && (
+                              <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded animate-pulse">LIVE</span>
                             )}
-                          </td>
-                          <td className="px-4 py-4">
-                            {person.active_sub ? (
-                              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Active</span>
-                            ) : (
-                              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-gray-500/20 text-gray-400 border border-gray-500/30">Past</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-4 text-white/80">{person.first_service_date ? formatDate(person.first_service_date, { includeTime: false }) : '—'}</td>
-                          <td className="px-4 py-4 text-white/80">{person.last_service_date ? formatDate(person.last_service_date, { includeTime: false }) : '—'}</td>
-                          <td className="px-4 py-4">
-                            {tierBadge ? (
-                              <span className={tierBadge.class}>Tier {person.friend_tier} - {tierBadge.label}</span>
-                            ) : '—'}
-                          </td>
-                          <td className="px-4 py-4 text-white/70 max-w-[200px] truncate" title={person.notes || ''}>
-                            {person.notes || '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                          </div>
+                        </td>
+                        <td className="px-2 py-2">
+                          {person.image_url && (
+                            <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
+                          )}
+                        </td>
+                        <td className="px-4 py-4 text-white/80">{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '—'}</td>
+                        <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
-
-                {subUsers.length === 0 && (
-                  <div className="p-12 text-center text-white/50">
-                    <p>No subscribers found.</p>
-                  </div>
+                {filteredFollowers.length === 0 && (
+                  <div className="p-12 text-center text-white/50">No followers found.</div>
                 )}
               </div>
             )}
@@ -2062,131 +1018,208 @@ const Users: React.FC = () => {
     );
   };
 
+  // Render Friends Tab with FiltersPanel
+  const renderFriendsTab = () => {
+    const friendsColumns = getFriendsColumns();
+
+    return (
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Friends ({friendUsers.length})</h2>
+        </div>
+
+        <FiltersPanel
+          customFilters={
+            <div className="flex gap-2">
+              <button
+                className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                  friendTierFilter === null ? 'bg-gradient-primary text-white border-transparent' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
+                }`}
+                onClick={() => setFriendTierFilter(null)}
+              >
+                All
+              </button>
+              {[1, 2, 3, 4].map(tier => {
+                const badge = getFriendTierBadge(tier);
+                return (
+                  <button
+                    key={tier}
+                    className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                      friendTierFilter === tier ? badge?.class || '' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
+                    }`}
+                    onClick={() => setFriendTierFilter(tier)}
+                  >
+                    Tier {tier} - {badge?.label}
+                  </button>
+                );
+              })}
+            </div>
+          }
+        />
+
+        {friendsLoading ? (
+          <div className="p-12 text-center text-white/50">Loading friends...</div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mt-4 mb-4">
+              <div className="flex rounded-lg overflow-hidden border border-white/10">
+                <button
+                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                  onClick={() => setViewMode('list')}
+                >
+                  List
+                </button>
+                <button
+                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                  onClick={() => setViewMode('grid')}
+                >
+                  Grid
+                </button>
+              </div>
+              <span className="text-white/50 text-sm">{friendUsers.length} friends</span>
+            </div>
+
+            {viewMode === 'grid' ? (
+              <PeopleGrid data={friendUsers} onTagClick={setTagFilter} />
+            ) : (
+              <PeopleTable
+                data={friendUsers}
+                columns={friendsColumns}
+                emptyMessage="No friends found."
+                emptySubMessage="Add friend tiers on user profiles."
+              />
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
+  // Render Subs Tab with FiltersPanel
+  const renderSubsTab = () => {
+    const subsColumns = getSubsColumns();
+
+    return (
+      <>
+        <div className="flex justify-between items-center my-6">
+          <h2 className="text-2xl text-white font-semibold">Subs ({subUsers.length})</h2>
+        </div>
+
+        <FiltersPanel
+          customFilters={
+            <div className="flex gap-2">
+              {['all', 'active', 'inactive'].map(filter => (
+                <button
+                  key={filter}
+                  className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all capitalize ${
+                    subsFilter === filter ? 'bg-gradient-primary text-white border-transparent' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
+                  }`}
+                  onClick={() => setSubsFilter(filter as typeof subsFilter)}
+                >
+                  {filter}
+                </button>
+              ))}
+            </div>
+          }
+        />
+
+        {subsLoading ? (
+          <div className="p-12 text-center text-white/50">Loading subs...</div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mt-4 mb-4">
+              <div className="flex rounded-lg overflow-hidden border border-white/10">
+                <button
+                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                  onClick={() => setViewMode('list')}
+                >
+                  List
+                </button>
+                <button
+                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                  onClick={() => setViewMode('grid')}
+                >
+                  Grid
+                </button>
+              </div>
+              <span className="text-white/50 text-sm">{subUsers.length} subs</span>
+            </div>
+
+            {viewMode === 'grid' ? (
+              <PeopleGrid data={subUsers} onTagClick={setTagFilter} />
+            ) : (
+              <PeopleTable
+                data={subUsers}
+                columns={subsColumns}
+                emptyMessage="No subscribers found."
+              />
+            )}
+          </>
+        )}
+      </>
+    );
+  };
+
+  // Render Doms Tab with FiltersPanel
   const renderDomsTab = () => {
+    const domsColumns = getDomsColumns();
     const domLevels = ['all', 'Potential', 'Actively Serving', 'Ended', 'Paused'];
 
     return (
       <>
         <div className="flex justify-between items-center my-6">
           <h2 className="text-2xl text-white font-semibold">Doms ({domUsers.length})</h2>
-          <div className="flex gap-2">
-            {domLevels.map(level => (
-              <button
-                key={level}
-                className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                  domsFilter === level
-                    ? 'bg-gradient-primary text-white border-transparent'
-                    : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-                }`}
-                onClick={() => setDomsFilter(level)}
-              >
-                {level === 'all' ? 'All' : level}
-              </button>
-            ))}
-          </div>
         </div>
+
+        <FiltersPanel
+          customFilters={
+            <div className="flex gap-2">
+              {domLevels.map(level => (
+                <button
+                  key={level}
+                  className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
+                    domsFilter === level ? 'bg-gradient-primary text-white border-transparent' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
+                  }`}
+                  onClick={() => setDomsFilter(level)}
+                >
+                  {level === 'all' ? 'All' : level}
+                </button>
+              ))}
+            </div>
+          }
+        />
 
         {domsLoading ? (
           <div className="p-12 text-center text-white/50">Loading doms...</div>
         ) : (
           <>
-            {/* View Mode Toggle */}
             <div className="flex items-center justify-between mt-4 mb-4">
-              {renderViewModeToggle()}
+              <div className="flex rounded-lg overflow-hidden border border-white/10">
+                <button
+                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                  onClick={() => setViewMode('list')}
+                >
+                  List
+                </button>
+                <button
+                  className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                  onClick={() => setViewMode('grid')}
+                >
+                  Grid
+                </button>
+              </div>
               <span className="text-white/50 text-sm">{domUsers.length} doms</span>
             </div>
 
             {viewMode === 'grid' ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {domUsers.map(person => renderUserGridCard(person))}
-              </div>
+              <PeopleGrid data={domUsers} onTagClick={setTagFilter} />
             ) : (
-              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Username</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Image</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Service Level</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Types</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Started</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Ended</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-purple-500/30">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {domUsers.map((person) => {
-                      const getLevelBadge = (level: string) => {
-                        switch (level) {
-                          case 'Actively Serving':
-                            return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
-                          case 'Potential':
-                            return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
-                          case 'Ended':
-                            return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
-                          case 'Paused':
-                            return 'bg-amber-500/20 text-amber-400 border-amber-500/30';
-                          default:
-                            return 'bg-purple-500/20 text-purple-400 border-purple-500/30';
-                        }
-                      };
-
-                      return (
-                        <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-2">
-                              <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                              <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
-                              {person.banned_me && (
-                                <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-2 py-2">
-                            {person.image_url && (
-                              <img
-                                src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
-                                alt={person.username}
-                                className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
-                              />
-                            )}
-                          </td>
-                          <td className="px-4 py-4">
-                            <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide border ${getLevelBadge(person.service_level)}`}>
-                              {person.service_level}
-                            </span>
-                          </td>
-                          <td className="px-4 py-4">
-                            <div className="flex flex-wrap gap-1">
-                              {person.service_types && person.service_types.length > 0 ? (
-                                person.service_types.map((type, idx) => (
-                                  <span key={idx} className="inline-block px-2 py-0.5 rounded text-xs bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                                    {type}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-white/50">—</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-white/80">{person.dom_started_at ? formatDate(person.dom_started_at, { includeTime: false }) : '—'}</td>
-                          <td className="px-4 py-4 text-white/80">{person.dom_ended_at ? formatDate(person.dom_ended_at, { includeTime: false }) : '—'}</td>
-                          <td className="px-4 py-4 text-white/70 max-w-[200px] truncate" title={person.dom_notes || ''}>
-                            {person.dom_notes || '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-
-                {domUsers.length === 0 && (
-                  <div className="p-12 text-center text-white/50">
-                    <p>No doms found.</p>
-                    <p className="mt-2 text-sm">Add Dom relationships from the profile page.</p>
-                  </div>
-                )}
-              </div>
+              <PeopleTable
+                data={domUsers}
+                columns={domsColumns}
+                emptyMessage="No doms found."
+                emptySubMessage="Add Dom relationships from the profile page."
+              />
             )}
           </>
         )}
@@ -2194,579 +1227,368 @@ const Users: React.FC = () => {
     );
   };
 
-  const renderFriendsTab = () => {
+  // Render Unfollowed Tab
+  const renderUnfollowedTab = () => {
+    const filteredUnfollowed = unfollowedUsers.filter(u => {
+      if (!u.unfollower_at) return false;
+      const unfollowDate = new Date(u.unfollower_at);
+      const daysAgo = (Date.now() - unfollowDate.getTime()) / (1000 * 60 * 60 * 24);
+      return daysAgo <= timeframeFilter;
+    });
+
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Friends ({friendUsers.length})</h2>
-          <div className="flex gap-2">
-            <button
-              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                friendTierFilter === null
-                  ? 'bg-gradient-primary text-white border-transparent'
-                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-              }`}
-              onClick={() => setFriendTierFilter(null)}
-            >
-              All
-            </button>
-            <button
-              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                friendTierFilter === 1
-                  ? 'bg-yellow-500/30 text-yellow-300 border-yellow-500/50'
-                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-              }`}
-              onClick={() => setFriendTierFilter(1)}
-            >
-              Tier 1 - Special
-            </button>
-            <button
-              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                friendTierFilter === 2
-                  ? 'bg-emerald-500/30 text-emerald-300 border-emerald-500/50'
-                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-              }`}
-              onClick={() => setFriendTierFilter(2)}
-            >
-              Tier 2 - Tipper
-            </button>
-            <button
-              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                friendTierFilter === 3
-                  ? 'bg-blue-500/30 text-blue-300 border-blue-500/50'
-                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-              }`}
-              onClick={() => setFriendTierFilter(3)}
-            >
-              Tier 3 - Regular
-            </button>
-            <button
-              className={`px-4 py-2 rounded-md text-sm cursor-pointer transition-all ${
-                friendTierFilter === 4
-                  ? 'bg-gray-500/30 text-gray-300 border-gray-500/50'
-                  : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10 hover:text-white'
-              }`}
-              onClick={() => setFriendTierFilter(4)}
-            >
-              Tier 4 - Drive-by
-            </button>
+          <h2 className="text-2xl text-white font-semibold">Unfollowed ({filteredUnfollowed.length})</h2>
+        </div>
+
+        <FiltersPanel
+          customFilters={
+            <div className="flex gap-2 items-center">
+              <span className="text-white/70 text-sm">Show unfollowed in last:</span>
+              {[7, 14, 30, 60, 90].map(days => (
+                <button
+                  key={days}
+                  className={`px-3 py-1.5 rounded-md text-sm cursor-pointer transition-all ${
+                    timeframeFilter === days ? 'bg-gradient-primary text-white' : 'bg-white/5 border border-white/10 text-white/70 hover:bg-white/10'
+                  }`}
+                  onClick={() => setTimeframeFilter(days)}
+                >
+                  {days} days
+                </button>
+              ))}
+            </div>
+          }
+        />
+
+        {unfollowedLoading ? (
+          <div className="p-12 text-center text-white/50">Loading unfollowed users...</div>
+        ) : (
+          <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden mt-4">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr>
+                  <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-gray-500/30">Username</th>
+                  <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-gray-500/30">Image</th>
+                  <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-gray-500/30">Follower Since</th>
+                  <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-gray-500/30">Unfollowed At</th>
+                  <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-gray-500/30">Days Followed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUnfollowed.map((person) => (
+                  <tr
+                    key={person.id}
+                    className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
+                    onClick={() => navigate(`/profile/${person.username}`)}
+                  >
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-2">
+                        <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
+                        <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
+                          {person.username}
+                        </Link>
+                      </div>
+                    </td>
+                    <td className="px-2 py-2">
+                      {person.image_url && (
+                        <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
+                      )}
+                    </td>
+                    <td className="px-4 py-4 text-white/80">{person.follower_since ? formatDate(person.follower_since, { includeTime: false }) : '—'}</td>
+                    <td className="px-4 py-4 text-white/80">{person.unfollower_at ? formatDate(person.unfollower_at, { includeTime: false }) : '—'}</td>
+                    <td className="px-4 py-4 text-white/80">{person.days_followed || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filteredUnfollowed.length === 0 && (
+              <div className="p-12 text-center text-white/50">No unfollowed users in this timeframe.</div>
+            )}
           </div>
-        </div>
-
-        {friendsLoading ? (
-          <div className="p-12 text-center text-white/50">Loading friends...</div>
-        ) : (
-          <>
-            {/* View Mode Toggle */}
-            <div className="flex items-center justify-between mt-4 mb-4">
-              {renderViewModeToggle()}
-              <span className="text-white/50 text-sm">{friendUsers.length} friends</span>
-            </div>
-
-            {viewMode === 'grid' ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {friendUsers.map(person => renderUserGridCard(person))}
-              </div>
-            ) : (
-              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Friend Tier</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Active Sub</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {friendUsers.map((person) => {
-                      const tierBadge = getFriendTierBadge(person.friend_tier);
-                      return (
-                        <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-2">
-                              <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                              <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
-                              {person.banned_me && (
-                                <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-2 py-2">
-                            {person.image_url && (
-                              <img
-                                src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
-                                alt={person.username}
-                                className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
-                              />
-                            )}
-                          </td>
-                          <td className="px-4 py-4">
-                            {tierBadge && (
-                              <span className={tierBadge.class}>Tier {person.friend_tier} - {tierBadge.label}</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-4">
-                            {person.active_sub ? (
-                              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Yes</span>
-                            ) : '—'}
-                          </td>
-                          <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
-                          <td className="px-4 py-4 text-white/70 max-w-[200px] truncate" title={person.notes || ''}>
-                            {person.notes || '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-
-                {friendUsers.length === 0 && (
-                  <div className="p-12 text-center text-white/50">
-                    <p>No friends found. Add friend tiers on user profiles.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </>
         )}
       </>
     );
   };
 
-  const renderBansTab = () => {
-    return (
-      <>
-        <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Bans ({bannedUsers.length})</h2>
-        </div>
-
-        {bansLoading ? (
-          <div className="p-12 text-center text-white/50">Loading banned users...</div>
-        ) : (
-          <>
-            {/* View Mode Toggle */}
-            <div className="flex items-center justify-between mt-4 mb-4">
-              {renderViewModeToggle()}
-              <span className="text-white/50 text-sm">{bannedUsers.length} users who banned you</span>
-            </div>
-
-            {viewMode === 'grid' ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {bannedUsers.map(person => renderUserGridCard(person))}
-              </div>
-            ) : (
-              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Banned At</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Friend Tier</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Was Sub</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bannedUsers.map((person) => {
-                      const tierBadge = getFriendTierBadge(person.friend_tier);
-                      return (
-                        <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-2">
-                              <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                              <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
-                              <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">🚫 Banned</span>
-                            </div>
-                          </td>
-                          <td className="px-2 py-2">
-                            {person.image_url && (
-                              <img
-                                src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
-                                alt={person.username}
-                                className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
-                              />
-                            )}
-                          </td>
-                          <td className="px-4 py-4 text-white/80">{person.banned_at ? formatDate(person.banned_at, { includeTime: false }) : '—'}</td>
-                          <td className="px-4 py-4">
-                            {tierBadge ? (
-                              <span className={tierBadge.class}>Tier {person.friend_tier} - {tierBadge.label}</span>
-                            ) : '—'}
-                          </td>
-                          <td className="px-4 py-4">
-                            {person.active_sub ? (
-                              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Yes</span>
-                            ) : '—'}
-                          </td>
-                          <td className="px-4 py-4 text-white/70 max-w-[200px] truncate" title={person.notes || ''}>
-                            {person.notes || '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-
-                {bannedUsers.length === 0 && (
-                  <div className="p-12 text-center text-white/50">
-                    <p>No users have banned you.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </>
-    );
-  };
-
-  const renderWatchlistTab = () => {
-    return (
-      <>
-        <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Watchlist ({watchlistUsers.length})</h2>
-        </div>
-
-        {watchlistLoading ? (
-          <div className="p-12 text-center text-white/50">Loading watchlist...</div>
-        ) : (
-          <>
-            {/* View Mode Toggle */}
-            <div className="flex items-center justify-between mt-4 mb-4">
-              {renderViewModeToggle()}
-              <span className="text-white/50 text-sm">{watchlistUsers.length} users you're watching</span>
-            </div>
-
-            {viewMode === 'grid' ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {watchlistUsers.map(person => renderUserGridCard(person))}
-              </div>
-            ) : (
-              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Username</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Image</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Last Active</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Friend Tier</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Is Sub</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-mhc-primary/30">Notes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {watchlistUsers.map((person: any) => {
-                      const tierBadge = getFriendTierBadge(person.friend_tier);
-                      return (
-                        <tr key={person.id} className="border-b border-white/5 transition-colors hover:bg-white/3">
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-2">
-                              <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
-                              <Link to={`/profile/${person.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{person.username}</Link>
-                              <span className="inline-block px-2 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">👁 Watching</span>
-                            </div>
-                          </td>
-                          <td className="px-2 py-2">
-                            {person.image_url && (
-                              <img
-                                src={person.image_url.startsWith('http') ? person.image_url : `/images/${person.image_url}`}
-                                alt={person.username}
-                                className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10"
-                              />
-                            )}
-                          </td>
-                          <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
-                          <td className="px-4 py-4">
-                            {tierBadge ? (
-                              <span className={tierBadge.class}>Tier {person.friend_tier} - {tierBadge.label}</span>
-                            ) : '—'}
-                          </td>
-                          <td className="px-4 py-4">
-                            {person.active_sub ? (
-                              <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Yes</span>
-                            ) : '—'}
-                          </td>
-                          <td className="px-4 py-4 text-white/70 max-w-[200px] truncate" title={person.notes || ''}>
-                            {person.notes || '—'}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-
-                {watchlistUsers.length === 0 && (
-                  <div className="p-12 text-center text-white/50">
-                    <p>Your watchlist is empty. Add users to your watchlist from their profile page.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </>
-    );
-  };
-
-  const renderTippedByMeTab = () => {
-    return (
-      <>
-        <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Models I've Tipped ({tippedByMeUsers.length})</h2>
-        </div>
-
-        {tippedByMeLoading ? (
-          <div className="p-12 text-center text-white/50">Loading models you've tipped...</div>
-        ) : (
-          <>
-            <div className="flex items-center justify-between mt-4 mb-4">
-              {renderViewModeToggle()}
-              <span className="text-white/50 text-sm">{tippedByMeUsers.length} models you've tipped</span>
-            </div>
-
-            {tippedByMeUsers.length > 0 ? (
-              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Username</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Total Sent</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Tips</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Last Tip</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tippedByMeUsers.map((user: any) => (
-                      <tr key={user.id || user.username} className="border-b border-white/5 transition-colors hover:bg-white/3">
-                        <td className="px-4 py-4">
-                          <Link to={`/profile/${user.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{user.username}</Link>
-                        </td>
-                        <td className="px-4 py-4 text-amber-400 font-semibold">{formatNumber(user.total_tokens_sent || 0)} tokens</td>
-                        <td className="px-4 py-4 text-white/70">{user.tip_count || 0}</td>
-                        <td className="px-4 py-4 text-white/70">{user.last_tip_at ? formatDate(user.last_tip_at) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="p-12 text-center text-white/50">
-                <p>No tip records found.</p>
-              </div>
-            )}
-          </>
-        )}
-      </>
-    );
-  };
-
-  const renderTippedMeTab = () => {
-    return (
-      <>
-        <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Users Who Tipped Me ({tippedMeUsers.length})</h2>
-        </div>
-
-        {tippedMeLoading ? (
-          <div className="p-12 text-center text-white/50">Loading users who tipped you...</div>
-        ) : (
-          <>
-            <div className="flex items-center justify-between mt-4 mb-4">
-              {renderViewModeToggle()}
-              <span className="text-white/50 text-sm">{tippedMeUsers.length} users have tipped you</span>
-            </div>
-
-            {tippedMeUsers.length > 0 ? (
-              <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Username</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Total Received</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Tips</th>
-                      <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Last Tip</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tippedMeUsers.map((user: any) => (
-                      <tr key={user.id || user.username} className="border-b border-white/5 transition-colors hover:bg-white/3">
-                        <td className="px-4 py-4">
-                          <Link to={`/profile/${user.username}`} className="text-mhc-primary no-underline font-medium transition-colors hover:text-indigo-400 hover:underline">{user.username}</Link>
-                        </td>
-                        <td className="px-4 py-4 text-emerald-400 font-semibold">{formatNumber(user.total_tokens_received || 0)} tokens</td>
-                        <td className="px-4 py-4 text-white/70">{user.tip_count || 0}</td>
-                        <td className="px-4 py-4 text-white/70">{user.last_tip_at ? formatDate(user.last_tip_at) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="p-12 text-center text-white/50">
-                <p>No tip records found.</p>
-              </div>
-            )}
-          </>
-        )}
-      </>
-    );
-  };
-
-  if (loading && activeTab === 'directory') {
-    return (
-      <div className="max-w-[1600px] mx-auto p-8">
-        <div className="mb-8">
-          <h1 className="text-3xl mb-4 bg-gradient-primary bg-clip-text text-transparent font-bold">Users</h1>
-          <p className="text-white/70">Loading...</p>
-        </div>
+  // Render Bans Tab
+  const renderBansTab = () => (
+    <>
+      <div className="flex justify-between items-center my-6">
+        <h2 className="text-2xl text-white font-semibold">Bans ({bannedUsers.length})</h2>
       </div>
-    );
-  }
 
+      {bansLoading ? (
+        <div className="p-12 text-center text-white/50">Loading banned users...</div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mt-4 mb-4">
+            <div className="flex rounded-lg overflow-hidden border border-white/10">
+              <button
+                className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                onClick={() => setViewMode('list')}
+              >
+                List
+              </button>
+              <button
+                className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                onClick={() => setViewMode('grid')}
+              >
+                Grid
+              </button>
+            </div>
+            <span className="text-white/50 text-sm">{bannedUsers.length} users who banned you</span>
+          </div>
+
+          {viewMode === 'grid' ? (
+            <PeopleGrid data={bannedUsers} onTagClick={setTagFilter} />
+          ) : (
+            <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-red-500/30">Username</th>
+                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-red-500/30">Image</th>
+                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-red-500/30">Banned At</th>
+                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-red-500/30">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bannedUsers.map((person) => (
+                    <tr
+                      key={person.id}
+                      className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
+                      onClick={() => navigate(`/profile/${person.username}`)}
+                    >
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
+                          <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
+                            {person.username}
+                          </Link>
+                          <span className="inline-block px-2 py-0.5 rounded text-xs bg-red-500/20 text-red-400 border border-red-500/30">Banned</span>
+                        </div>
+                      </td>
+                      <td className="px-2 py-2">
+                        {person.image_url && (
+                          <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-white/80">{person.banned_at ? formatDate(person.banned_at, { includeTime: false }) : '—'}</td>
+                      <td className="px-4 py-4 text-white/70 max-w-[200px] truncate">{person.notes || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {bannedUsers.length === 0 && (
+                <div className="p-12 text-center text-white/50">No banned users found.</div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+
+  // Render Watchlist Tab
+  const renderWatchlistTab = () => (
+    <>
+      <div className="flex justify-between items-center my-6">
+        <h2 className="text-2xl text-white font-semibold">Watchlist ({watchlistUsers.length})</h2>
+      </div>
+
+      {watchlistLoading ? (
+        <div className="p-12 text-center text-white/50">Loading watchlist...</div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mt-4 mb-4">
+            <div className="flex rounded-lg overflow-hidden border border-white/10">
+              <button
+                className={`px-3 py-2 text-sm transition-all ${viewMode === 'list' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                onClick={() => setViewMode('list')}
+              >
+                List
+              </button>
+              <button
+                className={`px-3 py-2 text-sm transition-all ${viewMode === 'grid' ? 'bg-gradient-primary text-white' : 'bg-white/5 text-white/70 hover:bg-white/10'}`}
+                onClick={() => setViewMode('grid')}
+              >
+                Grid
+              </button>
+            </div>
+            <span className="text-white/50 text-sm">{watchlistUsers.length} users on watchlist</span>
+          </div>
+
+          {viewMode === 'grid' ? (
+            <PeopleGrid data={watchlistUsers} onTagClick={setTagFilter} />
+          ) : (
+            <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-orange-500/30">Username</th>
+                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-orange-500/30">Image</th>
+                    <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-orange-500/30">Last Active</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {watchlistUsers.map((person) => (
+                    <tr
+                      key={person.id}
+                      className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
+                      onClick={() => navigate(`/profile/${person.username}`)}
+                    >
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
+                          <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
+                            {person.username}
+                          </Link>
+                          {isPersonLive(person) && (
+                            <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded animate-pulse">LIVE</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-2 py-2">
+                        {person.image_url && (
+                          <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-white/80">{getLastActiveTime(person) ? formatDate(getLastActiveTime(person)!, { relative: true }) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {watchlistUsers.length === 0 && (
+                <div className="p-12 text-center text-white/50">No users on watchlist.</div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+
+  // Render Tipped By Me Tab
+  const renderTippedByMeTab = () => (
+    <>
+      <div className="flex justify-between items-center my-6">
+        <h2 className="text-2xl text-white font-semibold">Tipped By Me ({tippedByMeUsers.length})</h2>
+      </div>
+
+      {tippedByMeLoading ? (
+        <div className="p-12 text-center text-white/50">Loading users you tipped...</div>
+      ) : (
+        <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Username</th>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Image</th>
+                <th className="px-4 py-4 text-center font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Total Tokens</th>
+                <th className="px-4 py-4 text-center font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Tip Count</th>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-amber-500/30">Last Tip</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tippedByMeUsers.map((person) => (
+                <tr
+                  key={person.id}
+                  className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
+                  onClick={() => navigate(`/profile/${person.username}`)}
+                >
+                  <td className="px-4 py-4">
+                    <div className="flex items-center gap-2">
+                      <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
+                      <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
+                        {person.username}
+                      </Link>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2">
+                    {person.image_url && (
+                      <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
+                    )}
+                  </td>
+                  <td className="px-4 py-4 text-center font-mono text-amber-400">{formatNumber(person.total_tokens || 0)}</td>
+                  <td className="px-4 py-4 text-center text-white/80">{person.tip_count || 0}</td>
+                  <td className="px-4 py-4 text-white/80">{person.last_tip_date ? formatDate(person.last_tip_date, { relative: true }) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {tippedByMeUsers.length === 0 && (
+            <div className="p-12 text-center text-white/50">No tip records found.</div>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  // Render Tipped Me Tab
+  const renderTippedMeTab = () => (
+    <>
+      <div className="flex justify-between items-center my-6">
+        <h2 className="text-2xl text-white font-semibold">Tipped Me ({tippedMeUsers.length})</h2>
+      </div>
+
+      {tippedMeLoading ? (
+        <div className="p-12 text-center text-white/50">Loading users who tipped you...</div>
+      ) : (
+        <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Username</th>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Image</th>
+                <th className="px-4 py-4 text-center font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Total Tokens</th>
+                <th className="px-4 py-4 text-center font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Tip Count</th>
+                <th className="px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide bg-[#1e2536] border-b-2 border-emerald-500/30">Last Tip</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tippedMeUsers.map((person) => (
+                <tr
+                  key={person.id}
+                  className="border-b border-white/5 transition-colors hover:bg-white/5 cursor-pointer"
+                  onClick={() => navigate(`/profile/${person.username}`)}
+                >
+                  <td className="px-4 py-4">
+                    <div className="flex items-center gap-2">
+                      <span className={getRoleBadgeClass(person.role)}>{person.role}</span>
+                      <Link to={`/profile/${person.username}`} className="text-mhc-primary font-medium hover:underline" onClick={(e) => e.stopPropagation()}>
+                        {person.username}
+                      </Link>
+                    </div>
+                  </td>
+                  <td className="px-2 py-2">
+                    {person.image_url && (
+                      <img src={getImageUrl(person.image_url) || ''} alt={person.username} className="w-[120px] h-[90px] object-cover rounded-md border-2 border-white/10" />
+                    )}
+                  </td>
+                  <td className="px-4 py-4 text-center font-mono text-emerald-400">{formatNumber(person.total_tokens || 0)}</td>
+                  <td className="px-4 py-4 text-center text-white/80">{person.tip_count || 0}</td>
+                  <td className="px-4 py-4 text-white/80">{person.last_tip_date ? formatDate(person.last_tip_date, { relative: true }) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {tippedMeUsers.length === 0 && (
+            <div className="p-12 text-center text-white/50">No tip records found.</div>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  // Main render
   return (
-    <div className="max-w-[1600px] mx-auto p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <div className="mb-6">
-          <h1 className="text-3xl mb-4 bg-gradient-primary bg-clip-text text-transparent font-bold">Users</h1>
-        </div>
-
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-4 rounded-lg mb-4">
-            {error}
-          </div>
-        )}
-
-        {/* Tabs - Order: Directory | Following | Friends | Subs | Doms | Watchlist | Followers | Unfollowed | Bans */}
-        <div className="flex gap-2 mt-6 border-b-2 border-white/10 flex-wrap">
-          {/* Directory - All users */}
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'directory'
-                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('directory')}
-          >
-            Directory
-          </button>
-          {/* Following */}
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'following'
-                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('following')}
-          >
-            Following
-          </button>
-          {/* Friends */}
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'friends'
-                ? 'bg-yellow-500/15 text-yellow-400 border-yellow-500 font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('friends')}
-          >
-            Friends
-          </button>
-          {/* Subs */}
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'subs'
-                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500 font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('subs')}
-          >
-            Subs
-          </button>
-          {/* Doms */}
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'doms'
-                ? 'bg-purple-500/15 text-purple-400 border-purple-500 font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('doms')}
-          >
-            Doms
-          </button>
-          {/* Watchlist */}
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'watchlist'
-                ? 'bg-orange-500/15 text-orange-400 border-orange-500 font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('watchlist')}
-          >
-            Watchlist
-          </button>
-          {/* Followers */}
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'followers'
-                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('followers')}
-          >
-            Followers
-          </button>
-          {/* Unfollowed */}
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'unfollowed'
-                ? 'bg-gray-500/15 text-gray-400 border-gray-500 font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('unfollowed')}
-          >
-            Unfollowed
-          </button>
-          {/* Bans */}
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'bans'
-                ? 'bg-red-500/15 text-red-400 border-red-500 font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('bans')}
-          >
-            Bans
-          </button>
-          {/* Tipped By Me */}
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'tipped-by-me'
-                ? 'bg-amber-500/15 text-amber-400 border-amber-500 font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('tipped-by-me')}
-          >
-            Tipped By Me
-          </button>
-          {/* Tipped Me */}
-          <button
-            className={`px-6 py-3 rounded-t-lg text-base cursor-pointer transition-all mr-2 border border-b-2 -mb-0.5 ${
-              activeTab === 'tipped-me'
-                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500 font-semibold'
-                : 'bg-[rgba(45,55,72,0.6)] text-white/90 border-white/20 border-b-transparent hover:bg-white/8 hover:text-white hover:border-white/30'
-            }`}
-            onClick={() => setActiveTab('tipped-me')}
-          >
-            Tipped Me
-          </button>
-        </div>
-      </div>
-
+    <PeopleLayout
+      activeSegment={activeTab}
+      onSegmentChange={setActiveTab}
+      error={error}
+      loading={loading && activeTab === 'directory'}
+    >
       {/* Tab Content */}
       {activeTab === 'directory' && renderDirectoryTab()}
       {activeTab === 'following' && renderFollowingTab()}
@@ -2780,7 +1602,7 @@ const Users: React.FC = () => {
       {activeTab === 'tipped-by-me' && renderTippedByMeTab()}
       {activeTab === 'tipped-me' && renderTippedMeTab()}
 
-      {/* Add to Priority Modal */}
+      {/* Priority Queue Modal */}
       {showPriorityModal && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[1000] backdrop-blur-sm" onClick={() => setShowPriorityModal(false)}>
           <div className="bg-[#1a1a2e] border border-white/10 rounded-xl max-w-[500px] w-[90%] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -2852,7 +1674,7 @@ const Users: React.FC = () => {
           </div>
         </div>
       )}
-    </div>
+    </PeopleLayout>
   );
 };
 

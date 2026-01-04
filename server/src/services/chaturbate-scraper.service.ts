@@ -5,6 +5,8 @@ import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { logger } from '../config/logger.js';
 import { FollowerScraperService } from './follower-scraper.service.js';
 import { ImageStorageService } from './image-storage.service.js';
+import { ProfileImagesService } from './profile-images.service.js';
+import { query } from '../db/client.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -20,6 +22,25 @@ export interface ScrapeResult {
   success: boolean;
   usernames: string[];
   error?: string;
+}
+
+export interface PhotosetItem {
+  id: string;
+  title: string;
+  isVideo: boolean;
+  isLocked: boolean;
+  thumbnailUrl: string;
+  detailUrl: string;
+}
+
+export interface ProfileMediaItem {
+  url: string;
+  localPath: string | null;
+  mediaType: 'image' | 'video';
+  photosetId: string;
+  title: string;
+  fileSize?: number;
+  mimeType?: string;
 }
 
 export interface ScrapedProfileData {
@@ -45,6 +66,7 @@ export interface ScrapedProfileData {
     isBackground: boolean;
     isLocked: boolean;
   }[];
+  profileMedia: ProfileMediaItem[];
   tipMenu: {
     item: string;
     tokens: number;
@@ -606,6 +628,7 @@ export class ChaturbateScraperService {
           languages: [],
           tags: [],
           photos: [],
+          photosets: [],
           tipMenu: [],
           socialLinks: [],
           fanclubPrice: null,
@@ -753,8 +776,232 @@ export class ChaturbateScraperService {
           data.fanclubPrice = parseInt(priceText.replace(/[^\d]/g, ''), 10) || null;
         }
 
+        // Extract photosets (photos and videos from profile)
+        const photosetItems = document.querySelectorAll('[data-testid="photo-video-item"]');
+        photosetItems.forEach((item: any) => {
+          const href = item.getAttribute('href') || '';
+          const title = item.getAttribute('title') || item.querySelector('[data-testid="title"]')?.textContent?.trim() || '';
+          const thumbnailUrl = item.querySelector('[data-testid="photo-video-preview"]')?.getAttribute('src') || '';
+
+          // Check if locked (has lock icon)
+          const isLocked = !!item.querySelector('[data-testid="lock-icon"]') || !!item.querySelector('[data-testid="token-badge"]');
+
+          // Check if video - look for video icon in multiple ways
+          const hasVideoSvg = !!item.querySelector('img[src*="video.svg"]');
+          const hasVideoIcon = !!item.querySelector('[data-testid="video-icon"]');
+          const hasVideoClass = item.classList.contains('video') || !!item.querySelector('.video-icon, .video-badge');
+          const hasPlayIcon = !!item.querySelector('svg[class*="play"], [class*="play-icon"]');
+          // Also check if the thumbnail URL suggests it's a video
+          const isVideoThumbnail = thumbnailUrl.includes('/videos/') || thumbnailUrl.includes('video');
+          const isVideo = hasVideoSvg || hasVideoIcon || hasVideoClass || hasPlayIcon || isVideoThumbnail;
+
+          // Extract photoset ID from href: /photo_videos/photoset/detail/username/12345
+          const idMatch = href.match(/\/photo_videos\/photoset\/detail\/[^\/]+\/(\d+)/);
+          const id = idMatch ? idMatch[1] : '';
+
+          if (id && !isLocked) {
+            data.photosets.push({
+              id,
+              title,
+              isVideo,
+              isLocked,
+              thumbnailUrl: thumbnailUrl.startsWith('http') ? thumbnailUrl : `https:${thumbnailUrl}`,
+              detailUrl: href.startsWith('http') ? href : `https://chaturbate.com${href}`,
+            });
+          }
+        });
+
         return data;
       }, username);
+
+      // Try to find and click "See All" or "View All" link on the profile page to get ALL photosets
+      // The profile page only shows a subset, but there should be a link to see all
+      try {
+        // First, go back to the profile page since we're still there after the initial scrape
+        // Look for "See All" or similar links near the photosets section
+        const seeAllLink = await page.evaluate(() => {
+          // Look for links that say "See All", "View All", "Show All" etc near photos/videos section
+          const links = document.querySelectorAll('a');
+          for (const link of links) {
+            const text = link.textContent?.toLowerCase() || '';
+            const href = link.getAttribute('href') || '';
+            if ((text.includes('see all') || text.includes('view all') || text.includes('show all') || text.includes('more')) &&
+                href.includes('photo_videos')) {
+              return href;
+            }
+          }
+          // Also check for a link that goes directly to the photo_videos page
+          const photoVideoLink = document.querySelector('a[href*="/photo_videos/"][href*="' + window.location.pathname.split('/')[1] + '"]');
+          if (photoVideoLink) {
+            return photoVideoLink.getAttribute('href');
+          }
+          return null;
+        });
+
+        if (seeAllLink) {
+          const fullUrl = seeAllLink.startsWith('http') ? seeAllLink : `https://chaturbate.com${seeAllLink}`;
+          logger.info(`Found "See All" link for photosets, navigating to: ${fullUrl}`);
+
+          await page.goto(fullUrl, {
+            waitUntil: 'networkidle2',
+            timeout: 30000,
+          });
+
+          // Wait for photoset items to load
+          await new Promise(resolve => setTimeout(resolve, 3000));
+
+          // Extract all photosets from this page (with pagination support)
+          let hasMorePages = true;
+          const allPhotosetIds = new Set(profileData.photosets.map((p: PhotosetItem) => p.id));
+
+          while (hasMorePages) {
+            // Extract photosets from current page - including locked ones for logging
+            const pagePhotosets = await page.evaluate(() => {
+              const items: any[] = [];
+              const photosetItems = document.querySelectorAll('[data-testid="photo-video-item"], .photoset-item, a[href*="/photo_videos/photoset/detail/"]');
+
+              photosetItems.forEach((item: any) => {
+                const href = item.getAttribute('href') || '';
+                let title = item.getAttribute('title') || '';
+                if (!title) {
+                  const titleEl = item.querySelector('[data-testid="title"], .title, h3, h4, .photoset-title');
+                  title = titleEl?.textContent?.trim() || '';
+                }
+                if (!title) {
+                  const img = item.querySelector('img');
+                  title = img?.getAttribute('alt') || '';
+                }
+
+                const thumbnailUrl = item.querySelector('[data-testid="photo-video-preview"], img')?.getAttribute('src') || '';
+
+                const isLocked = !!item.querySelector('[data-testid="lock-icon"]') ||
+                                 !!item.querySelector('[data-testid="token-badge"]') ||
+                                 !!item.querySelector('.lock-icon, .locked');
+
+                const hasVideoSvg = !!item.querySelector('img[src*="video.svg"]');
+                const hasVideoIcon = !!item.querySelector('[data-testid="video-icon"]');
+                const hasVideoClass = item.classList.contains('video') || !!item.querySelector('.video-icon, .video-badge');
+                const hasPlayIcon = !!item.querySelector('svg[class*="play"], [class*="play-icon"]');
+                const isVideoThumbnail = thumbnailUrl.includes('/videos/') || thumbnailUrl.includes('video');
+                const isVideo = hasVideoSvg || hasVideoIcon || hasVideoClass || hasPlayIcon || isVideoThumbnail;
+
+                const idMatch = href.match(/\/photo_videos\/photoset\/detail\/[^\/]+\/(\d+)/);
+                const id = idMatch ? idMatch[1] : '';
+
+                if (id) {
+                  items.push({
+                    id,
+                    title,
+                    isVideo,
+                    isLocked,
+                    thumbnailUrl: thumbnailUrl.startsWith('http') ? thumbnailUrl : `https:${thumbnailUrl}`,
+                    detailUrl: href.startsWith('http') ? href : `https://chaturbate.com${href}`,
+                  });
+                }
+              });
+
+              return items;
+            });
+
+            logger.info(`Found ${pagePhotosets.length} total photosets on page`, {
+              photosets: pagePhotosets.map((p: any) => ({ id: p.id, title: p.title, isVideo: p.isVideo, isLocked: p.isLocked }))
+            });
+
+            // Add new photosets that we haven't seen before
+            for (const photoset of pagePhotosets) {
+              if (!allPhotosetIds.has(photoset.id) && !photoset.isLocked) {
+                allPhotosetIds.add(photoset.id);
+                profileData.photosets.push(photoset);
+                logger.debug(`Found additional photoset: ${photoset.id} - ${photoset.title}`, { isVideo: photoset.isVideo });
+              }
+            }
+
+            // Check for next page link
+            const nextPageUrl = await page.evaluate(() => {
+              const nextLink = document.querySelector('a.next, a[rel="next"], .pagination a:last-child, [data-testid="next-page"]');
+              if (nextLink && !nextLink.classList.contains('disabled')) {
+                return nextLink.getAttribute('href');
+              }
+              return null;
+            });
+
+            if (nextPageUrl) {
+              logger.debug(`Navigating to next photosets page: ${nextPageUrl}`);
+              const fullNextUrl = nextPageUrl.startsWith('http') ? nextPageUrl : `https://chaturbate.com${nextPageUrl}`;
+              await page.goto(fullNextUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+              await new Promise(resolve => setTimeout(resolve, 1500));
+            } else {
+              hasMorePages = false;
+            }
+          }
+
+          logger.info(`Total photosets found after checking all pages: ${profileData.photosets.length}`);
+        } else {
+          // No "See All" link found - check if we need to scroll to load more on the profile page
+          logger.info(`No "See All" link found, checking for scroll-based loading on profile page`);
+
+          // Scroll down on the profile page to load more photosets if lazy-loaded
+          let previousCount = profileData.photosets.length;
+          for (let scrollAttempt = 0; scrollAttempt < 5; scrollAttempt++) {
+            await page.evaluate(() => {
+              window.scrollBy(0, window.innerHeight);
+            });
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            // Re-extract photosets after scrolling
+            const morePhotosets = await page.evaluate(() => {
+              const items: any[] = [];
+              const photosetItems = document.querySelectorAll('[data-testid="photo-video-item"]');
+
+              photosetItems.forEach((item: any) => {
+                const href = item.getAttribute('href') || '';
+                const title = item.getAttribute('title') || item.querySelector('[data-testid="title"]')?.textContent?.trim() || '';
+                const thumbnailUrl = item.querySelector('[data-testid="photo-video-preview"]')?.getAttribute('src') || '';
+                const isLocked = !!item.querySelector('[data-testid="lock-icon"]') || !!item.querySelector('[data-testid="token-badge"]');
+                const hasVideoSvg = !!item.querySelector('img[src*="video.svg"]');
+                const hasVideoIcon = !!item.querySelector('[data-testid="video-icon"]');
+                const isVideoThumbnail = thumbnailUrl.includes('/videos/') || thumbnailUrl.includes('video');
+                const isVideo = hasVideoSvg || hasVideoIcon || isVideoThumbnail;
+
+                const idMatch = href.match(/\/photo_videos\/photoset\/detail\/[^\/]+\/(\d+)/);
+                const id = idMatch ? idMatch[1] : '';
+
+                if (id && !isLocked) {
+                  items.push({
+                    id,
+                    title,
+                    isVideo,
+                    isLocked,
+                    thumbnailUrl: thumbnailUrl.startsWith('http') ? thumbnailUrl : `https:${thumbnailUrl}`,
+                    detailUrl: href.startsWith('http') ? href : `https://chaturbate.com${href}`,
+                  });
+                }
+              });
+
+              return items;
+            });
+
+            // Add any new photosets found
+            const existingIds = new Set(profileData.photosets.map((p: PhotosetItem) => p.id));
+            for (const photoset of morePhotosets) {
+              if (!existingIds.has(photoset.id)) {
+                profileData.photosets.push(photoset);
+                existingIds.add(photoset.id);
+              }
+            }
+
+            // Stop scrolling if we didn't find any new photosets
+            if (profileData.photosets.length === previousCount) {
+              logger.debug(`No new photosets found after scroll attempt ${scrollAttempt + 1}`);
+              break;
+            }
+            previousCount = profileData.photosets.length;
+            logger.info(`Found ${profileData.photosets.length} photosets after scrolling`);
+          }
+        }
+      } catch (photosetsError) {
+        logger.warn(`Could not expand photosets listing, using initial results`, { error: photosetsError });
+      }
 
       // Add metadata
       profileData.isOnline = isOnline;
@@ -794,10 +1041,234 @@ export class ChaturbateScraperService {
 
       profileData.photos = downloadedPhotos;
 
+      // Scrape photosets and download media
+      const profileMedia: ProfileMediaItem[] = [];
+
+      if (profileData.photosets && profileData.photosets.length > 0) {
+        logger.info(`Found ${profileData.photosets.length} unlocked photosets for ${username}`);
+
+        // Get person ID for this username
+        let personId: string | null = null;
+        try {
+          const personResult = await query(
+            `SELECT id FROM persons WHERE username = $1`,
+            [username]
+          );
+          if (personResult.rows.length > 0) {
+            personId = personResult.rows[0].id;
+          }
+        } catch (err) {
+          logger.warn('Could not find person ID for username', { username, error: err });
+        }
+
+        // Get max video size setting
+        let maxVideoSize = 524288000; // 500MB default
+        try {
+          const settingResult = await query(
+            `SELECT value FROM app_settings WHERE key = 'max_video_size_bytes'`
+          );
+          if (settingResult.rows.length > 0) {
+            maxVideoSize = parseInt(settingResult.rows[0].value, 10);
+          }
+        } catch (err) {
+          // Use default
+        }
+
+        for (const photoset of profileData.photosets) {
+          try {
+            // Check if we've already downloaded this photoset
+            if (personId) {
+              const hasPhotoset = await ProfileImagesService.hasPhotoset(personId, photoset.id);
+              if (hasPhotoset) {
+                logger.debug(`Photoset ${photoset.id} already downloaded for ${username}, skipping`);
+                continue;
+              }
+            }
+
+            logger.info(`Navigating to photoset ${photoset.id}: ${photoset.title}`, { isVideo: photoset.isVideo });
+
+            // Navigate to photoset detail page
+            await page.goto(photoset.detailUrl, {
+              waitUntil: 'networkidle2',
+              timeout: 30000,
+            });
+
+            // Wait for content to load - videos may need more time
+            await new Promise(resolve => setTimeout(resolve, photoset.isVideo ? 3000 : 2000));
+
+            // Extract media from detail page
+            const mediaItems = await page.evaluate(() => {
+              const items: { url: string; isVideo: boolean }[] = [];
+
+              // Look for video element with data-testid
+              const videoEl = document.querySelector('[data-testid="user-video"]') as HTMLVideoElement;
+              if (videoEl && videoEl.src) {
+                items.push({ url: videoEl.src, isVideo: true });
+              }
+
+              // Check ALL video elements on the page
+              const allVideos = document.querySelectorAll('video');
+              allVideos.forEach((video: HTMLVideoElement) => {
+                // Check video.src directly
+                if (video.src && video.src.includes('highwebmedia.com') && !items.some(i => i.url === video.src)) {
+                  items.push({ url: video.src, isVideo: true });
+                }
+                // Check source tags inside video
+                const sources = video.querySelectorAll('source');
+                sources.forEach((source: HTMLSourceElement) => {
+                  const src = source.src || source.getAttribute('src');
+                  if (src && src.includes('highwebmedia.com') && !items.some(i => i.url === src)) {
+                    items.push({ url: src, isVideo: true });
+                  }
+                });
+              });
+
+              // Also check for video in source tags outside video element
+              const videoSource = document.querySelector('video source');
+              if (videoSource) {
+                const src = videoSource.getAttribute('src');
+                if (src && !items.some(i => i.url === src)) {
+                  items.push({ url: src, isVideo: true });
+                }
+              }
+
+              // Look for images in gallery
+              const imageEls = document.querySelectorAll('.photoset-image img, .gallery-image img, [data-testid="photoset-image"] img');
+              imageEls.forEach((img: any) => {
+                const src = img.getAttribute('src') || img.getAttribute('data-src');
+                if (src && !src.includes('placeholder')) {
+                  // Try to get full-size URL by removing size constraints
+                  let fullUrl = src;
+                  // CB uses URLs like /u/p/c/XX/hash.jpg - these are full size
+                  if (!fullUrl.startsWith('http')) {
+                    fullUrl = fullUrl.startsWith('//') ? `https:${fullUrl}` : `https://chaturbate.com${fullUrl}`;
+                  }
+                  items.push({ url: fullUrl, isVideo: false });
+                }
+              });
+
+              // If no gallery images found, look for any large images on the page
+              if (items.filter(i => !i.isVideo).length === 0) {
+                const allImages = document.querySelectorAll('img');
+                allImages.forEach((img: any) => {
+                  const src = img.getAttribute('src') || '';
+                  // Look for images from the CB CDN that aren't thumbnails
+                  if (src.includes('highwebmedia.com') && !src.includes('150x100') && !src.includes('thumbnail')) {
+                    let fullUrl = src;
+                    if (!fullUrl.startsWith('http')) {
+                      fullUrl = fullUrl.startsWith('//') ? `https:${fullUrl}` : `https://chaturbate.com${fullUrl}`;
+                    }
+                    if (!items.some(i => i.url === fullUrl)) {
+                      items.push({ url: fullUrl, isVideo: false });
+                    }
+                  }
+                });
+              }
+
+              return items;
+            });
+
+            logger.info(`Found ${mediaItems.length} media items in photoset ${photoset.id}`);
+
+            // Download each media item
+            for (const item of mediaItems) {
+              if (!personId) continue;
+
+              try {
+                if (item.isVideo) {
+                  // Download video
+                  const result = await ImageStorageService.downloadVideo(
+                    item.url,
+                    personId,
+                    { maxSizeBytes: maxVideoSize, photosetId: photoset.id, title: photoset.title }
+                  );
+
+                  if (result) {
+                    // Save to database
+                    await ProfileImagesService.create({
+                      personId,
+                      filePath: result.relativePath,
+                      source: 'profile',
+                      mediaType: 'video',
+                      photosetId: photoset.id,
+                      title: photoset.title,
+                      fileSize: result.fileSize,
+                      mimeType: result.mimeType,
+                    });
+
+                    profileMedia.push({
+                      url: item.url,
+                      localPath: result.relativePath,
+                      mediaType: 'video',
+                      photosetId: photoset.id,
+                      title: photoset.title,
+                      fileSize: result.fileSize,
+                      mimeType: result.mimeType,
+                    });
+
+                    logger.info(`Downloaded video from photoset ${photoset.id}`, { size: result.fileSize });
+                  }
+                } else {
+                  // Download image
+                  const result = await ImageStorageService.downloadProfileImage(
+                    item.url,
+                    personId,
+                    { photosetId: photoset.id, title: photoset.title }
+                  );
+
+                  if (result) {
+                    // Save to database
+                    await ProfileImagesService.create({
+                      personId,
+                      filePath: result.relativePath,
+                      source: 'profile',
+                      mediaType: 'image',
+                      photosetId: photoset.id,
+                      title: photoset.title,
+                      fileSize: result.fileSize,
+                      mimeType: result.mimeType,
+                    });
+
+                    profileMedia.push({
+                      url: item.url,
+                      localPath: result.relativePath,
+                      mediaType: 'image',
+                      photosetId: photoset.id,
+                      title: photoset.title,
+                      fileSize: result.fileSize,
+                      mimeType: result.mimeType,
+                    });
+
+                    logger.debug(`Downloaded image from photoset ${photoset.id}`);
+                  }
+                }
+              } catch (downloadError) {
+                logger.error(`Failed to download media from photoset ${photoset.id}`, { error: downloadError, url: item.url });
+              }
+            }
+
+            // Add delay between photosets to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          } catch (photosetError) {
+            logger.error(`Error scraping photoset ${photoset.id}`, { error: photosetError });
+          }
+        }
+
+        // Update has_videos flag if we downloaded any videos
+        if (personId && profileMedia.some(m => m.mediaType === 'video')) {
+          await ProfileImagesService.updateHasVideosFlag(personId);
+        }
+      }
+
+      profileData.profileMedia = profileMedia;
+
       logger.info(`Successfully scraped profile for ${username}`, {
         isOnline,
         hasBio: !!profileData.bio,
         photoCount: profileData.photos.length,
+        photosetCount: profileData.photosets?.length || 0,
+        mediaDownloaded: profileMedia.length,
+        videosDownloaded: profileMedia.filter(m => m.mediaType === 'video').length,
         tagCount: profileData.tags.length,
         socialLinkCount: profileData.socialLinks.length,
       });

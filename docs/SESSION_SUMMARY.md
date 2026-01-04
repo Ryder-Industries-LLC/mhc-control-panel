@@ -1,97 +1,95 @@
-# Session Summary - v1.21.0
+# Session Summary - v1.22.0
 
-**Date**: 2026-01-03
+**Date**: 2026-01-04
 
 ## What Was Accomplished
 
-### Major Feature: Sessions & Inbox Refactor
+### Major Feature: People Page UI Refactor
 
-Implemented the comprehensive "Broadcast Sessions + Inbox Refactor" plan with the following key deliverables:
+Refactored the monolithic `Users.tsx` (2,945 lines) into a modular component library with consistent layout across all 11 segments.
 
-#### 1. New Sessions System (sessions-v2)
-- **Segment Builder**: Creates broadcast segments from `broadcastStart`/`broadcastStop` events
-- **Session Stitcher**: Merges adjacent segments within configurable merge gap (default 30 minutes)
-- **Rollups Service**: Computes stats from events (tokens, followers, peak/avg viewers, unique visitors)
-- **Finalize Sessions Job**: Background job that finalizes sessions and triggers AI summary generation
+#### 1. New Component Library (`client/src/components/people/`)
+- **PeopleLayout** - Page skeleton with segment tabs and error handling
+- **SegmentTabs** - Horizontal tab navigation with per-segment color theming
+- **FiltersPanel** - Collapsible filters with CountsGrid, tag presets, search inputs, and role filter
+- **CountsGrid** - Compact 2x4 grid of clickable stat cards
+- **ActiveFiltersBar** - Removable filter chips with clear all button
+- **ResultsToolbar** - View mode toggle, sort dropdown, pagination summary
+- **Pagination** - Reusable pagination with page size selector
+- **PeopleTable** - Generic table with column configuration pattern
+- **PeopleGrid** - Responsive grid container
+- **UserCard** - Grid card with image, badges, and indicators
 
-#### 2. New Database Schema
-- `app_settings`: Configurable settings (merge gap, AI delay)
-- `broadcast_segments`: Individual broadcast periods
-- `broadcast_sessions_v2`: Stitched sessions with computed rollups
-- Event linkage: `segment_id` and `session_id` on `event_logs`
+#### 2. Column Configurations (`client/src/components/people/columns/`)
+- **directoryColumns.tsx** - Directory segment columns (username, image, age, tags, images, last active, actions)
+- **relationshipColumns.tsx** - Unified columns for Friends, Subs, and Doms segments
 
-#### 3. New Frontend Pages
-- **Sessions Page** (`/sessions`): List of sessions with stats, filters, and rebuild button
-- **Session Detail Page** (`/sessions/:id`): Detailed view with Summary, Events, and Audience tabs
-- **Inbox Page** (`/inbox`): Threaded PM interface with search and stats
+#### 3. Type Definitions (`client/src/types/people.ts`)
+- Centralized types: BasePerson, FollowingPerson, SubPerson, DomPerson, FriendPerson, etc.
+- Utility functions: isPersonLive, getLastActiveTime, getImageUrl, getRoleBadgeClass, getFriendTierBadge
+- Constants: SEGMENTS, TAG_PRESETS, DIRECTORY_SORT_OPTIONS, PAGE_SIZE_OPTIONS
 
-#### 4. Dashboard Enhancements
-- Live Status Widget: Shows current session when broadcasting
-- Monthly Stats: 30-day summary from sessions-v2 API
-- Recent Sessions: Quick links to latest broadcasts
+#### 4. Refactored Users.tsx
+- Reduced from 2,945 lines to ~1,680 lines
+- Now imports and uses shared components
+- Maintains all existing functionality (modals, URL params, API calls)
 
-#### 5. Navigation Refactor
-- Simplified to: Dashboard | Sessions | Inbox | People | Admin
-- Dashboard is now the homepage (`/`)
-- Backwards-compatible aliases for old routes
+## Key Design Decisions
 
-## Key Technical Decisions
-
-1. **30-minute merge gap**: Two broadcast segments within 30 minutes are stitched into one session
-2. **Finalize timing**: `finalize_at = last_event_at + merge_gap_minutes` ensures AI summary doesn't run prematurely
-3. **Event linkage**: Events are linked to both segments and sessions for efficient querying
-4. **Rollups from events**: Stats computed dynamically from `event_logs` table, not stored in separate tables
+1. **Stats cards in FiltersPanel**: Moved from large row above results into collapsible filters as compact 2x4 grid
+2. **Global filter state**: Filter collapse state persists via localStorage (`mhc-filters-expanded`)
+3. **Active filters bar placement**: Between toolbar and results list
+4. **Unified relationship columns**: Friends/Subs/Doms use same table component with shared column config
+5. **Column render pattern**: Generic table accepts column configuration with render functions
 
 ## Files Created
 
-### Server
-- `server/src/services/segment-builder.service.ts`
-- `server/src/services/session-stitcher.service.ts`
-- `server/src/services/rollups.service.ts`
-- `server/src/services/settings.service.ts`
-- `server/src/jobs/finalize-sessions.job.ts`
-- `server/src/commands/rebuild-sessions.ts`
-- `server/src/routes/sessions-v2.ts`
-- `server/src/routes/settings.ts`
-- `server/src/routes/inbox.ts`
-- `server/src/db/migrations/043_app_settings.sql`
-- `server/src/db/migrations/044_broadcast_segments_sessions.sql`
-- `server/src/db/migrations/045_event_linkage.sql`
+### Components
+- `client/src/components/people/index.ts`
+- `client/src/components/people/PeopleLayout.tsx`
+- `client/src/components/people/SegmentTabs.tsx`
+- `client/src/components/people/FiltersPanel.tsx`
+- `client/src/components/people/CountsGrid.tsx`
+- `client/src/components/people/ActiveFiltersBar.tsx`
+- `client/src/components/people/ResultsToolbar.tsx`
+- `client/src/components/people/Pagination.tsx`
+- `client/src/components/people/PeopleTable.tsx`
+- `client/src/components/people/PeopleGrid.tsx`
+- `client/src/components/people/UserCard.tsx`
+- `client/src/components/people/columns/index.ts`
+- `client/src/components/people/columns/directoryColumns.tsx`
+- `client/src/components/people/columns/relationshipColumns.tsx`
 
-### Client
-- `client/src/pages/Sessions.tsx`
-- `client/src/pages/SessionDetail.tsx`
-- `client/src/pages/Inbox.tsx`
+### Types
+- `client/src/types/people.ts`
 
-### Files Modified
-- `client/src/App.tsx` (navigation, routes)
-- `client/src/pages/BroadcasterDashboard.tsx` (new stats, live widget)
-- `server/src/app.ts` (new routes)
-- `server/src/services/job-restore.service.ts` (finalize job)
+### Migrations
+- `server/src/db/migrations/050_image_upload_settings.sql`
+- `server/src/db/migrations/051_add_media_type_and_videos.sql`
 
 ## Current State
 
-- All builds pass (client and server)
-- New navigation structure deployed
-- Sessions-v2 API fully functional
-- Inbox API fully functional
-- Finalize sessions job integrated with worker
+- Build compiles successfully
+- All 11 People segments use shared layout components
+- Existing functionality preserved (filters, sorting, pagination, modals)
+- ESLint warnings only (no errors)
 
 ## Next Steps
 
-1. **AI Summary Integration**: Connect Claude API to generate session summaries
-2. **Migrate old data**: Run `npm run rebuild:sessions` to populate sessions from historical events
-3. **Deprecate old routes**: Eventually remove `/broadcasts` and old session tables
-4. **Test finalize job**: Verify automatic session finalization during live broadcasts
+1. **Test in browser**: Verify all segments render correctly
+2. **Test filters**: Confirm stat filters, tag presets, and search work
+3. **Test pagination**: Verify page navigation and size selection
+4. **Run migrations**: Apply new database migrations for image settings and videos
+5. **Consider**: Add bulk fetch endpoint for relationships (optional enhancement)
 
 ## Commands
 
 ```bash
-# Rebuild all sessions from events
-npm run rebuild:sessions
+# Build client
+cd client && npm run build
 
 # Run migrations
-npm run migrate
+DATABASE_URL="postgresql://..." npm run migrate
 
 # Start dev server
 npm run dev

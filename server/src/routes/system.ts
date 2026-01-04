@@ -70,20 +70,29 @@ router.get('/stats', async (_req: Request, res: Response) => {
       `),
     ]);
 
-    // Calculate image storage size from profile_images table
+    // Calculate image and video storage stats from profile_images table
     let imageCount = 0;
     let imageTotalSizeBytes = 0;
+    let videoCount = 0;
+    let videoTotalSizeBytes = 0;
+    let usersWithVideos = 0;
     try {
-      // Get count and total size from profile_images (uploaded images with known file sizes)
+      // Get count and total size from profile_images (images with known file sizes)
       const profileImagesResult = await query(`
         SELECT
-          COUNT(*) as count,
-          COALESCE(SUM(file_size), 0) as total_size
+          COUNT(*) FILTER (WHERE media_type = 'image' OR media_type IS NULL) as image_count,
+          COALESCE(SUM(file_size) FILTER (WHERE media_type = 'image' OR media_type IS NULL), 0) as image_total_size,
+          COUNT(*) FILTER (WHERE media_type = 'video') as video_count,
+          COALESCE(SUM(file_size) FILTER (WHERE media_type = 'video'), 0) as video_total_size,
+          COUNT(DISTINCT person_id) FILTER (WHERE media_type = 'video') as users_with_videos
         FROM profile_images
         WHERE file_size IS NOT NULL
       `);
-      const uploadedCount = parseInt(profileImagesResult.rows[0]?.count || '0');
-      imageTotalSizeBytes = parseInt(profileImagesResult.rows[0]?.total_size || '0');
+      const uploadedImageCount = parseInt(profileImagesResult.rows[0]?.image_count || '0');
+      imageTotalSizeBytes = parseInt(profileImagesResult.rows[0]?.image_total_size || '0');
+      videoCount = parseInt(profileImagesResult.rows[0]?.video_count || '0');
+      videoTotalSizeBytes = parseInt(profileImagesResult.rows[0]?.video_total_size || '0');
+      usersWithVideos = parseInt(profileImagesResult.rows[0]?.users_with_videos || '0');
 
       // Also count affiliate API snapshots (these don't have file_size stored)
       const affiliateImagesResult = await query(`
@@ -93,7 +102,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
       `);
       const affiliateCount = parseInt(affiliateImagesResult.rows[0]?.count || '0');
 
-      imageCount = uploadedCount + affiliateCount;
+      imageCount = uploadedImageCount + affiliateCount;
     } catch (e) {
       // Tables might not exist
     }
@@ -163,6 +172,9 @@ router.get('/stats', async (_req: Request, res: Response) => {
         bySource,
         imagesStored: imageCount,
         imageSizeBytes: imageTotalSizeBytes,
+        videosStored: videoCount,
+        videoSizeBytes: videoTotalSizeBytes,
+        usersWithVideos: usersWithVideos,
       },
       queue: {
         priority1Pending: queuePriority1Pending,

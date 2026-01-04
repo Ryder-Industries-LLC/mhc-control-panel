@@ -4,12 +4,15 @@ import crypto from 'crypto';
 import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
 
+export type MediaType = 'image' | 'video';
+export type MediaSource = 'manual_upload' | 'screensnap' | 'external' | 'imported' | 'profile';
+
 export interface ProfileImage {
   id: string;
   person_id: string;
   file_path: string;
   original_filename: string | null;
-  source: 'manual_upload' | 'screensnap' | 'external' | 'imported';
+  source: MediaSource;
   description: string | null;
   captured_at: Date | null;
   uploaded_at: Date;
@@ -19,25 +22,34 @@ export interface ProfileImage {
   height: number | null;
   is_current: boolean;
   created_at: Date;
+  media_type: MediaType;
+  duration_seconds: number | null;
+  photoset_id: string | null;
+  title: string | null;
 }
 
 export interface CreateProfileImageInput {
   personId: string;
   filePath: string;
   originalFilename?: string;
-  source?: 'manual_upload' | 'screensnap' | 'external' | 'imported';
+  source?: MediaSource;
   description?: string;
   capturedAt?: Date;
   fileSize?: number;
   mimeType?: string;
   width?: number;
   height?: number;
+  mediaType?: MediaType;
+  durationSeconds?: number;
+  photosetId?: string;
+  title?: string;
 }
 
 export interface UpdateProfileImageInput {
   description?: string;
-  source?: 'manual_upload' | 'screensnap' | 'external' | 'imported';
+  source?: MediaSource;
   capturedAt?: Date;
+  title?: string;
 }
 
 export class ProfileImagesService {
@@ -134,9 +146,10 @@ export class ProfileImagesService {
     const sql = `
       INSERT INTO profile_images (
         person_id, file_path, original_filename, source, description,
-        captured_at, file_size, mime_type, width, height
+        captured_at, file_size, mime_type, width, height,
+        media_type, duration_seconds, photoset_id, title
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *
     `;
 
@@ -151,14 +164,19 @@ export class ProfileImagesService {
       data.mimeType || null,
       data.width || null,
       data.height || null,
+      data.mediaType || 'image',
+      data.durationSeconds || null,
+      data.photosetId || null,
+      data.title || null,
     ];
 
     try {
       const result = await query(sql, values);
-      logger.info('Profile image created', {
+      logger.info('Profile media created', {
         personId: data.personId,
         imageId: result.rows[0].id,
         source: data.source || 'manual_upload',
+        mediaType: data.mediaType || 'image',
       });
       return this.mapRowToImage(result.rows[0]);
     } catch (error) {
@@ -434,6 +452,113 @@ export class ProfileImagesService {
       height: row.height,
       is_current: row.is_current || false,
       created_at: row.created_at,
+      media_type: row.media_type || 'image',
+      duration_seconds: row.duration_seconds,
+      photoset_id: row.photoset_id,
+      title: row.title,
     };
+  }
+
+  /**
+   * Get media for a person filtered by media type (newest first)
+   */
+  static async getByPersonIdByType(
+    personId: string,
+    mediaType: MediaType,
+    limit?: number,
+    offset = 0
+  ): Promise<{ images: ProfileImage[]; total: number }> {
+    const countSql = `SELECT COUNT(*) FROM profile_images WHERE person_id = $1 AND media_type = $2`;
+    let imagesSql = `
+      SELECT * FROM profile_images
+      WHERE person_id = $1 AND media_type = $2
+      ORDER BY uploaded_at DESC
+    `;
+
+    const params: any[] = [personId, mediaType];
+    if (limit !== undefined) {
+      imagesSql += ` LIMIT $3 OFFSET $4`;
+      params.push(limit, offset);
+    }
+
+    try {
+      const [countResult, imagesResult] = await Promise.all([
+        query(countSql, [personId, mediaType]),
+        query(imagesSql, params),
+      ]);
+
+      return {
+        images: imagesResult.rows.map(this.mapRowToImage),
+        total: parseInt(countResult.rows[0].count, 10),
+      };
+    } catch (error) {
+      logger.error('Error getting profile media by type', { error, personId, mediaType });
+      throw error;
+    }
+  }
+
+  /**
+   * Check if a photoset has already been downloaded for a person
+   */
+  static async hasPhotoset(personId: string, photosetId: string): Promise<boolean> {
+    const sql = `SELECT 1 FROM profile_images WHERE person_id = $1 AND photoset_id = $2 LIMIT 1`;
+
+    try {
+      const result = await query(sql, [personId, photosetId]);
+      return result.rows.length > 0;
+    } catch (error) {
+      logger.error('Error checking photoset', { error, personId, photosetId });
+      throw error;
+    }
+  }
+
+  /**
+   * Update has_videos flag on profiles table for a person
+   */
+  static async updateHasVideosFlag(personId: string): Promise<void> {
+    const sql = `
+      UPDATE profiles
+      SET has_videos = EXISTS (
+        SELECT 1 FROM profile_images
+        WHERE person_id = $1 AND media_type = 'video'
+      )
+      WHERE person_id = $1
+    `;
+
+    try {
+      await query(sql, [personId]);
+    } catch (error) {
+      logger.error('Error updating has_videos flag', { error, personId });
+      // Don't throw - this is a non-critical update
+    }
+  }
+
+  /**
+   * Get video statistics for admin dashboard
+   */
+  static async getVideoStats(): Promise<{
+    videoCount: number;
+    videoSizeBytes: number;
+    usersWithVideos: number;
+  }> {
+    const sql = `
+      SELECT
+        COUNT(*) FILTER (WHERE media_type = 'video') as video_count,
+        COALESCE(SUM(file_size) FILTER (WHERE media_type = 'video'), 0) as video_total_size,
+        COUNT(DISTINCT person_id) FILTER (WHERE media_type = 'video') as users_with_videos
+      FROM profile_images
+    `;
+
+    try {
+      const result = await query(sql, []);
+      return {
+        videoCount: parseInt(result.rows[0].video_count || '0', 10),
+        videoSizeBytes: parseInt(result.rows[0].video_total_size || '0', 10),
+        usersWithVideos: parseInt(result.rows[0].users_with_videos || '0', 10),
+      };
+    } catch (error) {
+      logger.error('Error getting video stats', { error });
+      return { videoCount: 0, videoSizeBytes: 0, usersWithVideos: 0 };
+    }
   }
 }

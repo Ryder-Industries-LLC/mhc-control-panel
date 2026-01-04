@@ -75,6 +75,9 @@ interface SystemStats {
     bySource: Record<string, number>;
     imagesStored: number;
     imageSizeBytes: number;
+    videosStored: number;
+    videoSizeBytes: number;
+    usersWithVideos: number;
   };
   queue: {
     priority1Pending: number;
@@ -210,6 +213,26 @@ const Admin: React.FC = () => {
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [settingsSuccess, setSettingsSuccess] = useState<string | null>(null);
 
+  // Image upload settings state
+  const [imageSettings, setImageSettings] = useState<{
+    manualMB: number;
+    externalMB: number;
+    screenshotMB: number;
+  } | null>(null);
+  const [imageSettingsLoading, setImageSettingsLoading] = useState(false);
+  const [imageSettingsSaving, setImageSettingsSaving] = useState(false);
+  const [imageSettingsError, setImageSettingsError] = useState<string | null>(null);
+  const [imageSettingsSuccess, setImageSettingsSuccess] = useState<string | null>(null);
+
+  // Video upload settings state
+  const [videoSettings, setVideoSettings] = useState<{
+    maxSizeMB: number;
+  } | null>(null);
+  const [videoSettingsLoading, setVideoSettingsLoading] = useState(false);
+  const [videoSettingsSaving, setVideoSettingsSaving] = useState(false);
+  const [videoSettingsError, setVideoSettingsError] = useState<string | null>(null);
+  const [videoSettingsSuccess, setVideoSettingsSuccess] = useState<string | null>(null);
+
   // Auto-refresh both job statuses when on Jobs tab (merged view)
   useEffect(() => {
     if (activeTab === 'jobs') {
@@ -245,10 +268,12 @@ const Admin: React.FC = () => {
     }
   }, [activeTab]);
 
-  // Load broadcast settings when Settings tab is active
+  // Load broadcast settings, image settings, and video settings when Settings tab is active
   useEffect(() => {
     if (activeTab === 'settings') {
       fetchBroadcastSettings();
+      fetchImageSettings();
+      fetchVideoSettings();
     }
   }, [activeTab]);
 
@@ -306,6 +331,99 @@ const Admin: React.FC = () => {
       console.error('Error saving broadcast settings:', err);
     } finally {
       setSettingsSaving(false);
+    }
+  };
+
+  const fetchImageSettings = async () => {
+    setImageSettingsLoading(true);
+    setImageSettingsError(null);
+    try {
+      const response = await fetch('/api/settings/image-upload/config');
+      if (!response.ok) throw new Error('Failed to fetch image settings');
+      const config = await response.json();
+      setImageSettings({
+        manualMB: config.limitsMB.manual,
+        externalMB: config.limitsMB.external,
+        screenshotMB: config.limitsMB.screenshot,
+      });
+    } catch (err) {
+      setImageSettingsError('Failed to load image upload settings');
+      console.error('Error fetching image settings:', err);
+    } finally {
+      setImageSettingsLoading(false);
+    }
+  };
+
+  const saveImageSettings = async () => {
+    if (!imageSettings) return;
+
+    setImageSettingsSaving(true);
+    setImageSettingsError(null);
+    setImageSettingsSuccess(null);
+
+    try {
+      // Convert MB to bytes
+      const manualBytes = imageSettings.manualMB * 1024 * 1024;
+      const externalBytes = imageSettings.externalMB * 1024 * 1024;
+      const screenshotBytes = imageSettings.screenshotMB * 1024 * 1024;
+
+      await Promise.all([
+        api.updateSetting('image_upload_limit_manual', manualBytes, 'Maximum file size in bytes for manual image uploads'),
+        api.updateSetting('image_upload_limit_external', externalBytes, 'Maximum file size in bytes for external URL image imports'),
+        api.updateSetting('image_upload_limit_screenshot', screenshotBytes, 'Maximum file size in bytes for screenshot captures'),
+      ]);
+
+      setImageSettingsSuccess('Image settings saved successfully');
+      setTimeout(() => setImageSettingsSuccess(null), 3000);
+    } catch (err) {
+      setImageSettingsError('Failed to save image settings');
+      console.error('Error saving image settings:', err);
+    } finally {
+      setImageSettingsSaving(false);
+    }
+  };
+
+  const fetchVideoSettings = async () => {
+    setVideoSettingsLoading(true);
+    setVideoSettingsError(null);
+    try {
+      const response = await fetch('/api/settings/video-upload/config');
+      if (!response.ok) throw new Error('Failed to fetch video settings');
+      const config = await response.json();
+      setVideoSettings({
+        maxSizeMB: config.maxSizeMB,
+      });
+    } catch (err) {
+      setVideoSettingsError('Failed to load video upload settings');
+      console.error('Error fetching video settings:', err);
+    } finally {
+      setVideoSettingsLoading(false);
+    }
+  };
+
+  const saveVideoSettings = async () => {
+    if (!videoSettings) return;
+
+    setVideoSettingsSaving(true);
+    setVideoSettingsError(null);
+    setVideoSettingsSuccess(null);
+
+    try {
+      const response = await fetch('/api/settings/video-upload/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ maxSizeMB: videoSettings.maxSizeMB }),
+      });
+
+      if (!response.ok) throw new Error('Failed to save video settings');
+
+      setVideoSettingsSuccess('Video settings saved successfully');
+      setTimeout(() => setVideoSettingsSuccess(null), 3000);
+    } catch (err) {
+      setVideoSettingsError('Failed to save video settings');
+      console.error('Error saving video settings:', err);
+    } finally {
+      setVideoSettingsSaving(false);
     }
   };
 
@@ -1401,6 +1519,16 @@ const Admin: React.FC = () => {
                   <div className="text-xs opacity-70 mt-1">{formatBytes(systemStats.database.imageSizeBytes)}</div>
                 )}
               </div>
+              <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
+                <div className="text-3xl font-bold mb-2">{systemStats.database.videosStored.toLocaleString()}</div>
+                <div className="text-sm opacity-90 uppercase tracking-wide">Videos Stored</div>
+                {systemStats.database.videoSizeBytes > 0 && (
+                  <div className="text-xs opacity-70 mt-1">{formatBytes(systemStats.database.videoSizeBytes)}</div>
+                )}
+                {systemStats.database.usersWithVideos > 0 && (
+                  <div className="text-xs opacity-70">{systemStats.database.usersWithVideos} users</div>
+                )}
+              </div>
             </div>
 
             {/* Role breakdown */}
@@ -2158,6 +2286,175 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
                 </div>
               ) : (
                 <div className="text-mhc-text-muted">No settings available</div>
+              )}
+            </div>
+
+            {/* Image Upload Settings */}
+            <div className="mb-8">
+              <h3 className="text-lg font-medium text-mhc-text mb-4">Image Upload Limits</h3>
+
+              {imageSettingsError && (
+                <div className="p-3 px-4 rounded-md mb-4 bg-red-500/15 border-l-4 border-red-500 text-red-300">
+                  {imageSettingsError}
+                </div>
+              )}
+
+              {imageSettingsSuccess && (
+                <div className="p-3 px-4 rounded-md mb-4 bg-green-500/15 border-l-4 border-green-500 text-green-300">
+                  {imageSettingsSuccess}
+                </div>
+              )}
+
+              {imageSettingsLoading ? (
+                <div className="text-mhc-text-muted">Loading image settings...</div>
+              ) : imageSettings ? (
+                <div className="space-y-6">
+                  <p className="text-mhc-text-muted text-sm">
+                    Configure maximum file size limits for different types of image uploads.
+                    Files exceeding these limits will be rejected with a user-friendly error message.
+                  </p>
+
+                  {/* Manual Upload Limit */}
+                  <div>
+                    <label className="block text-mhc-text mb-2 font-medium">
+                      Manual Upload Limit
+                    </label>
+                    <p className="text-mhc-text-muted text-sm mb-2">
+                      Maximum size for manually uploaded image files.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={imageSettings.manualMB}
+                        onChange={(e) => setImageSettings({
+                          ...imageSettings,
+                          manualMB: parseInt(e.target.value) || 20
+                        })}
+                        className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                      />
+                      <span className="text-mhc-text-muted">MB</span>
+                    </div>
+                  </div>
+
+                  {/* External URL Limit */}
+                  <div>
+                    <label className="block text-mhc-text mb-2 font-medium">
+                      External URL Import Limit
+                    </label>
+                    <p className="text-mhc-text-muted text-sm mb-2">
+                      Maximum size for images imported from external URLs.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={imageSettings.externalMB}
+                        onChange={(e) => setImageSettings({
+                          ...imageSettings,
+                          externalMB: parseInt(e.target.value) || 20
+                        })}
+                        className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                      />
+                      <span className="text-mhc-text-muted">MB</span>
+                    </div>
+                  </div>
+
+                  {/* Screenshot Limit */}
+                  <div>
+                    <label className="block text-mhc-text mb-2 font-medium">
+                      Screenshot Capture Limit
+                    </label>
+                    <p className="text-mhc-text-muted text-sm mb-2">
+                      Maximum size for screenshot captures.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={imageSettings.screenshotMB}
+                        onChange={(e) => setImageSettings({
+                          ...imageSettings,
+                          screenshotMB: parseInt(e.target.value) || 20
+                        })}
+                        className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                      />
+                      <span className="text-mhc-text-muted">MB</span>
+                    </div>
+                  </div>
+
+                  {/* Save Button */}
+                  <div className="pt-4 border-t border-white/10">
+                    <button
+                      onClick={saveImageSettings}
+                      disabled={imageSettingsSaving}
+                      className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {imageSettingsSaving ? 'Saving...' : 'Save Image Settings'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-mhc-text-muted">No image settings available</div>
+              )}
+            </div>
+
+            {/* Video Upload Settings */}
+            <div className="mb-8">
+              <h3 className="text-lg font-medium text-mhc-text mb-4">Video Upload Limits</h3>
+
+              {videoSettingsError && (
+                <div className="p-3 px-4 rounded-md mb-4 bg-red-500/15 border-l-4 border-red-500 text-red-300">
+                  {videoSettingsError}
+                </div>
+              )}
+
+              {videoSettingsSuccess && (
+                <div className="p-3 px-4 rounded-md mb-4 bg-green-500/15 border-l-4 border-green-500 text-green-300">
+                  {videoSettingsSuccess}
+                </div>
+              )}
+
+              {videoSettingsLoading ? (
+                <div className="text-mhc-text-muted">Loading video settings...</div>
+              ) : videoSettings ? (
+                <div className="space-y-6">
+                  <p className="text-mhc-text-muted text-sm">
+                    Configure maximum file size for video downloads from profile photosets.
+                  </p>
+
+                  <div className="flex items-center gap-4">
+                    <label className="w-48 text-mhc-text font-medium">Max Video Size:</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="5000"
+                      value={videoSettings.maxSizeMB}
+                      onChange={(e) => setVideoSettings({
+                        ...videoSettings,
+                        maxSizeMB: parseInt(e.target.value) || 500
+                      })}
+                      className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                    />
+                    <span className="text-mhc-text-muted">MB</span>
+                  </div>
+
+                  {/* Save Button */}
+                  <div className="pt-4 border-t border-white/10">
+                    <button
+                      onClick={saveVideoSettings}
+                      disabled={videoSettingsSaving}
+                      className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {videoSettingsSaving ? 'Saving...' : 'Save Video Settings'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-mhc-text-muted">No video settings available</div>
               )}
             </div>
 

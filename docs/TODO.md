@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-03
+**Last Updated**: 2026-01-04
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -12,6 +12,12 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 
 - [ ] Review new /visitors page
 - [x] Fix offline visitors _(v1.18.0)_
+
+### /people
+
+- [x] Refactor People page into modular components _(v1.22.0 - extracted to client/src/components/people/)_
+- [x] Stats cards moved to collapsible FiltersPanel _(v1.22.0)_
+- [x] Unified Friends/Subs/Doms table layout _(v1.22.0)_
 
 ### /profile - Info Card
 

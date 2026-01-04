@@ -149,6 +149,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
+  const [imageUploadLimits, setImageUploadLimits] = useState<{
+    manual: number;
+    external: number;
+    screenshot: number;
+  } | null>(null);
+
+  // Media subtab state (images vs videos)
+  const [mediaSubTab, setMediaSubTab] = useState<'images' | 'videos'>('images');
 
   // Social links state
   const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
@@ -176,6 +184,21 @@ const Profile: React.FC<ProfilePageProps> = () => {
     visits_this_week: number;
     visits_this_month: number;
   } | null>(null);
+
+  // Load image upload limits on mount
+  useEffect(() => {
+    fetch('/api/settings/image-upload/config')
+      .then(response => response.ok ? response.json() : null)
+      .then(config => {
+        if (config?.limits) {
+          setImageUploadLimits(config.limits);
+        }
+      })
+      .catch(() => {
+        // Use defaults if settings fail to load (20MB)
+        setImageUploadLimits({ manual: 20971520, external: 20971520, screenshot: 20971520 });
+      });
+  }, []);
 
   // Auto-load profile if username in URL
   useEffect(() => {
@@ -584,6 +607,24 @@ const Profile: React.FC<ProfilePageProps> = () => {
     setEditingNoteDate('');
   };
 
+  // Helper to format bytes as human-readable size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  // Get the current upload limit based on selected source
+  const getCurrentUploadLimit = (): number => {
+    if (!imageUploadLimits) return 20 * 1024 * 1024; // Default 20MB
+    switch (selectedImageSource) {
+      case 'manual_upload': return imageUploadLimits.manual;
+      case 'screensnap': return imageUploadLimits.screenshot;
+      case 'external': return imageUploadLimits.external;
+      default: return imageUploadLimits.manual;
+    }
+  };
+
   // Image upload handler - supports multiple files
   const handleImageUpload = async (files: File[]) => {
     if (!profileData?.person?.username || files.length === 0) return;
@@ -595,9 +636,20 @@ const Profile: React.FC<ProfilePageProps> = () => {
     const uploadedSuccessfully: any[] = [];
     const errors: string[] = [];
 
+    // Get the size limit for the current source type
+    const sizeLimit = getCurrentUploadLimit();
+    const sourceName = selectedImageSource === 'manual_upload' ? 'manual upload' :
+                       selectedImageSource === 'screensnap' ? 'screenshot' : 'external';
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       setUploadProgress({ current: i + 1, total: files.length });
+
+      // Client-side size validation
+      if (file.size > sizeLimit) {
+        errors.push(`${file.name}: File size (${formatFileSize(file.size)}) exceeds the ${formatFileSize(sizeLimit)} limit for ${sourceName} uploads`);
+        continue;
+      }
 
       try {
         const formData = new FormData();
@@ -680,11 +732,36 @@ const Profile: React.FC<ProfilePageProps> = () => {
   };
 
   // Set image as current/primary
-  const handleSetAsCurrent = async (imageId: string) => {
+  // For affiliate images, first import them to profile_images, then set as current
+  const handleSetAsCurrent = async (imageId: string, isAffiliateImage: boolean = false, affiliateData?: { imageUrl: string; capturedAt: string; viewers?: number }) => {
     if (!profileData?.person?.username) return;
 
     try {
-      const response = await fetch(`/api/profile/${profileData.person.username}/images/${imageId}/set-current`, {
+      let targetImageId = imageId;
+
+      // If this is an affiliate image, import it first
+      if (isAffiliateImage && affiliateData) {
+        const importResponse = await fetch(`/api/profile/${profileData.person.username}/images/import-affiliate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            imageUrl: affiliateData.imageUrl,
+            capturedAt: affiliateData.capturedAt,
+            viewers: affiliateData.viewers,
+          }),
+        });
+
+        if (!importResponse.ok) {
+          const data = await importResponse.json();
+          throw new Error(data.error || 'Failed to import affiliate image');
+        }
+
+        const importedImage = await importResponse.json();
+        targetImageId = importedImage.id;
+      }
+
+      // Now set as current
+      const response = await fetch(`/api/profile/${profileData.person.username}/images/${targetImageId}/set-current`, {
         method: 'POST',
       });
 
@@ -1969,10 +2046,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
             {activeTab === 'images' && (
               <div>
-                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Images</h3>
+                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Media</h3>
 
-                {/* Upload Image Section */}
-                <CollapsibleSection title="Upload Images" defaultCollapsed={true} className="mb-6">
+                {/* Upload Media Section */}
+                <CollapsibleSection title="Upload Media" defaultCollapsed={true} className="mb-6">
                   {imageUploadError && (
                     <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm mb-4 whitespace-pre-line">
                       {imageUploadError}
@@ -2059,124 +2136,255 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   </div>
                 </CollapsibleSection>
 
-                {/* Image Grid - combines uploaded and affiliate images */}
-                {uploadedImages.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                    {uploadedImages.map((image, index) => {
-                      const imageUrl = image.source === 'affiliate_api'
-                        ? `/images/${image.file_path}`
-                        : `/images/profiles/${image.file_path}`;
-                      const imageDate = image.captured_at || image.uploaded_at;
-                      const isUploaded = image.source !== 'affiliate_api';
+                {/* Media Section with Tabs */}
+                {(() => {
+                  const images = uploadedImages.filter(img => img.media_type !== 'video');
+                  const videos = uploadedImages.filter(img => img.media_type === 'video');
 
-                      return (
-                        <div
-                          key={image.id}
-                          className={`group relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer hover:border-mhc-primary hover:-translate-y-1 hover:shadow-lg ${
-                            currentImageIndex === index ? 'border-mhc-primary ring-2 ring-mhc-primary/50' : 'border-white/10'
+                  return (
+                    <div>
+                      {/* Media Type Tabs */}
+                      <div className="flex border-b border-white/10 mb-6">
+                        <button
+                          onClick={() => setMediaSubTab('images')}
+                          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                            mediaSubTab === 'images'
+                              ? 'border-mhc-primary text-mhc-primary'
+                              : 'border-transparent text-mhc-text-muted hover:text-mhc-text hover:border-white/30'
                           }`}
-                          onClick={() => setCurrentImageIndex(index)}
-                          onMouseEnter={() => setPreviewImageUrl(imageUrl)}
-                          onMouseLeave={() => setPreviewImageUrl(null)}
                         >
-                          <div className="aspect-[4/3]">
-                            <img
-                              src={imageUrl}
-                              alt={`${profileData.person.username} - ${new Date(imageDate).toLocaleDateString()}`}
-                              className="w-full h-full object-cover"
-                              loading="lazy"
-                            />
-                          </div>
-                          {/* Overlay with info */}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                            <div className="absolute bottom-0 left-0 right-0 p-2 text-white text-xs">
-                              <div className="font-semibold">
-                                {new Date(imageDate).toLocaleDateString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  year: 'numeric'
-                                })}
-                              </div>
-                              <div className="text-white/70">
-                                {new Date(imageDate).toLocaleTimeString('en-US', {
-                                  hour: 'numeric',
-                                  minute: '2-digit'
-                                })}
-                              </div>
-                              {image.viewers > 0 && (
-                                <div className="text-white/70 mt-1">
-                                  {image.viewers.toLocaleString()} viewers
-                                </div>
-                              )}
-                              {image.description && (
-                                <div className="text-white/70 mt-1 truncate">
-                                  {image.description}
-                                </div>
-                              )}
+                          Images ({images.length})
+                        </button>
+                        <button
+                          onClick={() => setMediaSubTab('videos')}
+                          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                            mediaSubTab === 'videos'
+                              ? 'border-mhc-primary text-mhc-primary'
+                              : 'border-transparent text-mhc-text-muted hover:text-mhc-text hover:border-white/30'
+                          }`}
+                        >
+                          Videos ({videos.length})
+                        </button>
+                      </div>
+
+                      {/* Images Tab Content */}
+                      {mediaSubTab === 'images' && (
+                        <div className="mb-8">
+                          {images.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                              {images.map((image, index) => {
+                                const imageUrl = image.source === 'affiliate_api'
+                                  ? `/images/${image.file_path}`
+                                  : `/images/profiles/${image.file_path}`;
+                                const imageDate = image.captured_at || image.uploaded_at;
+                                const isUploaded = image.source !== 'affiliate_api';
+                                const isProfileSource = image.source === 'profile';
+
+                                return (
+                                  <div
+                                    key={image.id}
+                                    className={`group relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer hover:border-mhc-primary hover:-translate-y-1 hover:shadow-lg ${
+                                      currentImageIndex === index ? 'border-mhc-primary ring-2 ring-mhc-primary/50' : 'border-white/10'
+                                    }`}
+                                    onClick={() => setCurrentImageIndex(index)}
+                                    onMouseEnter={() => setPreviewImageUrl(imageUrl)}
+                                    onMouseLeave={() => setPreviewImageUrl(null)}
+                                  >
+                                    <div className="aspect-[4/3]">
+                                      <img
+                                        src={imageUrl}
+                                        alt={image.title || `${profileData.person.username} - ${new Date(imageDate).toLocaleDateString()}`}
+                                        className="w-full h-full object-cover"
+                                        loading="lazy"
+                                      />
+                                    </div>
+                                    {/* Overlay with info - show title for profile images, date for others */}
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <div className="absolute bottom-0 left-0 right-0 p-2 text-white text-xs">
+                                        {isProfileSource && image.title ? (
+                                          <>
+                                            <div className="font-semibold truncate">{image.title}</div>
+                                            {image.photoset_id && (
+                                              <div className="text-white/70 text-[10px]">Photoset #{image.photoset_id}</div>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <>
+                                            <div className="font-semibold">
+                                              {new Date(imageDate).toLocaleDateString('en-US', {
+                                                month: 'short',
+                                                day: 'numeric',
+                                                year: 'numeric'
+                                              })}
+                                            </div>
+                                            <div className="text-white/70">
+                                              {new Date(imageDate).toLocaleTimeString('en-US', {
+                                                hour: 'numeric',
+                                                minute: '2-digit'
+                                              })}
+                                            </div>
+                                          </>
+                                        )}
+                                        {image.viewers > 0 && (
+                                          <div className="text-white/70 mt-1">
+                                            {image.viewers.toLocaleString()} viewers
+                                          </div>
+                                        )}
+                                        {image.description && (
+                                          <div className="text-white/70 mt-1 truncate">
+                                            {image.description}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {/* Source badge */}
+                                    <div className={`absolute top-1 left-1 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                                      image.source === 'affiliate_api' ? 'bg-blue-500/80' :
+                                      image.source === 'profile' ? 'bg-cyan-500/80' :
+                                      image.source === 'screensnap' ? 'bg-purple-500/80' :
+                                      image.source === 'external' ? 'bg-orange-500/80' :
+                                      'bg-green-500/80'
+                                    }`}>
+                                      {image.source === 'affiliate_api' ? 'Auto' :
+                                       image.source === 'profile' ? 'Profile' :
+                                       image.source === 'screensnap' ? 'Snap' :
+                                       image.source === 'external' ? 'Ext' :
+                                       'Upload'}
+                                    </div>
+                                    {/* Action buttons - show on hover */}
+                                    <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      {/* Set as Current button */}
+                                      {!image.is_current && (
+                                        <button
+                                          onClick={e => {
+                                            e.stopPropagation();
+                                            const isAffiliate = image.source === 'affiliate_api';
+                                            handleSetAsCurrent(
+                                              image.id,
+                                              isAffiliate,
+                                              isAffiliate ? {
+                                                imageUrl: `/images/${image.file_path}`,
+                                                capturedAt: image.captured_at || image.uploaded_at,
+                                                viewers: image.viewers,
+                                              } : undefined
+                                            );
+                                          }}
+                                          className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded shadow-lg border border-white/30"
+                                          title={image.source === 'affiliate_api' ? 'Import and set as current' : 'Set as current image'}
+                                        >
+                                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                          </svg>
+                                        </button>
+                                      )}
+                                      {/* Delete button for uploaded images */}
+                                      {isUploaded && (
+                                        <button
+                                          onClick={e => {
+                                            e.stopPropagation();
+                                            handleDeleteImage(image.id);
+                                          }}
+                                          className="p-1 bg-red-500/80 hover:bg-red-500 text-white rounded"
+                                          title="Delete image"
+                                        >
+                                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                          </svg>
+                                        </button>
+                                      )}
+                                    </div>
+                                    {/* Current indicator */}
+                                    {image.is_current && (
+                                      <div className="absolute bottom-1 right-1 bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                                        Current
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
-                          </div>
-                          {/* Source badge */}
-                          <div className={`absolute top-1 left-1 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                            image.source === 'affiliate_api' ? 'bg-blue-500/80' :
-                            image.source === 'screensnap' ? 'bg-purple-500/80' :
-                            image.source === 'external' ? 'bg-orange-500/80' :
-                            'bg-gray-500/80'
-                          }`}>
-                            {image.source === 'affiliate_api' ? 'Auto' :
-                             image.source === 'screensnap' ? 'Snap' :
-                             image.source === 'external' ? 'Ext' :
-                             'Upload'}
-                          </div>
-                          {/* Action buttons - show on hover */}
-                          <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {/* Set as Current button */}
-                            {!image.is_current && (
-                              <button
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  handleSetAsCurrent(image.id);
-                                }}
-                                className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded shadow-lg border border-white/30"
-                                title="Set as current image"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              </button>
-                            )}
-                            {/* Delete button for uploaded images */}
-                            {isUploaded && (
-                              <button
-                                onClick={e => {
-                                  e.stopPropagation();
-                                  handleDeleteImage(image.id);
-                                }}
-                                className="p-1 bg-red-500/80 hover:bg-red-500 text-white rounded"
-                                title="Delete image"
-                              >
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            )}
-                          </div>
-                          {/* Current indicator */}
-                          {image.is_current && (
-                            <div className="absolute bottom-1 right-1 bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
-                              Current
+                          ) : imageUploadLoading ? (
+                            <div className="flex items-center justify-center py-12">
+                              <div className="text-mhc-text-muted">Loading images...</div>
                             </div>
+                          ) : (
+                            <p className="text-mhc-text-muted">No images saved yet. Images are captured when the user broadcasts, or you can upload them above.</p>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : imageUploadLoading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <div className="text-mhc-text-muted">Loading images...</div>
-                  </div>
-                ) : (
-                  <p className="text-mhc-text-muted">No images saved yet. Images are captured when the user broadcasts, or you can upload them above.</p>
-                )}
+                      )}
+
+                      {/* Videos Tab Content */}
+                      {mediaSubTab === 'videos' && (
+                        <div className="mb-8">
+                          {videos.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                              {videos.map((video) => {
+                                const videoUrl = `/images/profiles/${video.file_path}`;
+                                const videoDate = video.captured_at || video.uploaded_at;
+                                const fileSizeMB = video.file_size ? (video.file_size / (1024 * 1024)).toFixed(1) : null;
+
+                                return (
+                                  <div
+                                    key={video.id}
+                                    className="group relative rounded-lg overflow-hidden border-2 border-white/10 hover:border-mhc-primary transition-all"
+                                  >
+                                    <div className="aspect-video bg-black">
+                                      <video
+                                        src={videoUrl}
+                                        controls
+                                        preload="metadata"
+                                        className="w-full h-full object-contain"
+                                      >
+                                        Your browser does not support the video tag.
+                                      </video>
+                                    </div>
+                                    {/* Video info */}
+                                    <div className="p-3 bg-mhc-surface-light">
+                                      <div className="flex items-center justify-between text-xs text-mhc-text-muted">
+                                        <span>
+                                          {new Date(videoDate).toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                            year: 'numeric'
+                                          })}
+                                        </span>
+                                        {fileSizeMB && (
+                                          <span>{fileSizeMB} MB</span>
+                                        )}
+                                      </div>
+                                      {video.title && (
+                                        <div className="text-sm text-mhc-text mt-1 truncate">{video.title}</div>
+                                      )}
+                                      {video.photoset_id && (
+                                        <div className="text-xs text-mhc-text-muted mt-1">Photoset #{video.photoset_id}</div>
+                                      )}
+                                    </div>
+                                    {/* Source badge */}
+                                    <div className="absolute top-2 left-2 bg-cyan-500/80 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                                      Profile
+                                    </div>
+                                    {/* Delete button */}
+                                    <button
+                                      onClick={() => handleDeleteImage(video.id)}
+                                      className="absolute top-2 right-2 p-1 bg-red-500/80 hover:bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                      title="Delete video"
+                                    >
+                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-mhc-text-muted">No videos saved yet. Videos are downloaded from profile photosets during scraping.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 

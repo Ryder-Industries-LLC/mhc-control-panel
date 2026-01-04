@@ -1381,6 +1381,10 @@ router.get('/:username/images', async (req: Request, res: Response) => {
       uploaded_at: row.captured_at,
       viewers: row.viewers,
       is_current: false, // Affiliate images cannot be set as current
+      media_type: 'image' as const, // Affiliate API only has images
+      duration_seconds: null,
+      photoset_id: null,
+      title: null,
     }));
 
     // Combine and sort by date
@@ -1549,6 +1553,95 @@ router.delete('/:username/images/:imageId', async (req: Request, res: Response) 
   } catch (error) {
     logger.error('Error deleting profile image', { error, imageId: req.params.imageId });
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/:username/images/import-affiliate
+ * Import an affiliate API image into profile_images so it can be set as current
+ */
+router.post('/:username/images/import-affiliate', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { snapshotId, imageUrl, capturedAt, viewers } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    if (!imageUrl) {
+      return res.status(400).json({ error: 'Image URL is required' });
+    }
+
+    // Get person
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    // Initialize storage if needed
+    await ProfileImagesService.init();
+
+    // Download the image and save it
+    const https = await import('https');
+    const http = await import('http');
+    const path = await import('path');
+    const fs = await import('fs/promises');
+    const crypto = await import('crypto');
+
+    // Determine protocol
+    const protocol = imageUrl.startsWith('https') ? https : http;
+
+    // Download image
+    const imageBuffer = await new Promise<Buffer>((resolve, reject) => {
+      const request = protocol.get(imageUrl, (response) => {
+        if (response.statusCode === 301 || response.statusCode === 302) {
+          // Handle redirect
+          const redirectUrl = response.headers.location;
+          if (redirectUrl) {
+            const redirectProtocol = redirectUrl.startsWith('https') ? https : http;
+            redirectProtocol.get(redirectUrl, (redirectResponse) => {
+              const chunks: Buffer[] = [];
+              redirectResponse.on('data', (chunk) => chunks.push(chunk));
+              redirectResponse.on('end', () => resolve(Buffer.concat(chunks)));
+              redirectResponse.on('error', reject);
+            }).on('error', reject);
+          } else {
+            reject(new Error('Redirect without location'));
+          }
+        } else if (response.statusCode !== 200) {
+          reject(new Error(`Failed to download image: ${response.statusCode}`));
+        } else {
+          const chunks: Buffer[] = [];
+          response.on('data', (chunk) => chunks.push(chunk));
+          response.on('end', () => resolve(Buffer.concat(chunks)));
+          response.on('error', reject);
+        }
+      });
+      request.on('error', reject);
+    });
+
+    // Save to profile_images using the service
+    const image = await ProfileImagesService.saveUploadedFile(
+      {
+        buffer: imageBuffer,
+        originalname: path.basename(imageUrl) || 'imported-image.jpg',
+        mimetype: 'image/jpeg',
+        size: imageBuffer.length,
+      },
+      person.id,
+      {
+        source: 'imported',
+        description: viewers ? `Imported from broadcast (${viewers} viewers)` : 'Imported from affiliate API',
+        capturedAt: capturedAt ? new Date(capturedAt) : undefined,
+      }
+    );
+
+    logger.info('Affiliate image imported', { username, imageId: image.id, originalUrl: imageUrl });
+    res.status(201).json(image);
+  } catch (error: any) {
+    logger.error('Error importing affiliate image', { error, username: req.params.username });
+    res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });
 

@@ -238,8 +238,12 @@ export class PersonService {
         ) as source,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
-        (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL) as image_count,
-        (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1) as image_url,
+        (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL)
+          + (SELECT COUNT(*) FROM profile_images WHERE person_id = p.id) as image_count,
+        COALESCE(
+          (SELECT file_path FROM profile_images WHERE person_id = p.id AND is_current = true LIMIT 1),
+          (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1)
+        ) as image_url,
         (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
         (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
         (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags,
