@@ -3,6 +3,7 @@ import { logger } from './config/logger.js';
 import { createApp } from './app.js';
 import { disconnect } from './db/client.js';
 import { ChaturbateEventsClient } from './api/chaturbate/events-client.js';
+import { JobRestoreService } from './services/job-restore.service.js';
 
 /**
  * Main web server entry point
@@ -22,6 +23,14 @@ async function startServer() {
     logger.info(`Server listening on port ${env.PORT}`);
     logger.info(`Health check: http://localhost:${env.PORT}/health`);
   });
+
+  // Restore background jobs (auto-start enabled jobs)
+  try {
+    const { restored, skipped, failed } = await JobRestoreService.restoreAllJobs();
+    logger.info('Background jobs restoration summary', { restored, skipped, failed });
+  } catch (error) {
+    logger.error('Failed to restore background jobs', { error });
+  }
 
   // Start Chaturbate Events API client for live room monitoring
   if (env.CHATURBATE_EVENTS_TOKEN && env.CHATURBATE_USERNAME) {

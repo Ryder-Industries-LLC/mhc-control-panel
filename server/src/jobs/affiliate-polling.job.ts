@@ -53,6 +53,24 @@ export class AffiliatePollingJob {
   }
 
   /**
+   * Sync state from database without starting the job
+   * Used by web server to show accurate status from worker
+   */
+  async syncStateFromDB(): Promise<void> {
+    const state = await JobPersistenceService.loadState(JOB_NAME);
+    if (state) {
+      this.isRunning = state.is_running;
+      this.isPaused = state.is_paused;
+      if (state.config) {
+        this.config = { ...this.config, ...state.config };
+      }
+      if (state.stats) {
+        this.stats = { ...this.stats, ...state.stats };
+      }
+    }
+  }
+
+  /**
    * Restore job state from database (on container restart)
    */
   async restore(): Promise<boolean> {

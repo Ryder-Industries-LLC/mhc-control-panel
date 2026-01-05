@@ -20,6 +20,10 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Unified Friends/Subs/Doms table layout _(v1.22.0)_
 - [x] Change "With Images" label to "With Media" _(v1.23.0)_
 
+### /admin
+
+- [x] Add Bulk Image Upload feature _(v1.24.0 - new Bulk Upload tab with drag & drop, username parsing from filenames)_
+
 ### /profile - Info Card
 
 - [x] If DOM or SUB, add a badge to the user profile overview card _(v1.20.0 - added role badges for Sub, Dom, Friend, Custom with status indicators)_

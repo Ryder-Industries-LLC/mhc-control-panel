@@ -27,6 +27,9 @@ interface JobStats {
   totalFailed: number;
   lastRunEnriched: number;
   lastRunFailed: number;
+  currentUsername: string | null;
+  progress: number;
+  total: number;
 }
 
 interface ProfileScrapeConfig {
@@ -60,9 +63,49 @@ interface ProfileScrapeJobStatus {
   stats: ProfileScrapeStats;
 }
 
+interface StatbateConfig {
+  intervalMinutes: number;
+  batchSize: number;
+  delayBetweenBatches: number;
+  delayBetweenRequests: number;
+  maxPersonsPerRun: number;
+  enabled: boolean;
+  prioritizeFollowing: boolean;
+  prioritizeFollowers: boolean;
+  prioritizeBanned: boolean;
+  prioritizeWatchlist: boolean;
+  prioritizeLive: boolean;
+  prioritizeDoms: boolean;
+  prioritizeFriends: boolean;
+  prioritizeSubs: boolean;
+  prioritizeTippedMe: boolean;
+  prioritizeTippedByMe: boolean;
+}
+
+interface StatbateStats {
+  lastRun: string | null;
+  totalRuns: number;
+  totalRefreshed: number;
+  totalFailed: number;
+  lastRunRefreshed: number;
+  lastRunFailed: number;
+  currentUsername: string | null;
+  progress: number;
+  total: number;
+}
+
+interface StatbateJobStatus {
+  isRunning: boolean;
+  isPaused: boolean;
+  isProcessing: boolean;
+  config: StatbateConfig;
+  stats: StatbateStats;
+}
+
 interface JobStatus {
   isRunning: boolean;
   isPaused: boolean;
+  isProcessing: boolean;
   config: JobConfig;
   stats: JobStats;
 }
@@ -132,8 +175,7 @@ interface SystemStats {
   };
 }
 
-type AdminTab = 'jobs' | 'system-stats' | 'follower-trends' | 'data-sources' | 'scraper' | 'settings';
-type JobSubTab = 'affiliate' | 'scraping';
+type AdminTab = 'jobs' | 'system-stats' | 'follower-trends' | 'data-sources' | 'scraper' | 'bulk-upload' | 'settings';
 
 interface FollowerMover {
   username: string;
@@ -163,7 +205,7 @@ interface FollowerTrendsDashboard {
 const Admin: React.FC = () => {
   const { theme, setTheme, themes } = useTheme();
   const [activeTab, setActiveTab] = useState<AdminTab>('jobs');
-  const [jobSubTab, setJobSubTab] = useState<JobSubTab>('affiliate');
+  const [expandedJobs, setExpandedJobs] = useState<Record<string, boolean>>({});
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
   const [followerTrends, setFollowerTrends] = useState<FollowerTrendsDashboard | null>(null);
@@ -172,6 +214,7 @@ const Admin: React.FC = () => {
   const RECENT_CHANGES_PER_PAGE = 20;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [configForm, setConfigForm] = useState<JobConfig>({
     intervalMinutes: 30,
     gender: 'm',
@@ -186,6 +229,9 @@ const Admin: React.FC = () => {
   const [cookieStatus, setCookieStatus] = useState<string | null>(null);
   const [scraping, setScraping] = useState(false);
   const [scrapeStatus, setScrapeStatus] = useState<string | null>(null);
+  const [sessionSectionCollapsed, setSessionSectionCollapsed] = useState(true);
+  const [syncSectionCollapsed, setSyncSectionCollapsed] = useState(true);
+  const [lastSyncDate, setLastSyncDate] = useState<string | null>(null);
 
   // Profile scrape job state
   const [profileScrapeStatus, setProfileScrapeStatus] = useState<ProfileScrapeJobStatus | null>(null);
@@ -201,6 +247,28 @@ const Admin: React.FC = () => {
   const [manualScrapeUsername, setManualScrapeUsername] = useState('');
   const [manualScraping, setManualScraping] = useState(false);
   const [manualScrapeResult, setManualScrapeResult] = useState<string | null>(null);
+
+  // Statbate job state
+  const [statbateStatus, setStatbateStatus] = useState<StatbateJobStatus | null>(null);
+  const [statbateConfigForm, setStatbateConfigForm] = useState<StatbateConfig>({
+    intervalMinutes: 360,
+    batchSize: 5,
+    delayBetweenBatches: 30000,
+    delayBetweenRequests: 2000,
+    maxPersonsPerRun: 1000,
+    enabled: true,
+    prioritizeFollowing: true,
+    prioritizeFollowers: false,
+    prioritizeBanned: false,
+    prioritizeWatchlist: true,
+    prioritizeLive: false,
+    prioritizeDoms: true,
+    prioritizeFriends: true,
+    prioritizeSubs: true,
+    prioritizeTippedMe: true,
+    prioritizeTippedByMe: false,
+  });
+  const [statbateConfigCollapsed] = useState(true);
 
   // Broadcast settings state
   const [broadcastSettings, setBroadcastSettings] = useState<{
@@ -238,15 +306,35 @@ const Admin: React.FC = () => {
   const [noteLineLimitSaving, setNoteLineLimitSaving] = useState(false);
   const [noteLineLimitSuccess, setNoteLineLimitSuccess] = useState<string | null>(null);
 
-  // Auto-refresh both job statuses when on Jobs tab (merged view)
+  // Bulk upload state
+  interface ParsedFile {
+    file: File;
+    username: string;
+    personExists: boolean | null; // null = not yet validated
+  }
+  interface UploadResult {
+    uploaded: Array<{ username: string; filename: string; personId: string }>;
+    skipped: Array<{ filename: string; reason: string }>;
+  }
+  const [bulkSelectedFiles, setBulkSelectedFiles] = useState<File[]>([]);
+  const [bulkParsedFiles, setBulkParsedFiles] = useState<ParsedFile[]>([]);
+  const [bulkUploadProgress, setBulkUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [bulkUploadResults, setBulkUploadResults] = useState<UploadResult | null>(null);
+  const [bulkIsValidating, setBulkIsValidating] = useState(false);
+  const [bulkIsUploading, setBulkIsUploading] = useState(false);
+  const [bulkDragActive, setBulkDragActive] = useState(false);
+
+  // Auto-refresh all job statuses when on Jobs tab (merged view)
   useEffect(() => {
     if (activeTab === 'jobs') {
       fetchJobStatus();
       fetchProfileScrapeStatus();
+      fetchStatbateStatus();
       checkCookieStatus();
       const interval = setInterval(() => {
         fetchJobStatus();
         fetchProfileScrapeStatus();
+        fetchStatbateStatus();
       }, 10000);
       return () => clearInterval(interval);
     }
@@ -469,10 +557,10 @@ const Admin: React.FC = () => {
 
   // Profile scrape form initialization (legacy - kept for form state)
   useEffect(() => {
-    if (activeTab === 'jobs' && jobSubTab === 'scraping') {
+    if (activeTab === 'jobs') {
       setProfileScrapeFormInitialized(false); // Reset so form syncs fresh
     }
-  }, [activeTab, jobSubTab]);
+  }, [activeTab]);
 
   // Update form when job status changes
   useEffect(() => {
@@ -566,6 +654,84 @@ const Admin: React.FC = () => {
     }
   };
 
+  const fetchStatbateStatus = async () => {
+    try {
+      const response = await fetch('/api/job/statbate/status');
+      if (!response.ok) {
+        throw new Error('Failed to fetch statbate status');
+      }
+      const data = await response.json();
+      setStatbateStatus(data);
+      if (data.config) {
+        setStatbateConfigForm(data.config);
+      }
+    } catch (err) {
+      console.error('Error fetching statbate status:', err);
+    }
+  };
+
+  const handleStatbateJobControl = async (action: 'start' | 'stop' | 'pause' | 'resume') => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/job/statbate/${action}`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to ${action} statbate job`);
+      }
+      await fetchStatbateStatus();
+    } catch (err) {
+      console.error(`Error ${action}ing statbate job:`, err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStatbateConfigUpdate = async () => {
+    try {
+      setLoading(true);
+      setSuccessMessage(null);
+      const response = await fetch('/api/job/statbate/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(statbateConfigForm),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update statbate config');
+      }
+      await fetchStatbateStatus();
+      setSuccessMessage('Statbate API configuration saved successfully');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error('Error updating statbate config:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStatbateResetStats = async () => {
+    if (!window.confirm('Reset all Statbate API statistics?')) return;
+    try {
+      setLoading(true);
+      const response = await fetch('/api/job/statbate/reset-stats', {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to reset statbate stats');
+      }
+      await fetchStatbateStatus();
+    } catch (err) {
+      console.error('Error resetting statbate stats:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Note: getStatbateStatusBadge removed - using unified JobStatusButton component
+
   const handleImportCookies = async () => {
     try {
       if (!cookiesInput.trim()) {
@@ -613,7 +779,7 @@ const Admin: React.FC = () => {
   const handleAutoScrape = async (type: 'following' | 'followers') => {
     try {
       setScraping(true);
-      setScrapeStatus(`Scraping ${type}... This may take 2-5 minutes for large lists.`);
+      setScrapeStatus(`Syncing ${type}... This may take 2-5 minutes for large lists.`);
 
       const endpoint = type === 'following'
         ? '/api/followers/scrape-following'
@@ -630,14 +796,15 @@ const Admin: React.FC = () => {
         const totalCount = data.stats[type === 'following' ? 'totalFollowing' : 'totalFollowers'];
         const newCount = data.stats[type === 'following' ? 'newFollowing' : 'newFollowers'];
         setScrapeStatus(`Complete! Total: ${totalCount} users, New: ${newCount} users.`);
+        setLastSyncDate(new Date().toISOString());
         setTimeout(() => setScrapeStatus(null), 10000);
       } else {
-        setScrapeStatus(data.error || 'Failed to scrape');
+        setScrapeStatus(data.error || 'Failed to sync');
         setTimeout(() => setScrapeStatus(null), 10000);
       }
     } catch (err) {
       console.error(err);
-      setScrapeStatus('Error during automated scraping');
+      setScrapeStatus('Error during sync');
       setTimeout(() => setScrapeStatus(null), 10000);
     } finally {
       setScraping(false);
@@ -651,6 +818,7 @@ const Admin: React.FC = () => {
   const handleUpdateConfig = async () => {
     try {
       setLoading(true);
+      setSuccessMessage(null);
       const response = await fetch('/api/job/affiliate/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -662,6 +830,8 @@ const Admin: React.FC = () => {
       const data = await response.json();
       setJobStatus(data.status);
       setError(null);
+      setSuccessMessage('Affiliate API configuration saved successfully');
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -722,6 +892,7 @@ const Admin: React.FC = () => {
   const handleUpdateProfileScrapeConfig = async () => {
     try {
       setLoading(true);
+      setSuccessMessage(null);
       const response = await fetch('/api/job/profile-scrape/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -733,6 +904,8 @@ const Admin: React.FC = () => {
       const data = await response.json();
       setProfileScrapeStatus(data.status);
       setError(null);
+      setSuccessMessage('Profile Capture configuration saved successfully');
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -825,29 +998,114 @@ const Admin: React.FC = () => {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const getStatusBadge = () => {
-    if (!jobStatus) return null;
+  // Simple status badge for expanded sections (no controls)
+  const getSimpleStatusBadge = (isRunning: boolean, isPaused: boolean, isProcessing: boolean) => {
     const baseBadge = "px-3 py-1 rounded-full text-sm font-semibold uppercase";
-    if (jobStatus.isRunning && !jobStatus.isPaused) {
+    if (isProcessing) {
+      return <span className={`${baseBadge} bg-blue-500 text-white animate-pulse`}>Processing</span>;
+    } else if (isRunning && !isPaused) {
       return <span className={`${baseBadge} bg-mhc-success text-white`}>Running</span>;
-    } else if (jobStatus.isPaused) {
+    } else if (isPaused) {
       return <span className={`${baseBadge} bg-mhc-warning text-white`}>Paused</span>;
     } else {
       return <span className={`${baseBadge} bg-gray-500 text-white`}>Stopped</span>;
     }
   };
 
-  const getProfileScrapeStatusBadge = () => {
-    if (!profileScrapeStatus) return null;
-    const baseBadge = "px-3 py-1 rounded-full text-sm font-semibold uppercase";
-    if (profileScrapeStatus.isProcessing) {
-      return <span className={`${baseBadge} bg-blue-500 text-white`}>Processing</span>;
-    } else if (profileScrapeStatus.isRunning && !profileScrapeStatus.isPaused) {
-      return <span className={`${baseBadge} bg-mhc-success text-white`}>Running</span>;
-    } else if (profileScrapeStatus.isPaused) {
-      return <span className={`${baseBadge} bg-mhc-warning text-white`}>Paused</span>;
+  // Unified Job Status Button component - combines status display with controls
+  const JobStatusButton = ({
+    isRunning,
+    isPaused,
+    isProcessing,
+    enabled,
+    onStart,
+    onPause,
+    onResume,
+    onStop,
+    disabled,
+    extraDisabled = false,
+  }: {
+    isRunning: boolean;
+    isPaused: boolean;
+    isProcessing: boolean;
+    enabled: boolean;
+    onStart: () => void;
+    onPause: () => void;
+    onResume: () => void;
+    onStop: () => void;
+    disabled: boolean;
+    extraDisabled?: boolean;
+  }) => {
+    const baseBadge = "px-3 py-1.5 rounded-full text-sm font-semibold uppercase transition-all cursor-pointer";
+
+    if (isProcessing) {
+      // Processing - clicking pauses
+      return (
+        <button
+          onClick={(e) => { e.stopPropagation(); onPause(); }}
+          className={`${baseBadge} bg-blue-500 text-white hover:bg-blue-600 animate-pulse`}
+          disabled={disabled}
+          title="Click to pause"
+        >
+          Processing
+        </button>
+      );
+    } else if (isRunning && !isPaused) {
+      // Running (idle) - show dropdown-like controls
+      return (
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={onPause}
+            className={`${baseBadge} bg-mhc-success text-white hover:bg-emerald-600`}
+            disabled={disabled}
+            title="Click to pause"
+          >
+            Running
+          </button>
+          <button
+            onClick={onStop}
+            className="px-2 py-1.5 rounded-full text-xs font-semibold bg-mhc-danger/20 text-mhc-danger hover:bg-mhc-danger hover:text-white transition-all"
+            disabled={disabled}
+            title="Stop job"
+          >
+            ✕
+          </button>
+        </div>
+      );
+    } else if (isPaused) {
+      // Paused - clicking resumes
+      return (
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={onResume}
+            className={`${baseBadge} bg-mhc-warning text-white hover:bg-amber-600`}
+            disabled={disabled}
+            title="Click to resume"
+          >
+            Paused
+          </button>
+          <button
+            onClick={onStop}
+            className="px-2 py-1.5 rounded-full text-xs font-semibold bg-mhc-danger/20 text-mhc-danger hover:bg-mhc-danger hover:text-white transition-all"
+            disabled={disabled}
+            title="Stop job"
+          >
+            ✕
+          </button>
+        </div>
+      );
     } else {
-      return <span className={`${baseBadge} bg-gray-500 text-white`}>Stopped</span>;
+      // Stopped - clicking starts
+      return (
+        <button
+          onClick={(e) => { e.stopPropagation(); onStart(); }}
+          className={`${baseBadge} ${enabled && !extraDisabled ? 'bg-gray-500 text-white hover:bg-mhc-success' : 'bg-gray-500/50 text-gray-400 cursor-not-allowed'}`}
+          disabled={disabled || !enabled || extraDisabled}
+          title={enabled && !extraDisabled ? "Click to start" : "Job is disabled"}
+        >
+          Stopped
+        </button>
+      );
     }
   };
 
@@ -929,7 +1187,7 @@ const Admin: React.FC = () => {
             title={
               <div className="flex items-center gap-3">
                 <span>Current Status</span>
-                {getStatusBadge()}
+                {getSimpleStatusBadge(jobStatus.isRunning, jobStatus.isPaused, jobStatus.isProcessing)}
               </div>
             }
             defaultCollapsed={true}
@@ -1127,7 +1385,7 @@ const Admin: React.FC = () => {
             title={
               <span className="flex items-center gap-3">
                 Job Status
-                {getProfileScrapeStatusBadge()}
+                {getSimpleStatusBadge(profileScrapeStatus.isRunning, profileScrapeStatus.isPaused, profileScrapeStatus.isProcessing)}
               </span>
             }
             defaultCollapsed={true}
@@ -1165,22 +1423,6 @@ const Admin: React.FC = () => {
                 <span className="text-white font-medium">{profileScrapeStatus.config.refreshDays} days</span>
               </div>
             </div>
-
-            {/* Progress during processing */}
-            {profileScrapeStatus.isProcessing && profileScrapeStatus.stats.currentUsername && (
-              <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg mt-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-blue-300 font-medium">Currently scraping: {profileScrapeStatus.stats.currentUsername}</span>
-                  <span className="text-blue-300">{profileScrapeStatus.stats.progress} / {profileScrapeStatus.stats.total}</span>
-                </div>
-                <div className="w-full bg-blue-500/20 rounded-full h-2">
-                  <div
-                    className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${profileScrapeStatus.stats.total > 0 ? (profileScrapeStatus.stats.progress / profileScrapeStatus.stats.total) * 100 : 0}%` }}
-                  />
-                </div>
-              </div>
-            )}
           </CollapsibleSection>
 
           {/* Manual Scrape Section */}
@@ -1337,138 +1579,422 @@ const Admin: React.FC = () => {
     </>
   );
 
-  // Unified Jobs tab with control rows at top and sub-tabs for details
-  const renderJobsTab = () => (
+  // Render Statbate job content for sub-tab
+  const renderStatbateJobContent = () => (
     <>
-      {/* Job Control Rows at Top */}
-      <div className="space-y-3 mb-6">
-        {/* Affiliate API Control Row */}
-        <div className="flex items-center gap-4 p-4 bg-mhc-surface-light rounded-lg border border-white/10">
-          <div className="cursor-pointer" onClick={() => setJobSubTab('affiliate')}>
-            {getStatusBadge()}
-          </div>
-          <span className="font-semibold text-white min-w-[140px]">Affiliate API</span>
-          {jobStatus && (
-            <>
-              {jobStatus.isPaused ? (
-                <button
-                  onClick={() => handleJobControl('resume')}
-                  className="px-3 py-1.5 rounded-md text-sm font-semibold transition-all bg-mhc-success text-white hover:bg-emerald-600"
-                  disabled={loading}
-                >
-                  Resume
-                </button>
-              ) : jobStatus.isRunning ? (
-                <>
-                  <button
-                    onClick={() => handleJobControl('pause')}
-                    className="px-3 py-1.5 rounded-md text-sm font-semibold transition-all bg-mhc-warning text-white hover:bg-amber-600"
-                    disabled={loading}
-                  >
-                    Pause
-                  </button>
-                  <button
-                    onClick={() => handleJobControl('stop')}
-                    className="px-3 py-1.5 rounded-md text-sm font-semibold transition-all bg-mhc-danger text-white hover:bg-red-600"
-                    disabled={loading}
-                  >
-                    Stop
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => handleJobControl('start')}
-                  className="px-3 py-1.5 rounded-md text-sm font-semibold transition-all bg-mhc-success text-white hover:bg-emerald-600"
-                  disabled={loading || !jobStatus.config.enabled}
-                >
-                  Start
-                </button>
-              )}
-              <span className="ml-auto text-mhc-text-muted text-sm">
-                Total: {jobStatus.stats.totalEnriched.toLocaleString()} enriched
-              </span>
-            </>
-          )}
+      {statbateStatus && (
+        <>
+          {/* Statistics Section */}
+          <CollapsibleSection
+            title={<span>Statistics <button onClick={handleStatbateResetStats} className="ml-2 px-2 py-0.5 rounded text-xs font-medium bg-gray-600 text-white hover:bg-gray-500">Reset Stats</button></span>}
+            defaultCollapsed={false}
+            className="mb-5"
+          >
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{statbateStatus.stats.totalRuns}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Total Cycles</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{statbateStatus.stats.totalRefreshed.toLocaleString()}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Total Refreshed</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{statbateStatus.stats.totalFailed.toLocaleString()}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Total Failed</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{statbateStatus.stats.lastRun ? new Date(statbateStatus.stats.lastRun).toLocaleString() : 'Never'}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Last Run</div>
+              </div>
+            </div>
+            {statbateStatus.stats.lastRun && (
+              <div className="grid grid-cols-3 gap-4">
+                <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                  <div className="text-sm text-white/60">Last Refreshed</div>
+                  <div className="text-lg font-semibold text-white">{statbateStatus.stats.lastRunRefreshed}</div>
+                </div>
+                <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                  <div className="text-sm text-white/60">Last Failed</div>
+                  <div className="text-lg font-semibold text-white">{statbateStatus.stats.lastRunFailed}</div>
+                </div>
+                <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                  <div className="text-sm text-white/60">Success Rate</div>
+                  <div className="text-lg font-semibold text-white">
+                    {statbateStatus.stats.lastRunRefreshed + statbateStatus.stats.lastRunFailed > 0
+                      ? Math.round((statbateStatus.stats.lastRunRefreshed / (statbateStatus.stats.lastRunRefreshed + statbateStatus.stats.lastRunFailed)) * 100)
+                      : 0}%
+                  </div>
+                </div>
+              </div>
+            )}
+          </CollapsibleSection>
+
+          {/* Current Status Section */}
+          <CollapsibleSection
+            title="Current Status"
+            defaultCollapsed={true}
+            className="mb-5"
+          >
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                <div className="text-sm text-white/60">Interval</div>
+                <div className="text-lg font-semibold text-white">{statbateStatus.config.intervalMinutes} min</div>
+              </div>
+              <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                <div className="text-sm text-white/60">Batch Size</div>
+                <div className="text-lg font-semibold text-white">{statbateStatus.config.batchSize}</div>
+              </div>
+              <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                <div className="text-sm text-white/60">Max Per Run</div>
+                <div className="text-lg font-semibold text-white">{statbateStatus.config.maxPersonsPerRun}</div>
+              </div>
+              <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                <div className="text-sm text-white/60">Enabled</div>
+                <div className="text-lg font-semibold text-white">{statbateStatus.config.enabled ? 'Yes' : 'No'}</div>
+              </div>
+            </div>
+          </CollapsibleSection>
+
+          {/* Configuration Section */}
+          <CollapsibleSection
+            title="Configuration"
+            defaultCollapsed={statbateConfigCollapsed}
+            className="mb-5"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={statbateConfigForm.enabled}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, enabled: e.target.checked })}
+                  className="mr-2 w-4 h-4 accent-mhc-primary"
+                />
+                <span className="text-sm text-white/90">Enable Job</span>
+              </label>
+
+              <div>
+                <label className="block text-sm text-white/60 mb-1">Interval (min)</label>
+                <input
+                  type="number"
+                  value={statbateConfigForm.intervalMinutes}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, intervalMinutes: parseInt(e.target.value) || 360 })}
+                  min="60"
+                  max="1440"
+                  className="w-full p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-white/60 mb-1">Max Per Run</label>
+                <input
+                  type="number"
+                  value={statbateConfigForm.maxPersonsPerRun}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, maxPersonsPerRun: parseInt(e.target.value) || 1000 })}
+                  min="10"
+                  max="10000"
+                  className="w-full p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-white/60 mb-1">Batch Size</label>
+                <input
+                  type="number"
+                  value={statbateConfigForm.batchSize}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, batchSize: parseInt(e.target.value) || 5 })}
+                  min="1"
+                  max="20"
+                  className="w-full p-2.5 border border-white/20 rounded-md text-base bg-white/5 text-white focus:outline-none focus:border-mhc-primary"
+                />
+              </div>
+            </div>
+
+            {/* Prioritization Section */}
+            <h4 className="text-sm font-semibold text-white/70 uppercase mt-4 mb-3">Prioritization (in order)</h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={statbateConfigForm.prioritizeWatchlist}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, prioritizeWatchlist: e.target.checked })}
+                  className="mr-2 w-4 h-4 accent-mhc-primary"
+                />
+                <span className="text-sm text-white/90">Watchlist</span>
+              </label>
+
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={statbateConfigForm.prioritizeFollowing}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, prioritizeFollowing: e.target.checked })}
+                  className="mr-2 w-4 h-4 accent-mhc-primary"
+                />
+                <span className="text-sm text-white/90">Following</span>
+              </label>
+
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={statbateConfigForm.prioritizeFollowers}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, prioritizeFollowers: e.target.checked })}
+                  className="mr-2 w-4 h-4 accent-mhc-primary"
+                />
+                <span className="text-sm text-white/90">Followers</span>
+              </label>
+
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={statbateConfigForm.prioritizeBanned}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, prioritizeBanned: e.target.checked })}
+                  className="mr-2 w-4 h-4 accent-mhc-primary"
+                />
+                <span className="text-sm text-white/90">Banned</span>
+              </label>
+
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={statbateConfigForm.prioritizeLive}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, prioritizeLive: e.target.checked })}
+                  className="mr-2 w-4 h-4 accent-mhc-primary"
+                />
+                <span className="text-sm text-white/90">Live</span>
+              </label>
+
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={statbateConfigForm.prioritizeDoms}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, prioritizeDoms: e.target.checked })}
+                  className="mr-2 w-4 h-4 accent-mhc-primary"
+                />
+                <span className="text-sm text-white/90">Doms</span>
+              </label>
+
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={statbateConfigForm.prioritizeFriends}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, prioritizeFriends: e.target.checked })}
+                  className="mr-2 w-4 h-4 accent-mhc-primary"
+                />
+                <span className="text-sm text-white/90">Friends</span>
+              </label>
+
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={statbateConfigForm.prioritizeSubs}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, prioritizeSubs: e.target.checked })}
+                  className="mr-2 w-4 h-4 accent-mhc-primary"
+                />
+                <span className="text-sm text-white/90">Subs</span>
+              </label>
+
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={statbateConfigForm.prioritizeTippedMe}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, prioritizeTippedMe: e.target.checked })}
+                  className="mr-2 w-4 h-4 accent-mhc-primary"
+                />
+                <span className="text-sm text-white/90">Tipped Me</span>
+              </label>
+
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={statbateConfigForm.prioritizeTippedByMe}
+                  onChange={(e) => setStatbateConfigForm({ ...statbateConfigForm, prioritizeTippedByMe: e.target.checked })}
+                  className="mr-2 w-4 h-4 accent-mhc-primary"
+                />
+                <span className="text-sm text-white/90">Tipped By Me</span>
+              </label>
+            </div>
+
+            <button
+              onClick={handleStatbateConfigUpdate}
+              disabled={loading}
+              className="px-4 py-2 rounded-md font-semibold transition-all bg-mhc-primary text-white hover:bg-mhc-primary-dark disabled:opacity-50"
+            >
+              Save Configuration
+            </button>
+          </CollapsibleSection>
+        </>
+      )}
+
+      {!statbateStatus && (
+        <div className="text-center p-10 text-white/60">
+          Loading Statbate API status...
         </div>
-
-        {/* Profile Capture Control Row */}
-        <div className="flex items-center gap-4 p-4 bg-mhc-surface-light rounded-lg border border-white/10">
-          <div className="cursor-pointer" onClick={() => setJobSubTab('scraping')}>
-            {getProfileScrapeStatusBadge()}
-          </div>
-          <span className="font-semibold text-white min-w-[140px]">Profile Capture</span>
-          {profileScrapeStatus && (
-            <>
-              {profileScrapeStatus.isPaused ? (
-                <button
-                  onClick={() => handleProfileScrapeJobControl('resume')}
-                  className="px-3 py-1.5 rounded-md text-sm font-semibold transition-all bg-mhc-success text-white hover:bg-emerald-600"
-                  disabled={loading}
-                >
-                  Resume
-                </button>
-              ) : profileScrapeStatus.isRunning ? (
-                <>
-                  <button
-                    onClick={() => handleProfileScrapeJobControl('pause')}
-                    className="px-3 py-1.5 rounded-md text-sm font-semibold transition-all bg-mhc-warning text-white hover:bg-amber-600"
-                    disabled={loading}
-                  >
-                    Pause
-                  </button>
-                  <button
-                    onClick={() => handleProfileScrapeJobControl('stop')}
-                    className="px-3 py-1.5 rounded-md text-sm font-semibold transition-all bg-mhc-danger text-white hover:bg-red-600"
-                    disabled={loading}
-                  >
-                    Stop
-                  </button>
-                </>
-              ) : (
-                <button
-                  onClick={() => handleProfileScrapeJobControl('start')}
-                  className="px-3 py-1.5 rounded-md text-sm font-semibold transition-all bg-mhc-success text-white hover:bg-emerald-600"
-                  disabled={loading || !profileScrapeStatus.config.enabled || !hasCookies}
-                >
-                  Start
-                </button>
-              )}
-              <span className="ml-auto text-mhc-text-muted text-sm">
-                Total: {profileScrapeStatus.stats.totalScraped.toLocaleString()} scraped
-              </span>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Sub-tabs for job details */}
-      <div className="flex gap-2 border-b border-white/10 mb-6">
-        <button
-          className={`px-4 py-2 text-sm font-medium transition-colors ${
-            jobSubTab === 'affiliate'
-              ? 'text-mhc-primary border-b-2 border-mhc-primary'
-              : 'text-mhc-text-muted hover:text-white'
-          }`}
-          onClick={() => setJobSubTab('affiliate')}
-        >
-          Affiliate API
-        </button>
-        <button
-          className={`px-4 py-2 text-sm font-medium transition-colors ${
-            jobSubTab === 'scraping'
-              ? 'text-mhc-primary border-b-2 border-mhc-primary'
-              : 'text-mhc-text-muted hover:text-white'
-          }`}
-          onClick={() => setJobSubTab('scraping')}
-        >
-          Profile Capture
-        </button>
-      </div>
-
-      {/* Sub-tab content */}
-      {jobSubTab === 'affiliate' && renderAffiliateJobContent()}
-      {jobSubTab === 'scraping' && renderScrapingJobContent()}
+      )}
     </>
+  );
+
+  // Toggle job expansion
+  const toggleJob = (jobId: string) => {
+    setExpandedJobs(prev => ({ ...prev, [jobId]: !prev[jobId] }));
+  };
+
+  // Expandable Jobs tab with collapsible rows
+  const renderJobsTab = () => (
+    <div className="space-y-3">
+      {/* Affiliate API Job Row */}
+      <div className="bg-mhc-surface-light rounded-lg border border-white/10 overflow-hidden">
+        <div
+          className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/5 transition-colors"
+          onClick={() => toggleJob('affiliate')}
+        >
+          <span className="text-white/40">{expandedJobs['affiliate'] ? '▼' : '▶'}</span>
+          {jobStatus && (
+            <JobStatusButton
+              isRunning={jobStatus.isRunning}
+              isPaused={jobStatus.isPaused}
+              isProcessing={jobStatus.isProcessing}
+              enabled={jobStatus.config.enabled}
+              onStart={() => handleJobControl('start')}
+              onPause={() => handleJobControl('pause')}
+              onResume={() => handleJobControl('resume')}
+              onStop={() => handleJobControl('stop')}
+              disabled={loading}
+            />
+          )}
+          <span className="font-semibold text-white">Affiliate API</span>
+          {jobStatus && (
+            <span className="text-mhc-text-muted text-sm ml-auto">
+              Total: {jobStatus.stats.totalEnriched.toLocaleString()} enriched
+            </span>
+          )}
+        </div>
+        {/* Progress row when processing */}
+        {jobStatus?.isProcessing && jobStatus.stats.currentUsername && (
+          <div className="px-4 pb-3 -mt-1">
+            <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-blue-300 text-sm">Loading Affiliate API details for: <span className="font-bold text-white">{jobStatus.stats.currentUsername}</span></span>
+                <span className="text-blue-300 text-sm">{jobStatus.stats.progress} / {jobStatus.stats.total}</span>
+              </div>
+              <div className="w-full bg-blue-500/20 rounded-full h-1.5">
+                <div
+                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${jobStatus.stats.total > 0 ? (jobStatus.stats.progress / jobStatus.stats.total) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+        {expandedJobs['affiliate'] && (
+          <div className="border-t border-white/10 p-4">
+            {renderAffiliateJobContent()}
+          </div>
+        )}
+      </div>
+
+      {/* Profile Capture Job Row */}
+      <div className="bg-mhc-surface-light rounded-lg border border-white/10 overflow-hidden">
+        <div
+          className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/5 transition-colors"
+          onClick={() => toggleJob('scraping')}
+        >
+          <span className="text-white/40">{expandedJobs['scraping'] ? '▼' : '▶'}</span>
+          {profileScrapeStatus && (
+            <JobStatusButton
+              isRunning={profileScrapeStatus.isRunning}
+              isPaused={profileScrapeStatus.isPaused}
+              isProcessing={profileScrapeStatus.isProcessing}
+              enabled={profileScrapeStatus.config.enabled}
+              onStart={() => handleProfileScrapeJobControl('start')}
+              onPause={() => handleProfileScrapeJobControl('pause')}
+              onResume={() => handleProfileScrapeJobControl('resume')}
+              onStop={() => handleProfileScrapeJobControl('stop')}
+              disabled={loading}
+              extraDisabled={!hasCookies}
+            />
+          )}
+          <span className="font-semibold text-white">Profile Capture</span>
+          {profileScrapeStatus && (
+            <span className="text-mhc-text-muted text-sm ml-auto">
+              Total: {profileScrapeStatus.stats.totalScraped.toLocaleString()} captured
+            </span>
+          )}
+        </div>
+        {/* Progress row when processing */}
+        {profileScrapeStatus?.isProcessing && profileScrapeStatus.stats.currentUsername && (
+          <div className="px-4 pb-3 -mt-1">
+            <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-blue-300 text-sm">Capturing profile details for: <span className="font-bold text-white">{profileScrapeStatus.stats.currentUsername}</span></span>
+                <span className="text-blue-300 text-sm">{profileScrapeStatus.stats.progress} / {profileScrapeStatus.stats.total}</span>
+              </div>
+              <div className="w-full bg-blue-500/20 rounded-full h-1.5">
+                <div
+                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${profileScrapeStatus.stats.total > 0 ? (profileScrapeStatus.stats.progress / profileScrapeStatus.stats.total) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+        {expandedJobs['scraping'] && (
+          <div className="border-t border-white/10 p-4">
+            {renderScrapingJobContent()}
+          </div>
+        )}
+      </div>
+
+      {/* Statbate API Job Row */}
+      <div className="bg-mhc-surface-light rounded-lg border border-white/10 overflow-hidden">
+        <div
+          className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/5 transition-colors"
+          onClick={() => toggleJob('statbate')}
+        >
+          <span className="text-white/40">{expandedJobs['statbate'] ? '▼' : '▶'}</span>
+          {statbateStatus && (
+            <JobStatusButton
+              isRunning={statbateStatus.isRunning}
+              isPaused={statbateStatus.isPaused}
+              isProcessing={statbateStatus.isProcessing}
+              enabled={statbateStatus.config.enabled}
+              onStart={() => handleStatbateJobControl('start')}
+              onPause={() => handleStatbateJobControl('pause')}
+              onResume={() => handleStatbateJobControl('resume')}
+              onStop={() => handleStatbateJobControl('stop')}
+              disabled={loading}
+            />
+          )}
+          <span className="font-semibold text-white">Statbate API</span>
+          {statbateStatus && (
+            <span className="text-mhc-text-muted text-sm ml-auto">
+              Total: {statbateStatus.stats.totalRefreshed.toLocaleString()} refreshed
+            </span>
+          )}
+        </div>
+        {/* Progress row when processing */}
+        {statbateStatus?.isProcessing && statbateStatus.stats.currentUsername && (
+          <div className="px-4 pb-3 -mt-1">
+            <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-blue-300 text-sm">Loading Statbate API details for: <span className="font-bold text-white">{statbateStatus.stats.currentUsername}</span></span>
+                <span className="text-blue-300 text-sm">{statbateStatus.stats.progress} / {statbateStatus.stats.total}</span>
+              </div>
+              <div className="w-full bg-blue-500/20 rounded-full h-1.5">
+                <div
+                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${statbateStatus.stats.total > 0 ? (statbateStatus.stats.progress / statbateStatus.stats.total) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+        {expandedJobs['statbate'] && (
+          <div className="border-t border-white/10 p-4">
+            {renderStatbateJobContent()}
+          </div>
+        )}
+      </div>
+    </div>
   );
 
   const renderSystemStatsTab = () => (
@@ -1897,78 +2423,107 @@ const Admin: React.FC = () => {
 
     return (
       <>
-        {/* Cookie Status Card */}
-        <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-          <div className="p-5 border-b border-white/10 flex justify-between items-center">
-            <h2 className="m-0 text-2xl text-white">Chaturbate Session</h2>
+        {/* Chaturbate Session Card */}
+        <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5 overflow-hidden">
+          <div
+            className="p-4 flex justify-between items-center cursor-pointer hover:bg-white/5 transition-colors"
+            onClick={() => setSessionSectionCollapsed(!sessionSectionCollapsed)}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-white/40">{sessionSectionCollapsed ? '▶' : '▼'}</span>
+              <h2 className="m-0 text-xl text-white">Chaturbate Session</h2>
+            </div>
             {hasCookies ? (
               <span className={`${baseBadge} bg-mhc-success text-white`}>Authenticated</span>
             ) : (
               <span className={`${baseBadge} bg-mhc-warning text-white`}>Not Authenticated</span>
             )}
           </div>
-          <div className="p-5">
-            <p className="text-white/60 text-base p-4 bg-white/5 rounded-lg mb-4">
-              Import your Chaturbate session cookies to enable automated scraping of your following and followers lists.
-              This is required for the auto-scrape feature to work.
-            </p>
-            <div className="flex flex-wrap gap-3 mt-4">
-              <button
-                className={`px-5 py-2.5 rounded-md text-base font-semibold transition-all ${
-                  hasCookies
-                    ? 'bg-gray-500 text-white hover:bg-gray-600'
-                    : 'bg-mhc-primary text-white hover:bg-indigo-600'
-                }`}
-                onClick={() => setShowCookieDialog(true)}
-              >
-                {hasCookies ? 'Update Cookies' : 'Import Cookies'}
-              </button>
-            </div>
-            {cookieStatus && (
-              <div className="p-3 px-4 rounded-md mt-4 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
-                {cookieStatus}
+          {!sessionSectionCollapsed && (
+            <div className="border-t border-white/10 p-5">
+              <p className="text-white/60 text-base p-4 bg-white/5 rounded-lg mb-4">
+                Import your Chaturbate session cookies to enable syncing of your following and followers lists.
+              </p>
+              <div className="flex flex-wrap gap-3 mt-4">
+                <button
+                  className={`px-5 py-2.5 rounded-md text-base font-semibold transition-all ${
+                    hasCookies
+                      ? 'bg-gray-500 text-white hover:bg-gray-600'
+                      : 'bg-mhc-primary text-white hover:bg-indigo-600'
+                  }`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowCookieDialog(true);
+                  }}
+                >
+                  {hasCookies ? 'Update Cookies' : 'Import Cookies'}
+                </button>
               </div>
-            )}
-          </div>
+              {cookieStatus && (
+                <div className="p-3 px-4 rounded-md mt-4 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
+                  {cookieStatus}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Auto-Scrape Card */}
-        <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-          <div className="p-5 border-b border-white/10 flex justify-between items-center">
-            <h2 className="m-0 text-2xl text-white">Auto-Scrape</h2>
-          </div>
-          <div className="p-5">
-            <p className="text-white/60 text-base p-4 bg-white/5 rounded-lg mb-4">
-              Automatically scrape your following and followers lists from Chaturbate.
-              This uses your imported session cookies to fetch all pages.
-            </p>
-            <div className="flex flex-wrap gap-3 mt-4">
-              <button
-                className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={() => handleAutoScrape('following')}
-                disabled={scraping || !hasCookies}
-              >
-                {scraping ? 'Scraping...' : 'Scrape Following'}
-              </button>
-              <button
-                className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                onClick={() => handleAutoScrape('followers')}
-                disabled={scraping || !hasCookies}
-              >
-                {scraping ? 'Scraping...' : 'Scrape Followers'}
-              </button>
+        {/* Sync Connections Card */}
+        <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5 overflow-hidden">
+          <div
+            className="p-4 flex justify-between items-center cursor-pointer hover:bg-white/5 transition-colors"
+            onClick={() => setSyncSectionCollapsed(!syncSectionCollapsed)}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-white/40">{syncSectionCollapsed ? '▶' : '▼'}</span>
+              <h2 className="m-0 text-xl text-white">Sync Connections</h2>
             </div>
-            {!hasCookies && (
-              <div className="p-3 px-4 rounded-md mt-4 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
-                Import cookies first to enable auto-scraping.
-              </div>
-            )}
-            {scrapeStatus && (
-              <div className="p-3 px-4 rounded-md mt-4 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
-                {scrapeStatus}
-              </div>
+            {lastSyncDate && (
+              <span className="text-white/50 text-sm">
+                Last synced: {new Date(lastSyncDate).toLocaleDateString()} {new Date(lastSyncDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
             )}
           </div>
+          {!syncSectionCollapsed && (
+            <div className="border-t border-white/10 p-5">
+              <p className="text-white/60 text-base p-4 bg-white/5 rounded-lg mb-4">
+                Sync your following and followers lists from Chaturbate.
+                This uses your imported session cookies to fetch all pages.
+              </p>
+              <div className="flex flex-wrap gap-3 mt-4">
+                <button
+                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAutoScrape('following');
+                  }}
+                  disabled={scraping || !hasCookies}
+                >
+                  {scraping ? 'Syncing...' : 'Sync Following'}
+                </button>
+                <button
+                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAutoScrape('followers');
+                  }}
+                  disabled={scraping || !hasCookies}
+                >
+                  {scraping ? 'Syncing...' : 'Sync Followers'}
+                </button>
+              </div>
+              {!hasCookies && (
+                <div className="p-3 px-4 rounded-md mt-4 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
+                  Import cookies first to enable syncing.
+                </div>
+              )}
+              {scrapeStatus && (
+                <div className="p-3 px-4 rounded-md mt-4 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
+                  {scrapeStatus}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Cookie Import Dialog */}
@@ -2119,6 +2674,308 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
     </>
   );
 
+  // Parse username from filename (e.g., "JasonTheGreat.png" or "JasonTheGreat-A.png" -> "JasonTheGreat")
+  const parseUsernameFromFilename = (filename: string): string | null => {
+    const match = filename.match(/^([^-.]+)(?:-[^.]+)?\.(?:jpe?g|png|gif|webp)$/i);
+    return match ? match[1] : null;
+  };
+
+  // Handle file selection
+  const handleBulkFileSelect = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    const imageFiles = fileArray.filter(f => /\.(jpe?g|png|gif|webp)$/i.test(f.name));
+
+    if (imageFiles.length === 0) {
+      return;
+    }
+
+    setBulkSelectedFiles(imageFiles);
+    setBulkUploadResults(null);
+    setBulkIsValidating(true);
+
+    // Parse usernames from filenames
+    const parsed: ParsedFile[] = imageFiles.map(file => ({
+      file,
+      username: parseUsernameFromFilename(file.name) || '',
+      personExists: null,
+    }));
+
+    // Get unique usernames to validate
+    const uniqueUsernames = Array.from(new Set(parsed.map(p => p.username).filter(u => u)));
+
+    try {
+      const response = await fetch('/api/profile/bulk/validate-usernames', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usernames: uniqueUsernames }),
+      });
+      const data = await response.json();
+      const foundSet = new Set(data.found.map((u: string) => u.toLowerCase()));
+
+      // Update parsed files with validation results
+      const validated = parsed.map(p => ({
+        ...p,
+        personExists: p.username ? foundSet.has(p.username.toLowerCase()) : false,
+      }));
+
+      setBulkParsedFiles(validated);
+    } catch (err) {
+      console.error('Error validating usernames:', err);
+      // Mark all as unknown on error
+      setBulkParsedFiles(parsed.map(p => ({ ...p, personExists: false })));
+    } finally {
+      setBulkIsValidating(false);
+    }
+  };
+
+  // Handle drag events
+  const handleBulkDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setBulkDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setBulkDragActive(false);
+    }
+  };
+
+  const handleBulkDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setBulkDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleBulkFileSelect(e.dataTransfer.files);
+    }
+  };
+
+  // Handle upload
+  const handleBulkUpload = async () => {
+    const filesToUpload = bulkParsedFiles.filter(p => p.personExists);
+    if (filesToUpload.length === 0) return;
+
+    setBulkIsUploading(true);
+    setBulkUploadProgress({ current: 0, total: filesToUpload.length });
+
+    const formData = new FormData();
+    filesToUpload.forEach(p => {
+      formData.append('images', p.file);
+    });
+
+    try {
+      const response = await fetch('/api/profile/bulk/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json();
+      setBulkUploadResults(result);
+      setBulkUploadProgress(null);
+    } catch (err) {
+      console.error('Error uploading files:', err);
+      setBulkUploadResults({
+        uploaded: [],
+        skipped: bulkParsedFiles.map(p => ({ filename: p.file.name, reason: 'Upload failed' })),
+      });
+    } finally {
+      setBulkIsUploading(false);
+    }
+  };
+
+  // Reset bulk upload state
+  const resetBulkUpload = () => {
+    setBulkSelectedFiles([]);
+    setBulkParsedFiles([]);
+    setBulkUploadProgress(null);
+    setBulkUploadResults(null);
+    setBulkIsValidating(false);
+    setBulkIsUploading(false);
+  };
+
+  // Group parsed files by username for preview
+  const getGroupedParsedFiles = () => {
+    const groups: Record<string, { username: string; files: ParsedFile[]; personExists: boolean | null }> = {};
+    bulkParsedFiles.forEach(p => {
+      const key = p.username.toLowerCase() || '__invalid__';
+      if (!groups[key]) {
+        groups[key] = { username: p.username, files: [], personExists: p.personExists };
+      }
+      groups[key].files.push(p);
+    });
+    return Object.values(groups).sort((a, b) => {
+      // Sort: valid users first, then invalid filenames
+      if (a.personExists && !b.personExists) return -1;
+      if (!a.personExists && b.personExists) return 1;
+      return a.username.localeCompare(b.username);
+    });
+  };
+
+  const renderBulkUploadTab = () => {
+    const groupedFiles = getGroupedParsedFiles();
+    const validCount = bulkParsedFiles.filter(p => p.personExists).length;
+    const invalidCount = bulkParsedFiles.filter(p => !p.personExists).length;
+
+    return (
+      <div className="bg-mhc-surface-light rounded-lg p-6">
+        <h2 className="text-xl font-semibold text-mhc-text mb-6">Bulk Image Upload</h2>
+        <p className="text-mhc-text-muted mb-4">
+          Upload multiple images at once. Filenames should be in the format: <code className="bg-white/10 px-2 py-0.5 rounded font-mono">username.ext</code> or <code className="bg-white/10 px-2 py-0.5 rounded font-mono">username-suffix.ext</code>
+        </p>
+
+        {/* Results Display */}
+        {bulkUploadResults && (
+          <div className="mb-6">
+            <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg mb-4">
+              <h3 className="text-lg font-semibold text-green-400 mb-2">Upload Complete</h3>
+              <p className="text-green-300">
+                Successfully uploaded {bulkUploadResults.uploaded.length} images
+                {bulkUploadResults.skipped.length > 0 && `, skipped ${bulkUploadResults.skipped.length} files`}
+              </p>
+            </div>
+            {bulkUploadResults.skipped.length > 0 && (
+              <div className="p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg mb-4">
+                <h4 className="text-md font-semibold text-yellow-400 mb-2">Skipped Files</h4>
+                <ul className="text-yellow-300 text-sm space-y-1">
+                  {bulkUploadResults.skipped.map((s, i) => (
+                    <li key={i}><span className="font-mono">{s.filename}</span>: {s.reason}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <button
+              onClick={resetBulkUpload}
+              className="px-4 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors"
+            >
+              Upload More
+            </button>
+          </div>
+        )}
+
+        {/* Upload Progress */}
+        {bulkIsUploading && bulkUploadProgress && (
+          <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+            <h3 className="text-lg font-semibold text-blue-400 mb-2">Uploading...</h3>
+            <div className="w-full bg-gray-700 rounded-full h-4 mb-2">
+              <div
+                className="bg-blue-500 h-4 rounded-full transition-all duration-300"
+                style={{ width: `${(bulkUploadProgress.current / bulkUploadProgress.total) * 100}%` }}
+              ></div>
+            </div>
+            <p className="text-blue-300 text-sm">
+              {bulkUploadProgress.current} / {bulkUploadProgress.total} files
+            </p>
+          </div>
+        )}
+
+        {/* File Selection / Drop Zone */}
+        {!bulkUploadResults && !bulkIsUploading && bulkParsedFiles.length === 0 && (
+          <div
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              bulkDragActive
+                ? 'border-mhc-primary bg-mhc-primary/10'
+                : 'border-white/30 hover:border-white/50'
+            }`}
+            onDragEnter={handleBulkDrag}
+            onDragLeave={handleBulkDrag}
+            onDragOver={handleBulkDrag}
+            onDrop={handleBulkDrop}
+          >
+            <div className="text-4xl mb-4">📁</div>
+            <p className="text-mhc-text mb-4">
+              Drag and drop image files here, or click to select
+            </p>
+            <input
+              type="file"
+              multiple
+              accept=".jpg,.jpeg,.png,.gif,.webp"
+              onChange={(e) => e.target.files && handleBulkFileSelect(e.target.files)}
+              className="hidden"
+              id="bulk-file-input"
+            />
+            <label
+              htmlFor="bulk-file-input"
+              className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors cursor-pointer inline-block"
+            >
+              Select Files
+            </label>
+          </div>
+        )}
+
+        {/* Validating */}
+        {bulkIsValidating && (
+          <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+            <p className="text-blue-300">Validating usernames...</p>
+          </div>
+        )}
+
+        {/* Preview */}
+        {!bulkUploadResults && !bulkIsUploading && !bulkIsValidating && bulkParsedFiles.length > 0 && (
+          <div>
+            <div className="mb-4 p-4 bg-white/5 rounded-lg">
+              <p className="text-mhc-text">
+                <span className="font-semibold">{bulkParsedFiles.length}</span> files selected for{' '}
+                <span className="font-semibold">{groupedFiles.length}</span> users
+              </p>
+              <p className="text-sm text-mhc-text-muted">
+                <span className="text-green-400">{validCount} will upload</span>
+                {invalidCount > 0 && <span className="text-yellow-400 ml-2">({invalidCount} skipped - user not found)</span>}
+              </p>
+            </div>
+
+            <div className="max-h-96 overflow-y-auto mb-4 border border-white/10 rounded-lg">
+              <table className="w-full">
+                <thead className="bg-white/5 sticky top-0">
+                  <tr>
+                    <th className="text-left p-3 text-mhc-text-muted font-medium">Username</th>
+                    <th className="text-left p-3 text-mhc-text-muted font-medium">Files</th>
+                    <th className="text-left p-3 text-mhc-text-muted font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupedFiles.map((group, i) => (
+                    <tr key={i} className="border-t border-white/5">
+                      <td className="p-3 text-mhc-text font-mono">
+                        {group.username || <span className="text-red-400">Invalid filename</span>}
+                      </td>
+                      <td className="p-3 text-mhc-text-muted">
+                        {group.files.length} {group.files.length === 1 ? 'file' : 'files'}
+                      </td>
+                      <td className="p-3">
+                        {group.personExists ? (
+                          <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-400 border border-green-500/50">
+                            Found
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 rounded-full text-xs font-semibold bg-yellow-500/20 text-yellow-400 border border-yellow-500/50">
+                            Not Found
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleBulkUpload}
+                disabled={validCount === 0}
+                className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Upload {validCount} {validCount === 1 ? 'Image' : 'Images'}
+              </button>
+              <button
+                onClick={resetBulkUpload}
+                className="px-6 py-2 bg-white/10 text-white rounded-md hover:bg-white/20 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (loading && !jobStatus && activeTab === 'jobs') {
     return (
       <div className="max-w-6xl mx-auto px-5 py-6">
@@ -2188,6 +3045,16 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
           </button>
           <button
             className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all ${
+              activeTab === 'bulk-upload'
+                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary border-b-mhc-primary font-semibold'
+                : 'bg-mhc-surface/60 text-white/90 hover:bg-mhc-primary/10 hover:text-mhc-primary-light hover:border-mhc-primary/40'
+            }`}
+            onClick={() => setActiveTab('bulk-upload')}
+          >
+            Bulk Upload
+          </button>
+          <button
+            className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all ${
               activeTab === 'settings'
                 ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary border-b-mhc-primary font-semibold'
                 : 'bg-mhc-surface/60 text-white/90 hover:bg-mhc-primary/10 hover:text-mhc-primary-light hover:border-mhc-primary/40'
@@ -2205,12 +3072,19 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
         </div>
       )}
 
+      {successMessage && (
+        <div className="p-3 px-4 rounded-md mb-5 bg-emerald-500/15 border-l-4 border-emerald-500 text-emerald-300">
+          {successMessage}
+        </div>
+      )}
+
       <div className="mt-4">
         {activeTab === 'jobs' && renderJobsTab()}
         {activeTab === 'system-stats' && renderSystemStatsTab()}
         {activeTab === 'follower-trends' && renderFollowerTrendsTab()}
         {activeTab === 'data-sources' && renderDataSourcesTab()}
         {activeTab === 'scraper' && renderScraperTab()}
+        {activeTab === 'bulk-upload' && renderBulkUploadTab()}
         {activeTab === 'settings' && (
           <div className="bg-mhc-surface-light rounded-lg p-6">
             <h2 className="text-xl font-semibold text-mhc-text mb-6">Settings</h2>

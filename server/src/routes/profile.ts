@@ -2199,4 +2199,134 @@ router.get('/:username/timeline', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /api/profile/bulk/validate-usernames
+ * Validate which usernames exist in the database
+ */
+router.post('/bulk/validate-usernames', async (req: Request, res: Response) => {
+  try {
+    const { usernames } = req.body;
+
+    if (!Array.isArray(usernames) || usernames.length === 0) {
+      return res.status(400).json({ error: 'usernames array is required' });
+    }
+
+    // Query all persons with matching usernames (case-insensitive)
+    const lowerUsernames = usernames.map((u: string) => u.toLowerCase());
+    const placeholders = lowerUsernames.map((_, i) => `$${i + 1}`).join(', ');
+    const sql = `
+      SELECT username
+      FROM persons
+      WHERE LOWER(username) IN (${placeholders})
+    `;
+    const result = await query(sql, lowerUsernames);
+
+    const foundUsernames = new Set(result.rows.map((r) => (r as { username: string }).username.toLowerCase()));
+
+    const found: string[] = [];
+    const notFound: string[] = [];
+
+    for (const username of usernames) {
+      if (foundUsernames.has(username.toLowerCase())) {
+        found.push(username);
+      } else {
+        notFound.push(username);
+      }
+    }
+
+    res.json({ found, notFound });
+  } catch (error) {
+    logger.error('Error validating usernames', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/bulk/upload
+ * Upload multiple images with usernames parsed from filenames
+ * Filename format: {username}.{ext} or {username}-{suffix}.{ext}
+ */
+router.post('/bulk/upload', upload.array('images', 100), async (req: Request, res: Response) => {
+  try {
+    const files = req.files as Express.Multer.File[];
+
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
+    }
+
+    const uploaded: { filename: string; username: string; imageId: string }[] = [];
+    const skipped: { filename: string; reason: string; username?: string }[] = [];
+
+    // Initialize profile images service
+    await ProfileImagesService.init();
+
+    for (const file of files) {
+      // Parse username from filename
+      // Pattern: username.ext or username-suffix.ext
+      const filenameMatch = file.originalname.match(/^([^-\.]+)(?:-[^\.]+)?\.(?:jpe?g|png|gif|webp)$/i);
+
+      if (!filenameMatch) {
+        skipped.push({
+          filename: file.originalname,
+          reason: 'Invalid filename format. Expected: username.ext or username-suffix.ext',
+        });
+        continue;
+      }
+
+      const username = filenameMatch[1];
+
+      // Find person by username
+      const person = await PersonService.findByUsername(username);
+
+      if (!person) {
+        skipped.push({
+          filename: file.originalname,
+          username,
+          reason: 'User not found',
+        });
+        continue;
+      }
+
+      try {
+        // Save the image
+        const image = await ProfileImagesService.saveUploadedFile(
+          {
+            buffer: file.buffer,
+            originalname: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size,
+          },
+          person.id,
+          { source: 'manual_upload' }
+        );
+
+        uploaded.push({
+          filename: file.originalname,
+          username,
+          imageId: image.id,
+        });
+      } catch (err) {
+        skipped.push({
+          filename: file.originalname,
+          username,
+          reason: err instanceof Error ? err.message : 'Failed to save image',
+        });
+      }
+    }
+
+    res.json({
+      uploaded,
+      skipped,
+      summary: {
+        total: files.length,
+        uploadedCount: uploaded.length,
+        skippedCount: skipped.length,
+      },
+    });
+  } catch (error) {
+    logger.error('Error in bulk upload', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

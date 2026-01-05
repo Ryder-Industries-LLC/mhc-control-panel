@@ -13,8 +13,15 @@ const router = Router();
  * GET /api/job/status
  * Get all background job statuses
  */
-router.get('/status', (_req: Request, res: Response) => {
+router.get('/status', async (_req: Request, res: Response) => {
   try {
+    // Sync all job states from database
+    await Promise.all([
+      statbateRefreshJob.syncStateFromDB(),
+      affiliatePollingJob.syncStateFromDB(),
+      profileScrapeJob.syncStateFromDB(),
+    ]);
+
     const status = {
       statbateRefresh: statbateRefreshJob.getStatus(),
       affiliatePolling: affiliatePollingJob.getStatus(),
@@ -85,14 +92,153 @@ router.post('/stop', async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/job/statbate/status
+ * Get Statbate refresh job status
+ */
+router.get('/statbate/status', async (_req: Request, res: Response) => {
+  try {
+    // Sync state from database to get accurate status from worker
+    await statbateRefreshJob.syncStateFromDB();
+    const status = statbateRefreshJob.getStatus();
+    res.json(status);
+  } catch (error) {
+    logger.error('Get statbate job status error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/statbate/config
+ * Update Statbate refresh job configuration
+ */
+router.post('/statbate/config', async (req: Request, res: Response) => {
+  try {
+    const {
+      intervalMinutes,
+      batchSize,
+      delayBetweenBatches,
+      delayBetweenRequests,
+      maxPersonsPerRun,
+      enabled,
+      prioritizeFollowing,
+      prioritizeFollowers,
+      prioritizeBanned,
+      prioritizeWatchlist,
+      prioritizeLive,
+      prioritizeDoms,
+      prioritizeFriends,
+      prioritizeSubs,
+      prioritizeTippedMe,
+      prioritizeTippedByMe,
+    } = req.body;
+
+    await statbateRefreshJob.updateConfig({
+      ...(intervalMinutes !== undefined && { intervalMinutes }),
+      ...(batchSize !== undefined && { batchSize }),
+      ...(delayBetweenBatches !== undefined && { delayBetweenBatches }),
+      ...(delayBetweenRequests !== undefined && { delayBetweenRequests }),
+      ...(maxPersonsPerRun !== undefined && { maxPersonsPerRun }),
+      ...(enabled !== undefined && { enabled }),
+      ...(prioritizeFollowing !== undefined && { prioritizeFollowing }),
+      ...(prioritizeFollowers !== undefined && { prioritizeFollowers }),
+      ...(prioritizeBanned !== undefined && { prioritizeBanned }),
+      ...(prioritizeWatchlist !== undefined && { prioritizeWatchlist }),
+      ...(prioritizeLive !== undefined && { prioritizeLive }),
+      ...(prioritizeDoms !== undefined && { prioritizeDoms }),
+      ...(prioritizeFriends !== undefined && { prioritizeFriends }),
+      ...(prioritizeSubs !== undefined && { prioritizeSubs }),
+      ...(prioritizeTippedMe !== undefined && { prioritizeTippedMe }),
+      ...(prioritizeTippedByMe !== undefined && { prioritizeTippedByMe }),
+    });
+
+    res.json({ success: true, status: statbateRefreshJob.getStatus() });
+  } catch (error) {
+    logger.error('Update statbate job config error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/statbate/start
+ * Start the Statbate refresh job
+ */
+router.post('/statbate/start', async (_req: Request, res: Response) => {
+  try {
+    await statbateRefreshJob.start();
+    res.json({ success: true, status: statbateRefreshJob.getStatus() });
+  } catch (error) {
+    logger.error('Start statbate job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/statbate/pause
+ * Pause the Statbate refresh job
+ */
+router.post('/statbate/pause', async (_req: Request, res: Response) => {
+  try {
+    await statbateRefreshJob.pause();
+    res.json({ success: true, status: statbateRefreshJob.getStatus() });
+  } catch (error) {
+    logger.error('Pause statbate job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/statbate/resume
+ * Resume the Statbate refresh job
+ */
+router.post('/statbate/resume', async (_req: Request, res: Response) => {
+  try {
+    await statbateRefreshJob.resume();
+    res.json({ success: true, status: statbateRefreshJob.getStatus() });
+  } catch (error) {
+    logger.error('Resume statbate job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/statbate/stop
+ * Stop the Statbate refresh job
+ */
+router.post('/statbate/stop', async (_req: Request, res: Response) => {
+  try {
+    await statbateRefreshJob.stop();
+    res.json({ success: true, status: statbateRefreshJob.getStatus() });
+  } catch (error) {
+    logger.error('Stop statbate job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/statbate/reset-stats
+ * Reset Statbate refresh job statistics
+ */
+router.post('/statbate/reset-stats', (_req: Request, res: Response) => {
+  try {
+    statbateRefreshJob.resetStats();
+    res.json({ success: true, status: statbateRefreshJob.getStatus() });
+  } catch (error) {
+    logger.error('Reset statbate job stats error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ===== Affiliate Polling Job Endpoints =====
 
 /**
  * GET /api/job/affiliate/status
  * Get affiliate polling job status
  */
-router.get('/affiliate/status', (_req: Request, res: Response) => {
+router.get('/affiliate/status', async (_req: Request, res: Response) => {
   try {
+    // Sync state from database to get accurate status from worker
+    await affiliatePollingJob.syncStateFromDB();
     const status = affiliatePollingJob.getStatus();
     res.json(status);
   } catch (error) {
@@ -199,8 +345,10 @@ router.post('/affiliate/reset-stats', (_req: Request, res: Response) => {
  * GET /api/job/profile-scrape/status
  * Get profile scrape job status
  */
-router.get('/profile-scrape/status', (_req: Request, res: Response) => {
+router.get('/profile-scrape/status', async (_req: Request, res: Response) => {
   try {
+    // Sync state from database to get accurate status from worker
+    await profileScrapeJob.syncStateFromDB();
     const status = profileScrapeJob.getStatus();
     res.json(status);
   } catch (error) {

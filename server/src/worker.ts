@@ -30,15 +30,6 @@ async function startWorker() {
     process.exit(0);
   });
 
-  // Restore background jobs from persisted state BEFORE starting events listener
-  // This ensures jobs that were running before container restart are automatically resumed
-  try {
-    const { restored, skipped, failed } = await JobRestoreService.restoreAllJobs();
-    logger.info('Background jobs restoration summary', { restored, skipped, failed });
-  } catch (error) {
-    logger.error('Failed to restore background jobs', { error });
-  }
-
   // Start listening to events (this is a long-running blocking call)
   try {
     await chaturbateEventsClient.start();

@@ -24,6 +24,7 @@ interface PMMessage {
 /**
  * GET /api/inbox/threads
  * Get all PM threads grouped by user
+ * Uses interactions table which has PMs from all sources (including when not broadcasting)
  */
 router.get('/threads', async (req: Request, res: Response) => {
   try {
@@ -31,7 +32,7 @@ router.get('/threads', async (req: Request, res: Response) => {
     const limitNum = parseInt(limit as string, 10);
     const offsetNum = parseInt(offset as string, 10);
 
-    // Get threads with latest message per user
+    // Get threads with latest message per user from interactions table
     const result = await query<{
       username: string;
       message_count: string;
@@ -41,45 +42,35 @@ router.get('/threads', async (req: Request, res: Response) => {
     }>(
       `WITH pm_messages AS (
          SELECT
-           id,
-           timestamp,
-           raw_event->'user'->>'username' as from_user,
-           raw_event->'message'->>'toUser' as to_user,
-           raw_event->'message'->>'message' as message,
+           i.id,
+           i.timestamp,
+           p.username,
+           i.metadata->>'fromUser' as from_user,
+           i.metadata->>'toUser' as to_user,
+           i.content as message,
            CASE
-             WHEN raw_event->'message'->>'fromUser' = raw_event->'user'->>'username' THEN true
+             WHEN LOWER(i.metadata->>'fromUser') = LOWER(p.username) THEN true
              ELSE false
            END as is_from_user
-         FROM event_logs
-         WHERE method = 'privateMessage'
-       ),
-       user_threads AS (
-         SELECT
-           CASE
-             WHEN is_from_user THEN to_user
-             ELSE from_user
-           END as other_user,
-           id,
-           timestamp,
-           message,
-           is_from_user
-         FROM pm_messages
+         FROM interactions i
+         JOIN persons p ON i.person_id = p.id
+         WHERE i.type = 'PRIVATE_MESSAGE'
        ),
        latest_per_user AS (
-         SELECT DISTINCT ON (other_user)
-           other_user as username,
+         SELECT DISTINCT ON (username)
+           username,
            timestamp as last_message_at,
            message as last_message,
            is_from_user
-         FROM user_threads
-         ORDER BY other_user, timestamp DESC
+         FROM pm_messages
+         ORDER BY username, timestamp DESC
        ),
        counts AS (
          SELECT
-           other_user as username,
+           username,
            COUNT(*) as message_count
-         FROM user_threads
-         GROUP BY other_user
+         FROM pm_messages
+         GROUP BY username
        )
        SELECT
          l.username,
@@ -97,15 +88,10 @@ router.get('/threads', async (req: Request, res: Response) => {
 
     // Get total count
     const countResult = await query<{ count: string }>(
-      `SELECT COUNT(DISTINCT
-         CASE
-           WHEN raw_event->'message'->>'fromUser' = raw_event->'user'->>'username'
-             THEN raw_event->'message'->>'toUser'
-           ELSE raw_event->'user'->>'username'
-         END
-       ) as count
-       FROM event_logs
-       WHERE method = 'privateMessage'`
+      `SELECT COUNT(DISTINCT p.username) as count
+       FROM interactions i
+       JOIN persons p ON i.person_id = p.id
+       WHERE i.type = 'PRIVATE_MESSAGE'`
     );
 
     const threads: PMThread[] = result.rows.map(row => ({
@@ -130,6 +116,7 @@ router.get('/threads', async (req: Request, res: Response) => {
 /**
  * GET /api/inbox/thread/:username
  * Get all messages with a specific user
+ * Uses interactions table which has PMs from all sources
  */
 router.get('/thread/:username', async (req: Request, res: Response) => {
   try {
@@ -138,6 +125,7 @@ router.get('/thread/:username', async (req: Request, res: Response) => {
     const limitNum = parseInt(limit as string, 10);
     const offsetNum = parseInt(offset as string, 10);
 
+    // Get messages from interactions table, deduplicated
     const result = await query<{
       id: string;
       timestamp: Date;
@@ -145,32 +133,35 @@ router.get('/thread/:username', async (req: Request, res: Response) => {
       to_user: string;
       message: string;
     }>(
-      `SELECT
-         id,
-         timestamp,
-         raw_event->'user'->>'username' as from_user,
-         raw_event->'message'->>'toUser' as to_user,
-         raw_event->'message'->>'message' as message
-       FROM event_logs
-       WHERE method = 'privateMessage'
-         AND (
-           raw_event->'user'->>'username' = $1
-           OR raw_event->'message'->>'toUser' = $1
-         )
+      `SELECT * FROM (
+         SELECT DISTINCT ON (i.content, DATE_TRUNC('second', i.timestamp))
+           i.id,
+           i.timestamp,
+           i.metadata->>'fromUser' as from_user,
+           i.metadata->>'toUser' as to_user,
+           i.content as message
+         FROM interactions i
+         JOIN persons p ON i.person_id = p.id
+         WHERE i.type = 'PRIVATE_MESSAGE'
+           AND LOWER(p.username) = LOWER($1)
+         ORDER BY i.content, DATE_TRUNC('second', i.timestamp), i.id
+       ) deduped
        ORDER BY timestamp ASC
        LIMIT $2 OFFSET $3`,
       [username, limitNum, offsetNum]
     );
 
-    // Get total count for this thread
+    // Get total count for this thread (deduplicated)
     const countResult = await query<{ count: string }>(
-      `SELECT COUNT(*) as count
-       FROM event_logs
-       WHERE method = 'privateMessage'
-         AND (
-           raw_event->'user'->>'username' = $1
-           OR raw_event->'message'->>'toUser' = $1
-         )`,
+      `SELECT COUNT(*) as count FROM (
+         SELECT DISTINCT ON (i.content, DATE_TRUNC('second', i.timestamp))
+           i.id
+         FROM interactions i
+         JOIN persons p ON i.person_id = p.id
+         WHERE i.type = 'PRIVATE_MESSAGE'
+           AND LOWER(p.username) = LOWER($1)
+         ORDER BY i.content, DATE_TRUNC('second', i.timestamp), i.id
+       ) deduped`,
       [username]
     );
 
@@ -180,7 +171,7 @@ router.get('/thread/:username', async (req: Request, res: Response) => {
       from_user: row.from_user,
       to_user: row.to_user,
       message: row.message,
-      is_from_broadcaster: row.from_user !== username,
+      is_from_broadcaster: row.from_user?.toLowerCase() !== username.toLowerCase(),
     }));
 
     res.json({
@@ -198,6 +189,7 @@ router.get('/thread/:username', async (req: Request, res: Response) => {
 /**
  * GET /api/inbox/stats
  * Get PM statistics
+ * Uses interactions table which has PMs from all sources
  */
 router.get('/stats', async (req: Request, res: Response) => {
   try {
@@ -214,22 +206,17 @@ router.get('/stats', async (req: Request, res: Response) => {
     }>(
       `SELECT
          COUNT(*) as total_messages,
-         COUNT(DISTINCT
-           CASE
-             WHEN raw_event->'message'->>'fromUser' = raw_event->'user'->>'username'
-               THEN raw_event->'message'->>'toUser'
-             ELSE raw_event->'user'->>'username'
-           END
-         ) as unique_users,
+         COUNT(DISTINCT p.username) as unique_users,
          COUNT(*) FILTER (
-           WHERE raw_event->'message'->>'fromUser' != raw_event->'user'->>'username'
+           WHERE LOWER(i.metadata->>'fromUser') = LOWER(p.username)
          ) as messages_received,
          COUNT(*) FILTER (
-           WHERE raw_event->'message'->>'fromUser' = raw_event->'user'->>'username'
+           WHERE LOWER(i.metadata->>'fromUser') != LOWER(p.username)
          ) as messages_sent
-       FROM event_logs
-       WHERE method = 'privateMessage'
-         AND timestamp >= $1`,
+       FROM interactions i
+       JOIN persons p ON i.person_id = p.id
+       WHERE i.type = 'PRIVATE_MESSAGE'
+         AND i.timestamp >= $1`,
       [startDate]
     );
 
@@ -249,6 +236,7 @@ router.get('/stats', async (req: Request, res: Response) => {
 /**
  * GET /api/inbox/search
  * Search messages
+ * Uses interactions table which has PMs from all sources
  */
 router.get('/search', async (req: Request, res: Response) => {
   try {
@@ -263,24 +251,28 @@ router.get('/search', async (req: Request, res: Response) => {
     const result = await query<{
       id: string;
       timestamp: Date;
+      username: string;
       from_user: string;
       to_user: string;
       message: string;
     }>(
       `SELECT
-         id,
-         timestamp,
-         raw_event->'user'->>'username' as from_user,
-         raw_event->'message'->>'toUser' as to_user,
-         raw_event->'message'->>'message' as message
-       FROM event_logs
-       WHERE method = 'privateMessage'
+         i.id,
+         i.timestamp,
+         p.username,
+         i.metadata->>'fromUser' as from_user,
+         i.metadata->>'toUser' as to_user,
+         i.content as message
+       FROM interactions i
+       JOIN persons p ON i.person_id = p.id
+       WHERE i.type = 'PRIVATE_MESSAGE'
          AND (
-           raw_event->'message'->>'message' ILIKE $1
-           OR raw_event->'user'->>'username' ILIKE $1
-           OR raw_event->'message'->>'toUser' ILIKE $1
+           i.content ILIKE $1
+           OR p.username ILIKE $1
+           OR i.metadata->>'fromUser' ILIKE $1
+           OR i.metadata->>'toUser' ILIKE $1
          )
-       ORDER BY timestamp DESC
+       ORDER BY i.timestamp DESC
        LIMIT $2`,
       [searchTerm, limitNum]
     );
@@ -293,6 +285,7 @@ router.get('/search', async (req: Request, res: Response) => {
         from_user: row.from_user,
         to_user: row.to_user,
         message: row.message,
+        is_from_broadcaster: row.from_user?.toLowerCase() !== row.username?.toLowerCase(),
       })),
     });
   } catch (error) {

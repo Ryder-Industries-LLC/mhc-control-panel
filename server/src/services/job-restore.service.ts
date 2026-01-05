@@ -1,7 +1,7 @@
 /**
  * Job Restore Service
  *
- * Initializes job state records and restores running jobs on server/worker startup.
+ * Initializes job state records and restores running jobs on server startup.
  * Called during application bootstrap to ensure jobs that were running before
  * a container restart are automatically resumed.
  */
@@ -88,6 +88,33 @@ export class JobRestoreService {
       } catch (error) {
         failed.push('finalize-sessions (auto-start)');
         logger.error('Failed to auto-start finalize-sessions job', { error });
+      }
+    }
+
+    // Auto-start enabled jobs regardless of previous state
+    // If a job is enabled in config, it should be running
+    const autoStartJobs = [
+      { name: 'affiliate-polling', job: affiliatePollingJob },
+      { name: 'profile-scrape', job: profileScrapeJob },
+      { name: 'statbate-refresh', job: statbateRefreshJob },
+    ];
+
+    for (const { name, job } of autoStartJobs) {
+      try {
+        const status = job.getStatus();
+        // Start if enabled AND not already running
+        if (status.config?.enabled && !status.isRunning) {
+          logger.info(`Auto-starting ${name} job (enabled in config)`);
+          await job.start();
+          restored.push(`${name} (auto-started)`);
+        } else if (status.config?.enabled && status.isRunning) {
+          logger.debug(`${name} already running, skipping auto-start`);
+        } else {
+          logger.debug(`Skipping auto-start for ${name} (disabled in config)`);
+        }
+      } catch (error) {
+        failed.push(`${name} (auto-start)`);
+        logger.error(`Failed to auto-start ${name} job`, { error });
       }
     }
 

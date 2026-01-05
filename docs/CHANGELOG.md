@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.24.0] - 2026-01-04
+
+### Added
+- **Bulk Image Upload**: New "Bulk Upload" tab in Admin for uploading multiple images at once
+  - Drag & drop file zone or file selector
+  - Automatic username parsing from filenames (e.g., `JasonTheGreat.png` or `JasonTheGreat-A.png`)
+  - Preview step showing which usernames exist before uploading
+  - Groups files by username with file counts
+  - Skips unknown usernames and reports in summary
+  - Upload progress indicator and results summary
+- **Username Validation API**: `POST /api/profile/bulk/validate-usernames` endpoint
+- **Bulk Upload API**: `POST /api/profile/bulk/upload` endpoint (accepts up to 100 images)
+- **JobStatusButton component**: Unified status and control buttons for Admin Jobs UI
+
+### Changed
+- **Admin Jobs UI improvements**:
+  - Renamed "Statbate Refresh" to "Statbate API"
+  - Unified styling for all job status buttons
+  - Combined Stop/Pause/Start buttons with Status button
+  - Username now displayed bold in progress indicators
+  - Removed duplicate progress indicators from expanded Job Status sections
+- **Profile scrape job**: No longer blocks on missing cookies at startup; checks cookies at each cycle instead
+
+### Fixed
+- Profile scrape job now gracefully handles missing cookies without blocking startup
+
+---
+
 ## [1.23.0] - 2026-01-04
 
 ### Added

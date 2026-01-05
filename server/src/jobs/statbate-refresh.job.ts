@@ -3,6 +3,7 @@ import { SnapshotService } from '../services/snapshot.service.js';
 import { statbateClient } from '../api/statbate/client.js';
 import { normalizeModelInfo, normalizeMemberInfo } from '../api/statbate/normalizer.js';
 import { JobPersistenceService } from '../services/job-persistence.service.js';
+import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
 
 /**
@@ -20,19 +21,43 @@ export interface StatbateRefreshConfig {
   batchSize: number;
   delayBetweenBatches: number;
   delayBetweenRequests: number;
+  maxPersonsPerRun: number;
   enabled: boolean;
+  // Prioritization options (processed in order)
+  prioritizeFollowing: boolean;
+  prioritizeFollowers: boolean;
+  prioritizeBanned: boolean;
+  prioritizeWatchlist: boolean;
+  prioritizeLive: boolean;
+  prioritizeDoms: boolean;
+  prioritizeFriends: boolean;
+  prioritizeSubs: boolean;
+  prioritizeTippedMe: boolean;
+  prioritizeTippedByMe: boolean;
 }
 
 export class StatbateRefreshJob {
   private isRunning = false;
   private isPaused = false;
+  private isProcessing = false;
   private intervalId: NodeJS.Timeout | null = null;
   private config: StatbateRefreshConfig = {
     intervalMinutes: 360,
     batchSize: BATCH_SIZE,
     delayBetweenBatches: DELAY_BETWEEN_BATCHES,
     delayBetweenRequests: DELAY_BETWEEN_REQUESTS,
+    maxPersonsPerRun: 1000,
     enabled: true,
+    prioritizeFollowing: true,
+    prioritizeFollowers: false,
+    prioritizeBanned: false,
+    prioritizeWatchlist: true,
+    prioritizeLive: false,
+    prioritizeDoms: true,
+    prioritizeFriends: true,
+    prioritizeSubs: true,
+    prioritizeTippedMe: true,
+    prioritizeTippedByMe: false,
   };
 
   // Statistics
@@ -43,6 +68,7 @@ export class StatbateRefreshJob {
     totalFailed: 0,
     lastRunRefreshed: 0,
     lastRunFailed: 0,
+    currentUsername: null as string | null,
     progress: 0,
     total: 0,
   };
@@ -52,6 +78,24 @@ export class StatbateRefreshJob {
    */
   async init() {
     await JobPersistenceService.ensureJobState(JOB_NAME, this.config);
+  }
+
+  /**
+   * Sync state from database without starting the job
+   * Used by web server to show accurate status from worker
+   */
+  async syncStateFromDB(): Promise<void> {
+    const state = await JobPersistenceService.loadState(JOB_NAME);
+    if (state) {
+      this.isRunning = state.is_running;
+      this.isPaused = state.is_paused;
+      if (state.config) {
+        this.config = { ...this.config, ...state.config };
+      }
+      if (state.stats) {
+        this.stats = { ...this.stats, ...state.stats };
+      }
+    }
   }
 
   /**
@@ -102,10 +146,29 @@ export class StatbateRefreshJob {
     return {
       isRunning: this.isRunning,
       isPaused: this.isPaused,
+      isProcessing: this.isProcessing,
       intervalMinutes: this.config.intervalMinutes,
       config: this.config,
       stats: this.stats,
     };
+  }
+
+  /**
+   * Reset statistics
+   */
+  resetStats() {
+    this.stats = {
+      lastRun: null,
+      totalRuns: 0,
+      totalRefreshed: 0,
+      totalFailed: 0,
+      lastRunRefreshed: 0,
+      lastRunFailed: 0,
+      currentUsername: null,
+      progress: 0,
+      total: 0,
+    };
+    logger.info('Statbate refresh job stats reset');
   }
 
   /**
@@ -227,31 +290,282 @@ export class StatbateRefreshJob {
   }
 
   /**
+   * Get prioritized list of persons to refresh based on config
+   */
+  private async getPrioritizedPersons(): Promise<any[]> {
+    const seenIds = new Set<string>();
+    const prioritized: any[] = [];
+    const maxPersons = this.config.maxPersonsPerRun;
+
+    // Helper to add persons without duplicates
+    const addPersons = (persons: any[]) => {
+      for (const person of persons) {
+        if (!seenIds.has(person.id) && prioritized.length < maxPersons) {
+          seenIds.add(person.id);
+          prioritized.push(person);
+        }
+      }
+    };
+
+    // Process each priority segment in order
+    if (this.config.prioritizeWatchlist) {
+      const watchlist = await this.getWatchlistPersons();
+      addPersons(watchlist);
+      logger.debug(`Added ${watchlist.length} watchlist persons (total: ${prioritized.length})`);
+    }
+
+    if (this.config.prioritizeFollowing) {
+      const following = await this.getFollowingPersons();
+      addPersons(following);
+      logger.debug(`Added following persons (total: ${prioritized.length})`);
+    }
+
+    if (this.config.prioritizeFollowers) {
+      const followers = await this.getFollowerPersons();
+      addPersons(followers);
+      logger.debug(`Added follower persons (total: ${prioritized.length})`);
+    }
+
+    if (this.config.prioritizeBanned) {
+      const banned = await this.getBannedPersons();
+      addPersons(banned);
+      logger.debug(`Added banned persons (total: ${prioritized.length})`);
+    }
+
+    if (this.config.prioritizeLive) {
+      const live = await this.getLivePersons();
+      addPersons(live);
+      logger.debug(`Added live persons (total: ${prioritized.length})`);
+    }
+
+    if (this.config.prioritizeDoms) {
+      const doms = await this.getDomPersons();
+      addPersons(doms);
+      logger.debug(`Added dom persons (total: ${prioritized.length})`);
+    }
+
+    if (this.config.prioritizeFriends) {
+      const friends = await this.getFriendPersons();
+      addPersons(friends);
+      logger.debug(`Added friend persons (total: ${prioritized.length})`);
+    }
+
+    if (this.config.prioritizeSubs) {
+      const subs = await this.getSubPersons();
+      addPersons(subs);
+      logger.debug(`Added sub persons (total: ${prioritized.length})`);
+    }
+
+    if (this.config.prioritizeTippedMe) {
+      const tippedMe = await this.getTippedMePersons();
+      addPersons(tippedMe);
+      logger.debug(`Added tipped-me persons (total: ${prioritized.length})`);
+    }
+
+    if (this.config.prioritizeTippedByMe) {
+      const tippedByMe = await this.getTippedByMePersons();
+      addPersons(tippedByMe);
+      logger.debug(`Added tipped-by-me persons (total: ${prioritized.length})`);
+    }
+
+    // Fill remaining slots with non-excluded persons
+    if (prioritized.length < maxPersons) {
+      const remaining = await PersonService.findAllNonExcluded(maxPersons - prioritized.length, 0);
+      addPersons(remaining);
+    }
+
+    return prioritized;
+  }
+
+  /**
+   * Get persons on watchlist
+   */
+  private async getWatchlistPersons(): Promise<any[]> {
+    const result = await query(
+      `SELECT p.* FROM persons p
+       JOIN profiles pr ON pr.person_id = p.id
+       WHERE p.is_excluded = false AND pr.watch_list = true
+       ORDER BY p.last_seen_at DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get persons I'm following
+   */
+  private async getFollowingPersons(): Promise<any[]> {
+    const result = await query(
+      `SELECT p.* FROM persons p
+       JOIN profiles pr ON pr.person_id = p.id
+       WHERE p.is_excluded = false AND pr.following = true
+       ORDER BY p.last_seen_at DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get persons who are following me
+   */
+  private async getFollowerPersons(): Promise<any[]> {
+    const result = await query(
+      `SELECT p.* FROM persons p
+       JOIN profiles pr ON pr.person_id = p.id
+       WHERE p.is_excluded = false AND pr.follower = true
+       ORDER BY p.last_seen_at DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get persons who banned me
+   */
+  private async getBannedPersons(): Promise<any[]> {
+    const result = await query(
+      `SELECT p.* FROM persons p
+       JOIN profiles pr ON pr.person_id = p.id
+       WHERE p.is_excluded = false AND pr.banned_me = true
+       ORDER BY p.last_seen_at DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get persons who are currently live
+   */
+  private async getLivePersons(): Promise<any[]> {
+    const result = await query(
+      `SELECT DISTINCT p.* FROM persons p
+       JOIN affiliate_api_snapshots aas ON aas.person_id = p.id
+       WHERE p.is_excluded = false
+         AND aas.observed_at > NOW() - INTERVAL '10 minutes'
+         AND aas.current_show IS NOT NULL
+       ORDER BY p.last_seen_at DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get persons who are my doms (actively serving)
+   */
+  private async getDomPersons(): Promise<any[]> {
+    const result = await query(
+      `SELECT p.* FROM persons p
+       JOIN profiles pr ON pr.person_id = p.id
+       JOIN service_relationships sr ON sr.profile_id = pr.id
+       WHERE p.is_excluded = false
+         AND sr.service_role = 'dom'
+         AND sr.service_level = 'Actively Serving'
+       ORDER BY p.last_seen_at DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get persons who are friends (any tier)
+   */
+  private async getFriendPersons(): Promise<any[]> {
+    const result = await query(
+      `SELECT p.* FROM persons p
+       JOIN profiles pr ON pr.person_id = p.id
+       WHERE p.is_excluded = false AND pr.friend_tier IS NOT NULL
+       ORDER BY pr.friend_tier ASC, p.last_seen_at DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get persons who are my subs (active)
+   */
+  private async getSubPersons(): Promise<any[]> {
+    const result = await query(
+      `SELECT p.* FROM persons p
+       JOIN profiles pr ON pr.person_id = p.id
+       WHERE p.is_excluded = false AND pr.active_sub = true
+       ORDER BY p.last_seen_at DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get persons who have tipped me
+   */
+  private async getTippedMePersons(): Promise<any[]> {
+    const result = await query(
+      `SELECT DISTINCT p.* FROM persons p
+       JOIN interactions i ON i.person_id = p.id
+       WHERE p.is_excluded = false AND i.type = 'TIP_EVENT'
+       ORDER BY p.last_seen_at DESC`
+    );
+    return result.rows;
+  }
+
+  /**
+   * Get persons I have tipped (via recorded interactions where I'm the tipper)
+   */
+  private async getTippedByMePersons(): Promise<any[]> {
+    // This would require tracking outbound tips - for now return empty
+    // Most users won't have this data anyway
+    return [];
+  }
+
+  /**
    * Run a full refresh cycle
    */
   private async runRefresh() {
+    if (this.isProcessing) {
+      logger.warn('Statbate refresh cycle already in progress, skipping');
+      return;
+    }
+
     try {
+      this.isProcessing = true;
       logger.info('Starting Statbate refresh cycle');
 
-      // Get all persons
-      const persons = await PersonService.findAllNonExcluded(1000, 0);
-      logger.info(`Found ${persons.length} persons to refresh`);
+      // Reset run stats
+      this.stats.lastRunRefreshed = 0;
+      this.stats.lastRunFailed = 0;
+      this.stats.currentUsername = null;
+
+      // Get prioritized persons
+      const persons = await this.getPrioritizedPersons();
+      this.stats.total = persons.length;
+      this.stats.progress = 0;
+      logger.info(`Found ${persons.length} persons to refresh (max: ${this.config.maxPersonsPerRun})`);
 
       // Process in batches
-      for (let i = 0; i < persons.length; i += BATCH_SIZE) {
-        const batch = persons.slice(i, i + BATCH_SIZE);
+      const batchSize = this.config.batchSize;
+      for (let i = 0; i < persons.length; i += batchSize) {
+        if (this.isPaused) {
+          logger.info('Statbate refresh job paused, stopping cycle');
+          return;
+        }
+
+        const batch = persons.slice(i, i + batchSize);
         await this.processBatch(batch);
+        this.stats.progress = Math.min(i + batchSize, persons.length);
 
         // Wait between batches (except for the last one)
-        if (i + BATCH_SIZE < persons.length) {
-          logger.info(`Waiting ${DELAY_BETWEEN_BATCHES / 1000}s before next batch...`);
-          await this.sleep(DELAY_BETWEEN_BATCHES);
+        if (i + batchSize < persons.length) {
+          logger.debug(`Waiting ${this.config.delayBetweenBatches / 1000}s before next batch...`);
+          await this.sleep(this.config.delayBetweenBatches);
         }
       }
 
-      logger.info('Statbate refresh cycle completed');
+      // Update completion stats
+      this.stats.totalRuns++;
+      this.stats.lastRun = new Date();
+      this.stats.totalRefreshed += this.stats.lastRunRefreshed;
+      this.stats.totalFailed += this.stats.lastRunFailed;
+      this.stats.currentUsername = null;
+
+      logger.info('Statbate refresh cycle completed', {
+        refreshed: this.stats.lastRunRefreshed,
+        failed: this.stats.lastRunFailed,
+      });
     } catch (error) {
       logger.error('Error in Statbate refresh cycle', { error });
+    } finally {
+      this.isProcessing = false;
     }
   }
 
@@ -261,9 +575,16 @@ export class StatbateRefreshJob {
   private async processBatch(batch: any[]) {
     for (const person of batch) {
       try {
-        await this.refreshPerson(person);
-        await this.sleep(DELAY_BETWEEN_REQUESTS);
+        this.stats.currentUsername = person.username;
+        const success = await this.refreshPerson(person);
+        if (success) {
+          this.stats.lastRunRefreshed++;
+        } else {
+          this.stats.lastRunFailed++;
+        }
+        await this.sleep(this.config.delayBetweenRequests);
       } catch (error) {
+        this.stats.lastRunFailed++;
         logger.error('Error refreshing person', {
           personId: person.id,
           username: person.username,
@@ -275,22 +596,24 @@ export class StatbateRefreshJob {
 
   /**
    * Refresh data for a single person
+   * Now tries to fetch by username regardless of whether rid/did exists
+   * @returns true if data was successfully fetched from either API
    */
-  private async refreshPerson(person: any) {
-    const username = person.username;
+  private async refreshPerson(person: any): Promise<boolean> {
     const role = person.role;
 
     // Try to fetch data based on role
-    if (role === 'MODEL' && person.rid) {
-      await this.fetchModelData(person);
-    } else if (role === 'VIEWER' && person.did) {
-      await this.fetchMemberData(person);
-    } else if (role === 'UNKNOWN') {
-      // Try both
+    // For VIEWERS: try member API first, then model API
+    // For MODEL or UNKNOWN: try model first, then member API
+    if (role === 'VIEWER') {
+      const memberSuccess = await this.fetchMemberData(person);
+      if (memberSuccess) return true;
+      return await this.fetchModelData(person);
+    } else {
+      // MODEL or UNKNOWN: try model first
       const modelSuccess = await this.fetchModelData(person);
-      if (!modelSuccess) {
-        await this.fetchMemberData(person);
-      }
+      if (modelSuccess) return true;
+      return await this.fetchMemberData(person);
     }
   }
 

@@ -27,6 +27,7 @@ export interface ProfileScrapeConfig {
   refreshDays: number;
   enabled: boolean;
   prioritizeFollowing: boolean; // Scrape following list first
+  prioritizeWatchlist: boolean; // Scrape watchlist members first
 }
 
 export class ProfileScrapeJob {
@@ -41,6 +42,7 @@ export class ProfileScrapeJob {
     refreshDays: PROFILE_REFRESH_DAYS,
     enabled: true,
     prioritizeFollowing: true,
+    prioritizeWatchlist: true,
   };
 
   // Statistics
@@ -63,6 +65,24 @@ export class ProfileScrapeJob {
    */
   async init() {
     await JobPersistenceService.ensureJobState(JOB_NAME, this.config);
+  }
+
+  /**
+   * Sync state from database without starting the job
+   * Used by web server to show accurate status from worker
+   */
+  async syncStateFromDB(): Promise<void> {
+    const state = await JobPersistenceService.loadState(JOB_NAME);
+    if (state) {
+      this.isRunning = state.is_running;
+      this.isPaused = state.is_paused;
+      if (state.config) {
+        this.config = { ...this.config, ...state.config };
+      }
+      if (state.stats) {
+        this.stats = { ...this.stats, ...state.stats };
+      }
+    }
   }
 
   /**
@@ -156,22 +176,24 @@ export class ProfileScrapeJob {
       return;
     }
 
-    // Check if cookies are available
-    const hasCookies = await ChaturbateScraperService.hasCookies();
-    if (!hasCookies) {
-      logger.error('Profile scrape job cannot start: No cookies available');
-      return;
-    }
-
     if (!this.config.enabled) {
       logger.warn('Profile scrape job is disabled');
       return;
+    }
+
+    // Check cookies - log status but don't block startup
+    // The job will check for cookies before each scrape cycle
+    const hasCookies = await ChaturbateScraperService.hasCookies();
+    if (!hasCookies) {
+      logger.warn('Profile scrape job starting without cookies - will wait for cookies to be imported before processing');
     }
 
     logger.info('Starting Profile scrape job', {
       intervalMinutes: this.config.intervalMinutes,
       maxProfilesPerRun: this.config.maxProfilesPerRun,
       prioritizeFollowing: this.config.prioritizeFollowing,
+      prioritizeWatchlist: this.config.prioritizeWatchlist,
+      hasCookies,
     });
 
     this.isRunning = true;
@@ -180,7 +202,7 @@ export class ProfileScrapeJob {
     // Persist running state to database
     await JobPersistenceService.saveRunningState(JOB_NAME, true, false);
 
-    // Run immediately on start
+    // Run immediately on start (will check for cookies inside runScrape)
     this.runScrape();
 
     // Schedule periodic runs
@@ -250,6 +272,13 @@ export class ProfileScrapeJob {
   private async runScrape() {
     if (this.isProcessing) {
       logger.warn('Profile scrape job is already processing');
+      return;
+    }
+
+    // Check if cookies are available before processing
+    const hasCookies = await ChaturbateScraperService.hasCookies();
+    if (!hasCookies) {
+      logger.info('Profile scrape job waiting for cookies to be imported - skipping this cycle');
       return;
     }
 
@@ -344,39 +373,78 @@ export class ProfileScrapeJob {
 
   /**
    * Get list of profiles that need scraping
-   * Prioritizes following list if configured
+   * Priority order: Watchlist > Following > Others
    */
   private async getProfilesToScrape(): Promise<any[]> {
     const limit = this.config.maxProfilesPerRun;
     const profiles: any[] = [];
+    const usedIds: string[] = [];
 
-    if (this.config.prioritizeFollowing) {
-      // First, get profiles we're following that need refresh
-      const followingProfiles = await this.getFollowingNeedingScrape(limit);
+    // 1. Watchlist profiles (highest priority)
+    if (this.config.prioritizeWatchlist && profiles.length < limit) {
+      const watchlistProfiles = await this.getWatchlistNeedingScrape(limit - profiles.length, usedIds);
+      profiles.push(...watchlistProfiles);
+      usedIds.push(...watchlistProfiles.map((p: any) => p.id));
+    }
+
+    // 2. Following profiles
+    if (this.config.prioritizeFollowing && profiles.length < limit) {
+      const followingProfiles = await this.getFollowingNeedingScrape(limit - profiles.length, usedIds);
       profiles.push(...followingProfiles);
+      usedIds.push(...followingProfiles.map((p: any) => p.id));
+    }
 
-      // If we have room, add other profiles
-      if (profiles.length < limit) {
-        const remaining = limit - profiles.length;
-        const otherProfiles = await this.getOtherProfilesNeedingScrape(
-          remaining,
-          profiles.map(p => p.id)
-        );
-        profiles.push(...otherProfiles);
-      }
-    } else {
-      // Just get any profiles that need scraping
-      const allProfiles = await this.getAllProfilesNeedingScrape(limit);
-      profiles.push(...allProfiles);
+    // 3. Other profiles (fill remaining slots)
+    if (profiles.length < limit) {
+      const remaining = limit - profiles.length;
+      const otherProfiles = await this.getOtherProfilesNeedingScrape(remaining, usedIds);
+      profiles.push(...otherProfiles);
     }
 
     return profiles;
   }
 
   /**
+   * Get watchlist profiles that need scraping (highest priority)
+   */
+  private async getWatchlistNeedingScrape(limit: number, excludeIds: string[]): Promise<any[]> {
+    const excludeClause = excludeIds.length > 0
+      ? `AND p.id NOT IN (${excludeIds.map((_, i) => `$${i + 2}`).join(', ')})`
+      : '';
+
+    const sql = `
+      SELECT p.*
+      FROM persons p
+      INNER JOIN profiles prof ON prof.person_id = p.id
+      WHERE prof.watch_list = true
+        AND (
+          prof.browser_scraped_at IS NULL
+          OR prof.browser_scraped_at < NOW() - INTERVAL '${this.config.refreshDays} days'
+        )
+        ${excludeClause}
+      ORDER BY prof.browser_scraped_at ASC NULLS FIRST
+      LIMIT $1
+    `;
+
+    try {
+      const { query } = await import('../db/client.js');
+      const params = [limit, ...excludeIds];
+      const result = await query(sql, params);
+      return result.rows;
+    } catch (error) {
+      logger.error('Error getting watchlist profiles to scrape', { error });
+      return [];
+    }
+  }
+
+  /**
    * Get following profiles that need scraping
    */
-  private async getFollowingNeedingScrape(limit: number): Promise<any[]> {
+  private async getFollowingNeedingScrape(limit: number, excludeIds: string[]): Promise<any[]> {
+    const excludeClause = excludeIds.length > 0
+      ? `AND p.id NOT IN (${excludeIds.map((_, i) => `$${i + 2}`).join(', ')})`
+      : '';
+
     // Following status is stored in the profiles table
     // Use browser_scraped_at to track Puppeteer-based scraping separately from Affiliate API
     const sql = `
@@ -389,13 +457,15 @@ export class ProfileScrapeJob {
           prof.browser_scraped_at IS NULL
           OR prof.browser_scraped_at < NOW() - INTERVAL '${this.config.refreshDays} days'
         )
+        ${excludeClause}
       ORDER BY prof.browser_scraped_at ASC NULLS FIRST
       LIMIT $1
     `;
 
     try {
       const { query } = await import('../db/client.js');
-      const result = await query(sql, [limit]);
+      const params = [limit, ...excludeIds];
+      const result = await query(sql, params);
       return result.rows;
     } catch (error) {
       logger.error('Error getting following profiles to scrape', { error });

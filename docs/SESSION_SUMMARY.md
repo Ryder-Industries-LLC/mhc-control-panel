@@ -1,96 +1,70 @@
-# Session Summary - v1.22.0
+# Session Summary - v1.24.0
 
 **Date**: 2026-01-04
 
 ## What Was Accomplished
 
-### Major Feature: People Page UI Refactor
+### 1. Bulk Image Upload Feature
 
-Refactored the monolithic `Users.tsx` (2,945 lines) into a modular component library with consistent layout across all 11 segments.
+Added a new "Bulk Upload" tab in Admin that allows uploading multiple images at once, with automatic username parsing from filenames.
 
-#### 1. New Component Library (`client/src/components/people/`)
-- **PeopleLayout** - Page skeleton with segment tabs and error handling
-- **SegmentTabs** - Horizontal tab navigation with per-segment color theming
-- **FiltersPanel** - Collapsible filters with CountsGrid, tag presets, search inputs, and role filter
-- **CountsGrid** - Compact 2x4 grid of clickable stat cards
-- **ActiveFiltersBar** - Removable filter chips with clear all button
-- **ResultsToolbar** - View mode toggle, sort dropdown, pagination summary
-- **Pagination** - Reusable pagination with page size selector
-- **PeopleTable** - Generic table with column configuration pattern
-- **PeopleGrid** - Responsive grid container
-- **UserCard** - Grid card with image, badges, and indicators
+#### Backend Endpoints (`server/src/routes/profile.ts`)
+- **`POST /api/profile/bulk/validate-usernames`**: Validates an array of usernames and returns which exist
+- **`POST /api/profile/bulk/upload`**: Accepts up to 100 images via multipart form data, parses usernames from filenames, saves to matching users
 
-#### 2. Column Configurations (`client/src/components/people/columns/`)
-- **directoryColumns.tsx** - Directory segment columns (username, image, age, tags, images, last active, actions)
-- **relationshipColumns.tsx** - Unified columns for Friends, Subs, and Doms segments
+#### Frontend UI (`client/src/pages/Admin.tsx`)
+- New "Bulk Upload" tab with drag & drop file zone
+- Automatic username parsing: `username.ext` or `username-suffix.ext`
+- Preview step showing which usernames were found/not found
+- Groups files by username with file counts
+- Upload progress indicator and results summary
+- Skips unknown usernames and reports in summary
 
-#### 3. Type Definitions (`client/src/types/people.ts`)
-- Centralized types: BasePerson, FollowingPerson, SubPerson, DomPerson, FriendPerson, etc.
-- Utility functions: isPersonLive, getLastActiveTime, getImageUrl, getRoleBadgeClass, getFriendTierBadge
-- Constants: SEGMENTS, TAG_PRESETS, DIRECTORY_SORT_OPTIONS, PAGE_SIZE_OPTIONS
+### 2. Admin Jobs UI Improvements
 
-#### 4. Refactored Users.tsx
-- Reduced from 2,945 lines to ~1,680 lines
-- Now imports and uses shared components
-- Maintains all existing functionality (modals, URL params, API calls)
+- Renamed "Statbate Refresh" to "Statbate API"
+- Created `JobStatusButton` component for unified job status and control buttons
+- Fixed styling inconsistencies across different job types
+- Made username bold in progress indicators
+- Removed duplicate progress indicators from expanded sections
 
-## Key Design Decisions
+### 3. Profile Scrape Job Cookie Timing Fix
 
-1. **Stats cards in FiltersPanel**: Moved from large row above results into collapsible filters as compact 2x4 grid
-2. **Global filter state**: Filter collapse state persists via localStorage (`mhc-filters-expanded`)
-3. **Active filters bar placement**: Between toolbar and results list
-4. **Unified relationship columns**: Friends/Subs/Doms use same table component with shared column config
-5. **Column render pattern**: Generic table accepts column configuration with render functions
+Modified `profile-scrape.job.ts` to not block startup if cookies aren't available:
+- Job now starts even without cookies
+- Checks for cookies at the start of each `runScrape()` cycle
+- Logs a warning if cookies are not yet imported
 
-## Files Created
+## Key Files Modified
 
-### Components
-- `client/src/components/people/index.ts`
-- `client/src/components/people/PeopleLayout.tsx`
-- `client/src/components/people/SegmentTabs.tsx`
-- `client/src/components/people/FiltersPanel.tsx`
-- `client/src/components/people/CountsGrid.tsx`
-- `client/src/components/people/ActiveFiltersBar.tsx`
-- `client/src/components/people/ResultsToolbar.tsx`
-- `client/src/components/people/Pagination.tsx`
-- `client/src/components/people/PeopleTable.tsx`
-- `client/src/components/people/PeopleGrid.tsx`
-- `client/src/components/people/UserCard.tsx`
-- `client/src/components/people/columns/index.ts`
-- `client/src/components/people/columns/directoryColumns.tsx`
-- `client/src/components/people/columns/relationshipColumns.tsx`
+### Backend
+- `server/src/routes/profile.ts` - Added bulk upload and username validation endpoints
+- `server/src/jobs/profile-scrape.job.ts` - Fixed cookies timing issue
+- `server/src/jobs/affiliate-polling.job.ts` - Minor updates
+- `server/src/jobs/statbate-refresh.job.ts` - Renamed in UI
+- `server/src/routes/job.ts` - Job control updates
+- `server/src/services/job-restore.service.ts` - Service updates
+- `server/src/index.ts` - Startup flow updates
+- `server/src/worker.ts` - Worker updates
 
-### Types
-- `client/src/types/people.ts`
-
-### Migrations
-- `server/src/db/migrations/050_image_upload_settings.sql`
-- `server/src/db/migrations/051_add_media_type_and_videos.sql`
+### Frontend
+- `client/src/pages/Admin.tsx` - Added Bulk Upload tab, JobStatusButton component, UI improvements
+- `client/src/pages/Jobs.tsx` - Minor updates
 
 ## Current State
 
-- Build compiles successfully
-- All 11 People segments use shared layout components
-- Existing functionality preserved (filters, sorting, pagination, modals)
-- ESLint warnings only (no errors)
+- Both client and server build successfully
+- Docker containers ready for rebuild
+- All changes tested for compilation
 
 ## Next Steps
 
-1. **Test in browser**: Verify all segments render correctly
-2. **Test filters**: Confirm stat filters, tag presets, and search work
-3. **Test pagination**: Verify page navigation and size selection
-4. **Run migrations**: Apply new database migrations for image settings and videos
-5. **Consider**: Add bulk fetch endpoint for relationships (optional enhancement)
+1. Test bulk upload feature in browser
+2. Verify cookie-less startup for profile scrape job
+3. Test image uploads with various filename formats
 
-## Commands
+## File Naming Convention for Bulk Upload
 
-```bash
-# Build client
-cd client && npm run build
-
-# Run migrations
-DATABASE_URL="postgresql://..." npm run migrate
-
-# Start dev server
-npm run dev
-```
+- `username.ext` → uploads to user "username"
+- `username-suffix.ext` → uploads to user "username" (suffix ignored)
+- Supported formats: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`
