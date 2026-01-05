@@ -57,7 +57,6 @@ interface ProfileScrapeStats {
 
 interface ProfileScrapeJobStatus {
   isRunning: boolean;
-  isPaused: boolean;
   isProcessing: boolean;
   config: ProfileScrapeConfig;
   stats: ProfileScrapeStats;
@@ -96,7 +95,6 @@ interface StatbateStats {
 
 interface StatbateJobStatus {
   isRunning: boolean;
-  isPaused: boolean;
   isProcessing: boolean;
   config: StatbateConfig;
   stats: StatbateStats;
@@ -104,7 +102,6 @@ interface StatbateJobStatus {
 
 interface JobStatus {
   isRunning: boolean;
-  isPaused: boolean;
   isProcessing: boolean;
   config: JobConfig;
   stats: JobStats;
@@ -149,28 +146,24 @@ interface SystemStats {
   jobs: {
     affiliate: {
       isRunning: boolean;
-      isPaused: boolean;
       lastRun: string | null;
       totalRuns: number;
       totalEnriched: number;
     };
     profileScrape: {
       isRunning: boolean;
-      isPaused: boolean;
       lastRun: string | null;
       totalRuns: number;
       totalScraped: number;
     };
     cbhours: {
       isRunning: boolean;
-      isPaused: boolean;
       lastRun: string | null;
       totalRuns: number;
       totalRecorded: number;
     };
     statbate: {
       isRunning: boolean;
-      isPaused: boolean;
     };
   };
 }
@@ -670,7 +663,7 @@ const Admin: React.FC = () => {
     }
   };
 
-  const handleStatbateJobControl = async (action: 'start' | 'stop' | 'pause' | 'resume') => {
+  const handleStatbateJobControl = async (action: 'start' | 'stop') => {
     try {
       setLoading(true);
       const response = await fetch(`/api/job/statbate/${action}`, {
@@ -839,7 +832,7 @@ const Admin: React.FC = () => {
     }
   };
 
-  const handleJobControl = async (action: 'start' | 'pause' | 'resume' | 'stop') => {
+  const handleJobControl = async (action: 'start' | 'stop') => {
     try {
       setLoading(true);
       const response = await fetch(`/api/job/affiliate/${action}`, {
@@ -913,7 +906,7 @@ const Admin: React.FC = () => {
     }
   };
 
-  const handleProfileScrapeJobControl = async (action: 'start' | 'pause' | 'resume' | 'stop') => {
+  const handleProfileScrapeJobControl = async (action: 'start' | 'stop') => {
     try {
       setLoading(true);
       const response = await fetch(`/api/job/profile-scrape/${action}`, {
@@ -999,102 +992,46 @@ const Admin: React.FC = () => {
   };
 
   // Simple status badge for expanded sections (no controls)
-  const getSimpleStatusBadge = (isRunning: boolean, isPaused: boolean, isProcessing: boolean) => {
+  // Status states: Stopped, Starting (just started), Processing, Waiting (between cycles)
+  const getSimpleStatusBadge = (isRunning: boolean, isProcessing: boolean, hasRun?: boolean) => {
     const baseBadge = "px-3 py-1 rounded-full text-sm font-semibold uppercase";
-    if (isProcessing) {
-      return <span className={`${baseBadge} bg-blue-500 text-white animate-pulse`}>Processing</span>;
-    } else if (isRunning && !isPaused) {
-      return <span className={`${baseBadge} bg-mhc-success text-white`}>Running</span>;
-    } else if (isPaused) {
-      return <span className={`${baseBadge} bg-mhc-warning text-white`}>Paused</span>;
-    } else {
+    if (!isRunning) {
       return <span className={`${baseBadge} bg-gray-500 text-white`}>Stopped</span>;
+    } else if (isProcessing) {
+      return <span className={`${baseBadge} bg-blue-500 text-white animate-pulse`}>Processing</span>;
+    } else if (hasRun) {
+      // Running but not processing, and has completed at least one cycle = waiting between cycles
+      return <span className={`${baseBadge} bg-amber-500 text-white`}>Waiting</span>;
+    } else {
+      // Running but not processing, hasn't completed a cycle yet = just started
+      return <span className={`${baseBadge} bg-emerald-500 text-white`}>Starting</span>;
     }
   };
 
   // Unified Job Status Button component - combines status display with controls
+  // Status states: Stopped, Starting (just started), Processing (actively working), Waiting (between cycles)
   const JobStatusButton = ({
     isRunning,
-    isPaused,
     isProcessing,
     enabled,
     onStart,
-    onPause,
-    onResume,
     onStop,
     disabled,
     extraDisabled = false,
+    hasRun = false, // true if job has completed at least one cycle
   }: {
     isRunning: boolean;
-    isPaused: boolean;
     isProcessing: boolean;
     enabled: boolean;
     onStart: () => void;
-    onPause: () => void;
-    onResume: () => void;
     onStop: () => void;
     disabled: boolean;
     extraDisabled?: boolean;
+    hasRun?: boolean;
   }) => {
     const baseBadge = "px-3 py-1.5 rounded-full text-sm font-semibold uppercase transition-all cursor-pointer";
 
-    if (isProcessing) {
-      // Processing - clicking pauses
-      return (
-        <button
-          onClick={(e) => { e.stopPropagation(); onPause(); }}
-          className={`${baseBadge} bg-blue-500 text-white hover:bg-blue-600 animate-pulse`}
-          disabled={disabled}
-          title="Click to pause"
-        >
-          Processing
-        </button>
-      );
-    } else if (isRunning && !isPaused) {
-      // Running (idle) - show dropdown-like controls
-      return (
-        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button
-            onClick={onPause}
-            className={`${baseBadge} bg-mhc-success text-white hover:bg-emerald-600`}
-            disabled={disabled}
-            title="Click to pause"
-          >
-            Running
-          </button>
-          <button
-            onClick={onStop}
-            className="px-2 py-1.5 rounded-full text-xs font-semibold bg-mhc-danger/20 text-mhc-danger hover:bg-mhc-danger hover:text-white transition-all"
-            disabled={disabled}
-            title="Stop job"
-          >
-            ✕
-          </button>
-        </div>
-      );
-    } else if (isPaused) {
-      // Paused - clicking resumes
-      return (
-        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-          <button
-            onClick={onResume}
-            className={`${baseBadge} bg-mhc-warning text-white hover:bg-amber-600`}
-            disabled={disabled}
-            title="Click to resume"
-          >
-            Paused
-          </button>
-          <button
-            onClick={onStop}
-            className="px-2 py-1.5 rounded-full text-xs font-semibold bg-mhc-danger/20 text-mhc-danger hover:bg-mhc-danger hover:text-white transition-all"
-            disabled={disabled}
-            title="Stop job"
-          >
-            ✕
-          </button>
-        </div>
-      );
-    } else {
+    if (!isRunning) {
       // Stopped - clicking starts
       return (
         <button
@@ -1105,6 +1042,46 @@ const Admin: React.FC = () => {
         >
           Stopped
         </button>
+      );
+    } else if (isProcessing) {
+      // Processing - clicking stops
+      return (
+        <button
+          onClick={(e) => { e.stopPropagation(); onStop(); }}
+          className={`${baseBadge} bg-blue-500 text-white hover:bg-blue-600 animate-pulse`}
+          disabled={disabled}
+          title="Click to stop"
+        >
+          Processing
+        </button>
+      );
+    } else if (hasRun) {
+      // Waiting between cycles - clicking stops
+      return (
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={onStop}
+            className={`${baseBadge} bg-amber-500 text-white hover:bg-amber-600`}
+            disabled={disabled}
+            title="Click to stop"
+          >
+            Waiting
+          </button>
+        </div>
+      );
+    } else {
+      // Starting (just started, first cycle not complete) - clicking stops
+      return (
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={onStop}
+            className={`${baseBadge} bg-emerald-500 text-white hover:bg-emerald-600`}
+            disabled={disabled}
+            title="Click to stop"
+          >
+            Starting
+          </button>
+        </div>
       );
     }
   };
@@ -1187,7 +1164,7 @@ const Admin: React.FC = () => {
             title={
               <div className="flex items-center gap-3">
                 <span>Current Status</span>
-                {getSimpleStatusBadge(jobStatus.isRunning, jobStatus.isPaused, jobStatus.isProcessing)}
+                {getSimpleStatusBadge(jobStatus.isRunning, jobStatus.isProcessing, jobStatus.stats.totalRuns > 0)}
               </div>
             }
             defaultCollapsed={true}
@@ -1197,7 +1174,7 @@ const Admin: React.FC = () => {
               <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
                 <span className="font-semibold text-white/70">State:</span>
                 <span className="text-white font-medium">
-                  {jobStatus.isRunning ? (jobStatus.isPaused ? 'Paused' : 'Running') : 'Stopped'}
+                  {!jobStatus.isRunning ? 'Stopped' : jobStatus.isProcessing ? 'Processing' : jobStatus.stats.totalRuns > 0 ? 'Waiting' : 'Starting'}
                 </span>
               </div>
               <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
@@ -1385,7 +1362,7 @@ const Admin: React.FC = () => {
             title={
               <span className="flex items-center gap-3">
                 Job Status
-                {getSimpleStatusBadge(profileScrapeStatus.isRunning, profileScrapeStatus.isPaused, profileScrapeStatus.isProcessing)}
+                {getSimpleStatusBadge(profileScrapeStatus.isRunning, profileScrapeStatus.isProcessing, profileScrapeStatus.stats.totalRuns > 0)}
               </span>
             }
             defaultCollapsed={true}
@@ -1395,11 +1372,7 @@ const Admin: React.FC = () => {
               <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
                 <span className="font-semibold text-white/70">State:</span>
                 <span className="text-white font-medium">
-                  {profileScrapeStatus.isProcessing
-                    ? 'Processing'
-                    : profileScrapeStatus.isRunning
-                      ? (profileScrapeStatus.isPaused ? 'Paused' : 'Running')
-                      : 'Stopped'}
+                  {!profileScrapeStatus.isRunning ? 'Stopped' : profileScrapeStatus.isProcessing ? 'Processing' : profileScrapeStatus.stats.totalRuns > 0 ? 'Waiting' : 'Starting'}
                 </span>
               </div>
               <div className="flex justify-between items-center p-3 bg-white/5 rounded-md border border-white/10">
@@ -1851,14 +1824,12 @@ const Admin: React.FC = () => {
           {jobStatus && (
             <JobStatusButton
               isRunning={jobStatus.isRunning}
-              isPaused={jobStatus.isPaused}
               isProcessing={jobStatus.isProcessing}
               enabled={jobStatus.config.enabled}
               onStart={() => handleJobControl('start')}
-              onPause={() => handleJobControl('pause')}
-              onResume={() => handleJobControl('resume')}
               onStop={() => handleJobControl('stop')}
               disabled={loading}
+              hasRun={jobStatus.stats.totalRuns > 0}
             />
           )}
           <span className="font-semibold text-white">Affiliate API</span>
@@ -1902,15 +1873,13 @@ const Admin: React.FC = () => {
           {profileScrapeStatus && (
             <JobStatusButton
               isRunning={profileScrapeStatus.isRunning}
-              isPaused={profileScrapeStatus.isPaused}
               isProcessing={profileScrapeStatus.isProcessing}
               enabled={profileScrapeStatus.config.enabled}
               onStart={() => handleProfileScrapeJobControl('start')}
-              onPause={() => handleProfileScrapeJobControl('pause')}
-              onResume={() => handleProfileScrapeJobControl('resume')}
               onStop={() => handleProfileScrapeJobControl('stop')}
               disabled={loading}
               extraDisabled={!hasCookies}
+              hasRun={profileScrapeStatus.stats.totalRuns > 0}
             />
           )}
           <span className="font-semibold text-white">Profile Capture</span>
@@ -1954,14 +1923,12 @@ const Admin: React.FC = () => {
           {statbateStatus && (
             <JobStatusButton
               isRunning={statbateStatus.isRunning}
-              isPaused={statbateStatus.isPaused}
               isProcessing={statbateStatus.isProcessing}
               enabled={statbateStatus.config.enabled}
               onStart={() => handleStatbateJobControl('start')}
-              onPause={() => handleStatbateJobControl('pause')}
-              onResume={() => handleStatbateJobControl('resume')}
               onStop={() => handleStatbateJobControl('stop')}
               disabled={loading}
+              hasRun={statbateStatus.stats.totalRuns > 0}
             />
           )}
           <span className="font-semibold text-white">Statbate API</span>
@@ -2922,18 +2889,25 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
 
             <div className="max-h-96 overflow-y-auto mb-4 border border-white/10 rounded-lg">
               <table className="w-full">
-                <thead className="bg-white/5 sticky top-0">
+                <thead className="bg-mhc-surface sticky top-0 z-10 shadow-md">
                   <tr>
-                    <th className="text-left p-3 text-mhc-text-muted font-medium">Username</th>
-                    <th className="text-left p-3 text-mhc-text-muted font-medium">Files</th>
-                    <th className="text-left p-3 text-mhc-text-muted font-medium">Status</th>
+                    <th className="text-left p-3 text-mhc-text-muted font-medium border-b border-white/10">Username</th>
+                    <th className="text-left p-3 text-mhc-text-muted font-medium border-b border-white/10">Files</th>
+                    <th className="text-left p-3 text-mhc-text-muted font-medium border-b border-white/10">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {groupedFiles.map((group, i) => (
                     <tr key={i} className="border-t border-white/5">
                       <td className="p-3 text-mhc-text font-mono">
-                        {group.username || <span className="text-red-400">Invalid filename</span>}
+                        {group.username || (
+                          <span className="text-red-400">
+                            Invalid filename
+                            {group.files[0]?.file?.name && (
+                              <span className="text-red-300 ml-1 text-xs">({group.files[0].file.name})</span>
+                            )}
+                          </span>
+                        )}
                       </td>
                       <td className="p-3 text-mhc-text-muted">
                         {group.files.length} {group.files.length === 1 ? 'file' : 'files'}
@@ -2943,9 +2917,13 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
                           <span className="px-2 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-400 border border-green-500/50">
                             Found
                           </span>
-                        ) : (
+                        ) : group.username ? (
                           <span className="px-2 py-1 rounded-full text-xs font-semibold bg-yellow-500/20 text-yellow-400 border border-yellow-500/50">
-                            Not Found
+                            User '{group.username}' not found
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 rounded-full text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/50">
+                            Invalid
                           </span>
                         )}
                       </td>

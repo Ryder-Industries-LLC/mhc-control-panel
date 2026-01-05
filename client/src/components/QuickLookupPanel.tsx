@@ -38,6 +38,33 @@ interface ProfileSummary {
   }>;
 }
 
+/**
+ * Parse username from various input formats:
+ * - username
+ * - /username
+ * - /username/
+ * - https://chaturbate.com/username
+ * - https://chaturbate.com/username/
+ * - https://chaturbate.com/username#
+ */
+const parseUsername = (input: string): string => {
+  let cleaned = input.trim();
+
+  // Remove URL prefix if present
+  cleaned = cleaned.replace(/^https?:\/\/(www\.)?chaturbate\.com\//i, '');
+
+  // Remove leading slashes
+  cleaned = cleaned.replace(/^\/+/, '');
+
+  // Remove trailing slashes and hash fragments
+  cleaned = cleaned.replace(/[/#]+$/, '');
+
+  // Take only the first path segment (in case there's extra path)
+  cleaned = cleaned.split('/')[0];
+
+  return cleaned.toLowerCase();
+};
+
 export const QuickLookupPanel: React.FC<QuickLookupPanelProps> = ({
   isOpen,
   onClose,
@@ -67,13 +94,14 @@ export const QuickLookupPanel: React.FC<QuickLookupPanelProps> = ({
   }, [initialUsername]);
 
   const loadProfile = async (usernameToLoad: string) => {
-    if (!usernameToLoad.trim()) return;
+    const parsedUsername = parseUsername(usernameToLoad);
+    if (!parsedUsername) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(`/api/profile/${usernameToLoad.trim().toLowerCase()}`);
+      const response = await fetch(`/api/profile/${parsedUsername}`);
       if (!response.ok) {
         if (response.status === 404) {
           setError('User not found');
@@ -89,7 +117,7 @@ export const QuickLookupPanel: React.FC<QuickLookupPanelProps> = ({
       // Also fetch notes
       let recentNotes: ProfileSummary['recentNotes'] = [];
       try {
-        const notesResponse = await fetch(`/api/profile/${usernameToLoad.trim().toLowerCase()}/notes`);
+        const notesResponse = await fetch(`/api/profile/${parsedUsername}/notes`);
         if (notesResponse.ok) {
           const notesData = await notesResponse.json();
           recentNotes = notesData.notes?.slice(0, 5) || [];
@@ -101,7 +129,7 @@ export const QuickLookupPanel: React.FC<QuickLookupPanelProps> = ({
       // Get visit stats
       let stats: ProfileSummary['stats'] = {};
       try {
-        const visitsResponse = await fetch(`/api/profile/${usernameToLoad.trim().toLowerCase()}/visits/stats`);
+        const visitsResponse = await fetch(`/api/profile/${parsedUsername}/visits/stats`);
         if (visitsResponse.ok) {
           const visitsData = await visitsResponse.json();
           stats = {
@@ -116,7 +144,7 @@ export const QuickLookupPanel: React.FC<QuickLookupPanelProps> = ({
       // Get service relationship
       let serviceRelationship: ProfileSummary['serviceRelationship'];
       try {
-        const srResponse = await fetch(`/api/profile/${usernameToLoad.trim().toLowerCase()}/service-relationships`);
+        const srResponse = await fetch(`/api/profile/${parsedUsername}/service-relationships`);
         if (srResponse.ok) {
           serviceRelationship = await srResponse.json();
         }

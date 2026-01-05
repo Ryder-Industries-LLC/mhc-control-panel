@@ -752,17 +752,44 @@ export class ChaturbateScraperService {
         });
 
         // Extract social links
-        const socialPatterns = ['twitter', 'instagram', 'onlyfans', 'fansly', 'snapchat', 'tiktok', 'amazon', 'wishlist'];
-        const allLinks = document.querySelectorAll('a[href]');
-        allLinks.forEach((link: any) => {
+        const socialPatterns = ['twitter', 'x.com', 'instagram', 'onlyfans', 'fansly', 'snapchat', 'tiktok', 'amazon', 'wishlist', 'telegram', 'alllinks', 'allmylinks', 'linktree', 'throne', 'whatsapp', 'fanvue', 'manyvids', 'pornhub', 'xvideos'];
+        const socialLinks = document.querySelectorAll('[data-testid="social-media-item"]');
+        socialLinks.forEach((link: any) => {
           const href = link.getAttribute('href') || '';
-          const hrefLower = href.toLowerCase();
+
+          // Skip locked links (href starts with /socials/social_media)
+          if (href.startsWith('/socials/social_media')) {
+            return; // Locked link, skip
+          }
+
+          // Extract and decode URL from /external_link/?url=... format
+          let actualUrl = href;
+          if (href.includes('/external_link/')) {
+            try {
+              const urlMatch = href.match(/[?&]url=([^&]+)/);
+              if (urlMatch) {
+                actualUrl = decodeURIComponent(urlMatch[1]);
+              }
+            } catch (e) {
+              // If decode fails, use original href
+            }
+          }
+
+          const urlLower = actualUrl.toLowerCase();
+
+          // Filter out Chaturbate's own Twitter accounts
+          if (urlLower.includes('twitter.com/cbupdatenews') ||
+              urlLower.includes('twitter.com/chaturbate') ||
+              urlLower.includes('x.com/cbupdatenews') ||
+              urlLower.includes('x.com/chaturbate')) {
+            return; // Skip Chaturbate's own social accounts
+          }
 
           for (const pattern of socialPatterns) {
-            if (hrefLower.includes(pattern)) {
+            if (urlLower.includes(pattern)) {
               data.socialLinks.push({
-                platform: pattern,
-                url: href,
+                platform: pattern === 'x.com' ? 'twitter' : pattern,
+                url: actualUrl,
               });
               break;
             }

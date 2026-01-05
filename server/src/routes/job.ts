@@ -36,34 +36,6 @@ router.get('/status', async (_req: Request, res: Response) => {
 });
 
 /**
- * POST /api/job/pause
- * Pause the background refresh job
- */
-router.post('/pause', async (_req: Request, res: Response) => {
-  try {
-    await statbateRefreshJob.pause();
-    res.json({ success: true, status: statbateRefreshJob.getStatus() });
-  } catch (error) {
-    logger.error('Pause job error', { error });
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * POST /api/job/resume
- * Resume the background refresh job
- */
-router.post('/resume', async (_req: Request, res: Response) => {
-  try {
-    await statbateRefreshJob.resume();
-    res.json({ success: true, status: statbateRefreshJob.getStatus() });
-  } catch (error) {
-    logger.error('Resume job error', { error });
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
  * POST /api/job/start
  * Start the background refresh job
  */
@@ -174,34 +146,6 @@ router.post('/statbate/start', async (_req: Request, res: Response) => {
 });
 
 /**
- * POST /api/job/statbate/pause
- * Pause the Statbate refresh job
- */
-router.post('/statbate/pause', async (_req: Request, res: Response) => {
-  try {
-    await statbateRefreshJob.pause();
-    res.json({ success: true, status: statbateRefreshJob.getStatus() });
-  } catch (error) {
-    logger.error('Pause statbate job error', { error });
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * POST /api/job/statbate/resume
- * Resume the Statbate refresh job
- */
-router.post('/statbate/resume', async (_req: Request, res: Response) => {
-  try {
-    await statbateRefreshJob.resume();
-    res.json({ success: true, status: statbateRefreshJob.getStatus() });
-  } catch (error) {
-    logger.error('Resume statbate job error', { error });
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
  * POST /api/job/statbate/stop
  * Stop the Statbate refresh job
  */
@@ -279,34 +223,6 @@ router.post('/affiliate/start', async (_req: Request, res: Response) => {
     res.json({ success: true, status: affiliatePollingJob.getStatus() });
   } catch (error) {
     logger.error('Start affiliate job error', { error });
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * POST /api/job/affiliate/pause
- * Pause the affiliate polling job
- */
-router.post('/affiliate/pause', async (_req: Request, res: Response) => {
-  try {
-    await affiliatePollingJob.pause();
-    res.json({ success: true, status: affiliatePollingJob.getStatus() });
-  } catch (error) {
-    logger.error('Pause affiliate job error', { error });
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * POST /api/job/affiliate/resume
- * Resume the affiliate polling job
- */
-router.post('/affiliate/resume', async (_req: Request, res: Response) => {
-  try {
-    await affiliatePollingJob.resume();
-    res.json({ success: true, status: affiliatePollingJob.getStatus() });
-  } catch (error) {
-    logger.error('Resume affiliate job error', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -391,34 +307,6 @@ router.post('/profile-scrape/start', async (_req: Request, res: Response) => {
     res.json({ success: true, status: profileScrapeJob.getStatus() });
   } catch (error) {
     logger.error('Start profile scrape job error', { error });
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * POST /api/job/profile-scrape/pause
- * Pause the profile scrape job
- */
-router.post('/profile-scrape/pause', async (_req: Request, res: Response) => {
-  try {
-    await profileScrapeJob.pause();
-    res.json({ success: true, status: profileScrapeJob.getStatus() });
-  } catch (error) {
-    logger.error('Pause profile scrape job error', { error });
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * POST /api/job/profile-scrape/resume
- * Resume the profile scrape job
- */
-router.post('/profile-scrape/resume', async (_req: Request, res: Response) => {
-  try {
-    await profileScrapeJob.resume();
-    res.json({ success: true, status: profileScrapeJob.getStatus() });
-  } catch (error) {
-    logger.error('Resume profile scrape job error', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -524,34 +412,6 @@ router.post('/cbhours/start', async (_req: Request, res: Response) => {
     res.json({ success: true, status: cbhoursPollingJob.getStatus() });
   } catch (error) {
     logger.error('Start CBHours job error', { error });
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * POST /api/job/cbhours/pause
- * Pause the CBHours polling job
- */
-router.post('/cbhours/pause', async (_req: Request, res: Response) => {
-  try {
-    await cbhoursPollingJob.pause();
-    res.json({ success: true, status: cbhoursPollingJob.getStatus() });
-  } catch (error) {
-    logger.error('Pause CBHours job error', { error });
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-/**
- * POST /api/job/cbhours/resume
- * Resume the CBHours polling job
- */
-router.post('/cbhours/resume', async (_req: Request, res: Response) => {
-  try {
-    await cbhoursPollingJob.resume();
-    res.json({ success: true, status: cbhoursPollingJob.getStatus() });
-  } catch (error) {
-    logger.error('Resume CBHours job error', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

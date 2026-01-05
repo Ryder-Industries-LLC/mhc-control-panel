@@ -12,6 +12,33 @@ interface GlobalLookupProps {
   inline?: boolean;
 }
 
+/**
+ * Parse username from various input formats:
+ * - username
+ * - /username
+ * - /username/
+ * - https://chaturbate.com/username
+ * - https://chaturbate.com/username/
+ * - https://chaturbate.com/username#
+ */
+const parseUsername = (input: string): string => {
+  let cleaned = input.trim();
+
+  // Remove URL prefix if present
+  cleaned = cleaned.replace(/^https?:\/\/(www\.)?chaturbate\.com\//i, '');
+
+  // Remove leading slashes
+  cleaned = cleaned.replace(/^\/+/, '');
+
+  // Remove trailing slashes and hash fragments
+  cleaned = cleaned.replace(/[/#]+$/, '');
+
+  // Take only the first path segment (in case there's extra path)
+  cleaned = cleaned.split('/')[0];
+
+  return cleaned.toLowerCase();
+};
+
 export const GlobalLookup: React.FC<GlobalLookupProps> = ({ inline = false }) => {
   const [isExpanded, setIsExpanded] = useState(inline);
   const [query, setQuery] = useState('');
@@ -76,7 +103,9 @@ export const GlobalLookup: React.FC<GlobalLookupProps> = ({ inline = false }) =>
 
   // Fetch suggestions with debounce
   useEffect(() => {
-    if (!query.trim()) {
+    // Parse the query to extract username from URL/path formats
+    const parsedQuery = parseUsername(query);
+    if (!parsedQuery) {
       setSuggestions([]);
       return;
     }
@@ -84,7 +113,7 @@ export const GlobalLookup: React.FC<GlobalLookupProps> = ({ inline = false }) =>
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const response = await fetch(`/api/person/search?q=${encodeURIComponent(query.trim())}&limit=8`);
+        const response = await fetch(`/api/person/search?q=${encodeURIComponent(parsedQuery)}&limit=8`);
         if (response.ok) {
           const data = await response.json();
           // API returns { usernames: string[] }, convert to our format
@@ -123,7 +152,11 @@ export const GlobalLookup: React.FC<GlobalLookupProps> = ({ inline = false }) =>
       if (selectedIndex >= 0 && suggestions[selectedIndex]) {
         handleSelect(suggestions[selectedIndex].username);
       } else if (query.trim()) {
-        handleSelect(query.trim().toLowerCase());
+        // Parse username from various input formats (URLs, paths, etc.)
+        const parsedUsername = parseUsername(query);
+        if (parsedUsername) {
+          handleSelect(parsedUsername);
+        }
       }
     }
   };
@@ -186,7 +219,7 @@ export const GlobalLookup: React.FC<GlobalLookupProps> = ({ inline = false }) =>
               </div>
             ) : (
               <div className="px-4 py-4 text-center text-mhc-text-muted text-sm">
-                No users found. Press Enter to search "{query}"
+                No users found. Press Enter to search "{parseUsername(query)}"
               </div>
             )}
           </div>
@@ -271,7 +304,7 @@ export const GlobalLookup: React.FC<GlobalLookupProps> = ({ inline = false }) =>
           {/* Empty state */}
           {query.trim() && !loading && suggestions.length === 0 && (
             <div className="px-4 py-6 text-center text-mhc-text-muted text-sm">
-              No users found. Press Enter to search "{query}"
+              No users found. Press Enter to search "{parseUsername(query)}"
             </div>
           )}
         </div>

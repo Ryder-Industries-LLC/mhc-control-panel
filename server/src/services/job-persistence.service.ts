@@ -11,7 +11,7 @@ import { logger } from '../config/logger.js';
 export interface JobState {
   job_name: string;
   is_running: boolean;
-  is_paused: boolean;
+  is_paused: boolean; // Deprecated - kept for DB compatibility, always false
   config: Record<string, any>;
   stats: Record<string, any>;
   last_started_at: Date | null;
@@ -60,7 +60,7 @@ export class JobPersistenceService {
   static async saveRunningState(
     jobName: string,
     isRunning: boolean,
-    isPaused: boolean = false
+    isPaused: boolean = false // Deprecated - kept for signature compatibility, ignored
   ): Promise<void> {
     try {
       const timestamp = isRunning ? 'last_started_at = NOW()' : 'last_stopped_at = NOW()';
@@ -68,13 +68,13 @@ export class JobPersistenceService {
       await query(
         `UPDATE job_state SET
           is_running = $2,
-          is_paused = $3,
+          is_paused = false,
           ${timestamp}
          WHERE job_name = $1`,
-        [jobName, isRunning, isPaused]
+        [jobName, isRunning]
       );
 
-      logger.info('Job running state saved', { jobName, isRunning, isPaused });
+      logger.info('Job running state saved', { jobName, isRunning });
     } catch (error) {
       logger.error('Failed to save job running state', { jobName, error });
     }

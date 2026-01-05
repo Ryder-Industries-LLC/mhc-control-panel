@@ -203,28 +203,24 @@ router.get('/stats', async (_req: Request, res: Response) => {
       jobs: {
         affiliate: {
           isRunning: affiliateStatus.isRunning,
-          isPaused: affiliateStatus.isPaused,
           lastRun: affiliateStatus.stats.lastRun,
           totalRuns: affiliateStatus.stats.totalRuns,
           totalEnriched: affiliateStatus.stats.totalEnriched,
         },
         profileScrape: {
           isRunning: profileScrapeStatus.isRunning,
-          isPaused: profileScrapeStatus.isPaused,
           lastRun: profileScrapeStatus.stats.lastRun,
           totalRuns: profileScrapeStatus.stats.totalRuns,
           totalScraped: profileScrapeStatus.stats.totalScraped,
         },
         cbhours: {
           isRunning: cbhoursStatus.isRunning,
-          isPaused: cbhoursStatus.isPaused,
           lastRun: cbhoursStatus.stats.lastRun,
           totalRuns: cbhoursStatus.stats.totalRuns,
           totalRecorded: cbhoursStatus.stats.totalRecorded,
         },
         statbate: {
           isRunning: statbateStatus.isRunning,
-          isPaused: statbateStatus.isPaused,
         },
       },
     };

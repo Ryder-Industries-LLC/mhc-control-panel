@@ -21,7 +21,6 @@ export interface CBHoursPollingConfig {
 
 export class CBHoursPollingJob {
   private isRunning = false;
-  private isPaused = false;
   private isProcessing = false;
   private intervalId: NodeJS.Timeout | null = null;
   private config: CBHoursPollingConfig = {
@@ -81,14 +80,9 @@ export class CBHoursPollingJob {
     }
 
     // If job was running, restart it
-    if (state.is_running && !state.is_paused) {
+    if (state.is_running) {
       logger.info('Restoring cbhours-polling job to running state');
       await this.start();
-      return true;
-    } else if (state.is_running && state.is_paused) {
-      logger.info('Restoring cbhours-polling job to paused state');
-      this.isRunning = true;
-      this.isPaused = true;
       return true;
     }
 
@@ -97,11 +91,15 @@ export class CBHoursPollingJob {
 
   /**
    * Get job status
+   * Status states:
+   * - Stopped: isRunning=false
+   * - Starting: isRunning=true, isProcessing=false (just started, waiting for first cycle)
+   * - Processing: isRunning=true, isProcessing=true (actively working)
+   * - Waiting: isRunning=true, isProcessing=false (between cycles)
    */
   getStatus() {
     return {
       isRunning: this.isRunning,
-      isPaused: this.isPaused,
       isProcessing: this.isProcessing,
       config: this.config,
       stats: this.stats,
@@ -112,7 +110,7 @@ export class CBHoursPollingJob {
    * Update job configuration
    */
   async updateConfig(config: Partial<CBHoursPollingConfig>) {
-    const wasRunning = this.isRunning && !this.isPaused;
+    const wasRunning = this.isRunning;
 
     // Stop if running
     if (wasRunning) {
@@ -140,7 +138,7 @@ export class CBHoursPollingJob {
    * Start the background polling job
    */
   async start() {
-    if (this.isRunning && !this.isPaused) {
+    if (this.isRunning) {
       logger.warn('CBHours polling job is already running');
       return;
     }
@@ -157,46 +155,19 @@ export class CBHoursPollingJob {
     });
 
     this.isRunning = true;
-    this.isPaused = false;
 
     // Persist running state to database
-    await JobPersistenceService.saveRunningState(JOB_NAME, true, false);
+    await JobPersistenceService.saveRunningState(JOB_NAME, true);
 
     // Run immediately on start
     this.runPoll();
 
     // Schedule periodic runs
     this.intervalId = setInterval(() => {
-      if (!this.isPaused) {
+      if (!this.isProcessing) {
         this.runPoll();
       }
     }, this.config.intervalMinutes * 60 * 1000);
-  }
-
-  /**
-   * Pause the polling job
-   */
-  async pause() {
-    if (!this.isRunning) {
-      logger.warn('CBHours polling job is not running');
-      return;
-    }
-    this.isPaused = true;
-    await JobPersistenceService.saveRunningState(JOB_NAME, true, true);
-    logger.info('CBHours polling job paused');
-  }
-
-  /**
-   * Resume the polling job
-   */
-  async resume() {
-    if (!this.isRunning) {
-      logger.warn('CBHours polling job is not running');
-      return;
-    }
-    this.isPaused = false;
-    await JobPersistenceService.saveRunningState(JOB_NAME, true, false);
-    logger.info('CBHours polling job resumed');
   }
 
   /**
@@ -208,8 +179,8 @@ export class CBHoursPollingJob {
       this.intervalId = null;
     }
     this.isRunning = false;
-    this.isPaused = false;
-    await JobPersistenceService.saveRunningState(JOB_NAME, false, false);
+    this.isProcessing = false;
+    await JobPersistenceService.saveRunningState(JOB_NAME, false);
     logger.info('CBHours polling job stopped');
   }
 
@@ -272,7 +243,7 @@ export class CBHoursPollingJob {
       logger.info(`Polling CBHours for ${usernames.length} users in ${batches.length} batches`);
 
       // Process each batch
-      for (let i = 0; i < batches.length && !this.isPaused; i++) {
+      for (let i = 0; i < batches.length && this.isRunning; i++) {
         const batch = batches[i];
         this.stats.currentBatch = i + 1;
         this.stats.progress = Math.min(i * this.config.batchSize, usernames.length);

@@ -22,7 +22,6 @@ export interface AffiliatePollingConfig {
 
 export class AffiliatePollingJob {
   private isRunning = false;
-  private isPaused = false;
   private isProcessing = false;
   private intervalId: NodeJS.Timeout | null = null;
   private config: AffiliatePollingConfig = {
@@ -60,7 +59,6 @@ export class AffiliatePollingJob {
     const state = await JobPersistenceService.loadState(JOB_NAME);
     if (state) {
       this.isRunning = state.is_running;
-      this.isPaused = state.is_paused;
       if (state.config) {
         this.config = { ...this.config, ...state.config };
       }
@@ -97,14 +95,9 @@ export class AffiliatePollingJob {
     }
 
     // If job was running, restart it
-    if (state.is_running && !state.is_paused) {
+    if (state.is_running) {
       logger.info('Restoring affiliate-polling job to running state');
       await this.start();
-      return true;
-    } else if (state.is_running && state.is_paused) {
-      logger.info('Restoring affiliate-polling job to paused state');
-      this.isRunning = true;
-      this.isPaused = true;
       return true;
     }
 
@@ -113,11 +106,15 @@ export class AffiliatePollingJob {
 
   /**
    * Get job status
+   * Status states:
+   * - Stopped: isRunning=false
+   * - Starting: isRunning=true, isProcessing=false (just started, waiting for first cycle)
+   * - Processing: isRunning=true, isProcessing=true (actively working)
+   * - Waiting: isRunning=true, isProcessing=false (between cycles)
    */
   getStatus() {
     return {
       isRunning: this.isRunning,
-      isPaused: this.isPaused,
       isProcessing: this.isProcessing,
       config: this.config,
       stats: this.stats,
@@ -128,7 +125,7 @@ export class AffiliatePollingJob {
    * Update job configuration
    */
   async updateConfig(config: Partial<AffiliatePollingConfig>) {
-    const wasRunning = this.isRunning && !this.isPaused;
+    const wasRunning = this.isRunning;
 
     // Stop if running
     if (wasRunning) {
@@ -156,7 +153,7 @@ export class AffiliatePollingJob {
    * Start the background polling job
    */
   async start() {
-    if (this.isRunning && !this.isPaused) {
+    if (this.isRunning) {
       logger.warn('Affiliate polling job is already running');
       return;
     }
@@ -173,46 +170,19 @@ export class AffiliatePollingJob {
     });
 
     this.isRunning = true;
-    this.isPaused = false;
 
     // Persist running state to database
-    await JobPersistenceService.saveRunningState(JOB_NAME, true, false);
+    await JobPersistenceService.saveRunningState(JOB_NAME, true);
 
     // Run immediately on start
     this.runPoll();
 
     // Schedule periodic runs
     this.intervalId = setInterval(() => {
-      if (!this.isPaused) {
+      if (!this.isProcessing) {
         this.runPoll();
       }
     }, this.config.intervalMinutes * 60 * 1000);
-  }
-
-  /**
-   * Pause the polling job
-   */
-  async pause() {
-    if (!this.isRunning) {
-      logger.warn('Affiliate polling job is not running');
-      return;
-    }
-    this.isPaused = true;
-    await JobPersistenceService.saveRunningState(JOB_NAME, true, true);
-    logger.info('Affiliate polling job paused');
-  }
-
-  /**
-   * Resume the polling job
-   */
-  async resume() {
-    if (!this.isRunning) {
-      logger.warn('Affiliate polling job is not running');
-      return;
-    }
-    this.isPaused = false;
-    await JobPersistenceService.saveRunningState(JOB_NAME, true, false);
-    logger.info('Affiliate polling job resumed');
   }
 
   /**
@@ -224,8 +194,8 @@ export class AffiliatePollingJob {
       this.intervalId = null;
     }
     this.isRunning = false;
-    this.isPaused = false;
-    await JobPersistenceService.saveRunningState(JOB_NAME, false, false);
+    this.isProcessing = false;
+    await JobPersistenceService.saveRunningState(JOB_NAME, false);
     logger.info('Affiliate polling job stopped');
   }
 
@@ -428,7 +398,7 @@ export class AffiliatePollingJob {
 
     let processed = 0;
 
-    for (let i = 0; i < allRooms.length && !this.isPaused; i++) {
+    for (let i = 0; i < allRooms.length && this.isRunning; i++) {
       const room = allRooms[i];
       this.stats.progress = i + 1;
       this.stats.currentUsername = room.username;

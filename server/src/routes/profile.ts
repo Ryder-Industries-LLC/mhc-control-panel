@@ -2019,7 +2019,8 @@ router.get('/:username/communications', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Person not found' });
     }
 
-    // Get all PRIVATE_MESSAGE interactions for this person
+    // Get all PRIVATE_MESSAGE interactions involving this person (both directions)
+    // Query by metadata fromUser/toUser to get both sent and received messages
     // Use DISTINCT ON with a subquery to deduplicate messages with same content and timestamp
     // but maintain proper ORDER BY timestamp DESC for display
     const result = await query(
@@ -2033,13 +2034,16 @@ router.get('/:username/communications', async (req: Request, res: Response) => {
            metadata,
            stream_session_id
          FROM interactions
-         WHERE person_id = $1
-           AND type = 'PRIVATE_MESSAGE'
+         WHERE type = 'PRIVATE_MESSAGE'
+           AND (
+             metadata->>'fromUser' ILIKE $1
+             OR metadata->>'toUser' ILIKE $1
+           )
          ORDER BY content, DATE_TRUNC('second', timestamp), id
        ) deduped
        ORDER BY timestamp DESC
        LIMIT $2 OFFSET $3`,
-      [person.id, parseInt(limit as string), parseInt(offset as string)]
+      [username, parseInt(limit as string), parseInt(offset as string)]
     );
 
     // Get total count (deduplicated)
@@ -2047,11 +2051,14 @@ router.get('/:username/communications', async (req: Request, res: Response) => {
       `SELECT COUNT(*) as total FROM (
          SELECT DISTINCT ON (content, DATE_TRUNC('second', timestamp)) id
          FROM interactions
-         WHERE person_id = $1
-           AND type = 'PRIVATE_MESSAGE'
+         WHERE type = 'PRIVATE_MESSAGE'
+           AND (
+             metadata->>'fromUser' ILIKE $1
+             OR metadata->>'toUser' ILIKE $1
+           )
          ORDER BY content, DATE_TRUNC('second', timestamp), id
        ) deduped`,
-      [person.id]
+      [username]
     );
 
     // Classify messages

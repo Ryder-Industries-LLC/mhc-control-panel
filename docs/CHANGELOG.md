@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.25.0] - 2026-01-05
+
+### Changed
+- **Job Status Display Overhaul**: Completely redesigned job status states for clarity
+  - Removed "Pause" functionality entirely from all jobs (Profile Capture, Affiliate Polling, CBHours Polling, Statbate API)
+  - Simplified to Start/Stop controls only
+  - New status states: Stopped (gray), Starting (green), Processing (blue), Waiting (amber)
+  - "Starting" shows when job first starts and hasn't completed a cycle yet
+  - "Waiting" shows when job is between cycles (after first run completes)
+- **Social Media Link Scraping Fixes**:
+  - Now correctly detects locked vs unlocked social links
+  - Properly decodes URL-encoded external links
+  - Filters out Chaturbate's own Twitter accounts
+  - Added support for more platforms (Telegram, AllMyLinks, Linktree, Throne, WhatsApp)
+- **Communications/PMs Query**: Now fetches messages from both directions (to AND from profile user)
+- **Events API Broadcaster Fix**: Uses correct broadcaster from API response instead of hardcoded value
+
+### Added
+- **Interactions Tab Filter Chips**: Filter interactions by event type (TIP_EVENT, PRIVATE_MESSAGE, etc.)
+- **CLAUDE.md**: New project context file for Claude Code sessions
+
+### Removed
+- Pause/Resume functionality from all background jobs
+- `/api/job/*/pause` and `/api/job/*/resume` endpoints
+- `isPaused` state from job status responses
+
+---
+
 ## [1.24.0] - 2026-01-04
 
 ### Added

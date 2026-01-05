@@ -24,6 +24,8 @@ export interface ChaturbateEvent {
     | 'fanclubJoin'
     | 'mediaPurchase'
     | 'roomSubjectChange';
+  // Top-level broadcaster field - indicates whose room the event occurred in
+  broadcaster?: string;
   object: {
     user?: {
       username: string;
@@ -168,11 +170,12 @@ export class ChaturbateEventsClient {
 
   /**
    * Log event to database with deduplication
+   * Stores the COMPLETE raw event for debugging/audit purposes
    */
   private async logEvent(event: ChaturbateEvent) {
     try {
-      // broadcaster is a string field, not an object
-      const broadcaster = (event.object.broadcaster as unknown as string) || this.username;
+      // Use top-level broadcaster from API, fall back to our username
+      const broadcaster = event.broadcaster || this.username;
       const username = event.object.user?.username || broadcaster;
 
       logger.info('Logging event to database', {
@@ -183,6 +186,7 @@ export class ChaturbateEventsClient {
 
       // Use INSERT with conflict detection to prevent duplicates
       // Duplicates are same method + username within the same minute
+      // Store the COMPLETE raw event (including top-level fields like broadcaster)
       await query(
         `INSERT INTO event_logs (method, broadcaster, username, raw_event)
          SELECT $1, $2, $3, $4
@@ -193,7 +197,7 @@ export class ChaturbateEventsClient {
              AND created_at >= DATE_TRUNC('minute', NOW())
              AND created_at < DATE_TRUNC('minute', NOW()) + INTERVAL '1 minute'
          )`,
-        [event.method, broadcaster, username, JSON.stringify(event.object)]
+        [event.method, broadcaster, username, JSON.stringify(event)]
       );
 
       logger.info('Event logged successfully', { method: event.method });
@@ -334,7 +338,8 @@ export class ChaturbateEventsClient {
         ...event.object.user,
         fromUser,
         toUser,
-        broadcaster: this.username,
+        // Use broadcaster from event payload - indicates whose room PM occurred in
+        broadcaster: event.broadcaster || this.username,
       },
     }, 1); // 1 minute window for deduplication
   }

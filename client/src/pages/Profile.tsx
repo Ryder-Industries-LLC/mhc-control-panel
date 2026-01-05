@@ -129,6 +129,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [notesMessage, setNotesMessage] = useState<string | null>(null);
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
   const [noteLineLimit, setNoteLineLimit] = useState(6); // Configurable line limit for Read More
+  const [showAllNotes, setShowAllNotes] = useState(false); // Show all notes vs first 2
 
   // Profile attributes state
   const [bannedMe, setBannedMe] = useState(false);
@@ -160,6 +161,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
   // Media subtab state (images vs videos)
   const [mediaSubTab, setMediaSubTab] = useState<'images' | 'videos'>('images');
+  const [showAllImages, setShowAllImages] = useState(false);
 
   // Social links state
   const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
@@ -1181,14 +1183,58 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   {imageHistory.length > 0 && imageHistory[currentImageIndex] && (
                     <div className="text-xs text-white/90 text-center">
                       {new Date(imageHistory[currentImageIndex].observed_at).toLocaleString('en-US', {
-                        dateStyle: 'short',
-                        timeStyle: 'short'
+                        month: 'long',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit'
                       })}
                     </div>
                   )}
+                  {/* External links */}
+                  <div className="flex gap-2 text-xs mt-1">
+                    <a
+                      href={`https://chaturbate.com/${profileData.person.username}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2 py-1 bg-orange-500/40 text-orange-200 hover:bg-orange-500/60 hover:text-white rounded transition-colors font-semibold"
+                    >
+                      Chaturbate
+                    </a>
+                    <a
+                      href={`https://uncams.com/${profileData.person.username}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2 py-1 bg-cyan-500/40 text-cyan-200 hover:bg-cyan-500/60 hover:text-white rounded transition-colors font-semibold"
+                    >
+                      UN Cams
+                    </a>
+                  </div>
                 </div>
 
               <div className="flex-1">
+                {/* Last Seen (if offline) - right-aligned at top */}
+                {!isSessionLive(profileData.latestSession) && (
+                  profileData.latestSession?.observed_at ||
+                  profileData.profile?.last_seen_online ||
+                  profileData.person?.last_seen_at
+                ) && (
+                  <div className="text-right text-white/80 text-sm mb-2">
+                    Last Seen: {new Date(
+                      profileData.latestSession?.observed_at ||
+                      profileData.profile?.last_seen_online ||
+                      profileData.person?.last_seen_at
+                    ).toLocaleString('en-US', {
+                      timeZone: 'America/New_York',
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit'
+                    })} ET
+                  </div>
+                )}
+
                 {/* Username row with Following + Live/Offline status */}
                 <div className="flex items-center gap-3 mb-3 flex-wrap">
                   <h2 className="m-0 text-3xl font-bold">
@@ -1369,25 +1415,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   )}
                 </div>
 
-                {/* Last Seen (if offline) - right-aligned plain text */}
-                {!isSessionLive(profileData.latestSession) && (
-                  profileData.latestSession?.observed_at ||
-                  profileData.profile?.last_seen_online ||
-                  profileData.person?.last_seen_at
-                ) && (
-                  <div className="mt-3 text-right text-white/80 text-sm">
-                    Last Seen: {new Date(
-                      // Prioritize most accurate last seen data:
-                      // 1. Session observed_at (model was broadcasting)
-                      // 2. Profile last_seen_online (scraped data)
-                      // 3. Person last_seen_at (any interaction)
-                      profileData.latestSession?.observed_at ||
-                      profileData.profile?.last_seen_online ||
-                      profileData.person?.last_seen_at
-                    ).toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'short', timeStyle: 'short' })} ET
-                  </div>
-                )}
-
                 {/* Room Subject with extracted tags (when live) */}
                 {profileData.latestSession?.room_subject && (
                   <div className="mt-4">
@@ -1427,9 +1454,79 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 )}
               </div>
             </div>
+
+            {/* Flags - Inside profile card container, below gradient */}
+            <div className="mt-4 pt-4 border-t border-white/10">
+              <div className="flex flex-wrap items-center gap-6">
+                {/* Banned Me Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={bannedMe}
+                    onChange={handleBannedToggle}
+                    className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
+                  />
+                  <span className="text-white/80 font-medium">Banned Me</span>
+                </label>
+
+                {/* Watchlist Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={watchList}
+                    onChange={handleWatchListToggle}
+                    className="w-5 h-5 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
+                  />
+                  <span className="text-white/80 font-medium">Watchlist</span>
+                </label>
+
+                {/* Banned by Me Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={bannedByMe}
+                    onChange={handleBannedByMeToggle}
+                    className="w-5 h-5 rounded border-2 border-orange-500/50 bg-mhc-surface-light text-orange-500 focus:ring-orange-500 cursor-pointer"
+                  />
+                  <span className="text-white/80 font-medium">Banned by Me</span>
+                </label>
+              </div>
+            </div>
           </div>
 
-          {/* Media Section (Collapsible) - At top, collapsed by default */}
+          {/* Add Note Section (Collapsible) - Collapsed by default */}
+          <div className="mb-5">
+            <CollapsibleSection title="Add Note" defaultCollapsed={true} className="bg-mhc-surface">
+              <div className="flex gap-3">
+                <textarea
+                  value={newNoteContent}
+                  onChange={(e) => setNewNoteContent(e.target.value)}
+                  placeholder="Add a new note..."
+                  rows={2}
+                  className="flex-1 px-4 py-2.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                />
+                <button
+                  onClick={handleAddNote}
+                  disabled={notesSaving || !newNoteContent.trim()}
+                  className="px-5 py-2 bg-mhc-primary text-white border-none rounded-md text-sm font-semibold cursor-pointer transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed self-start"
+                >
+                  {notesSaving ? 'Adding...' : 'Add Note'}
+                </button>
+              </div>
+              {/* Status Message */}
+              {notesMessage && (
+                <div className={`text-sm mt-3 px-3 py-2 rounded ${
+                  notesMessage.includes('Error')
+                    ? 'bg-red-500/20 text-red-400'
+                    : 'bg-emerald-500/20 text-emerald-400'
+                }`}>
+                  {notesMessage}
+                </div>
+              )}
+            </CollapsibleSection>
+          </div>
+
+          {/* Media Section (Collapsible) - Expanded by default */}
           <div className="mb-5">
             <CollapsibleSection
               title={
@@ -1438,99 +1535,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   <span className="text-xs text-white/50 font-normal">({uploadedImages.length})</span>
                 </div>
               }
-              defaultCollapsed={true}
+              defaultCollapsed={false}
               className="bg-mhc-surface"
             >
-              {/* Upload Media Section */}
-              <div className="mb-6 p-4 bg-mhc-surface-light rounded-lg">
-                <h4 className="text-sm text-mhc-text-muted font-semibold uppercase tracking-wider mb-4">Upload</h4>
-                {imageUploadError && (
-                  <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm mb-4 whitespace-pre-line">
-                    {imageUploadError}
-                  </div>
-                )}
-                <div className="space-y-4">
-                  {/* Drag & Drop Zone */}
-                  <div
-                    ref={dropZoneRef}
-                    onDragEnter={handleDragEnter}
-                    onDragLeave={handleDragLeave}
-                    onDragOver={handleDragOver}
-                    onDrop={handleDrop}
-                    onClick={() => !imageUploadLoading && fileInputRef.current?.click()}
-                    className={`relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
-                      isDragging
-                        ? 'border-mhc-primary bg-mhc-primary/10'
-                        : 'border-white/20 hover:border-mhc-primary/50 hover:bg-white/5'
-                    } ${imageUploadLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/gif,image/webp"
-                      multiple
-                      onChange={e => {
-                        const files = Array.from(e.target.files || []);
-                        if (files.length > 0) handleImageUpload(files);
-                      }}
-                      disabled={imageUploadLoading}
-                      className="hidden"
-                    />
-                    <div className="flex flex-col items-center gap-2">
-                      <svg className={`w-8 h-8 ${isDragging ? 'text-mhc-primary' : 'text-white/40'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <div className="text-white/70 text-sm">
-                        {isDragging ? (
-                          <span className="text-mhc-primary font-medium">Drop images here</span>
-                        ) : (
-                          <>
-                            <span className="text-mhc-primary font-medium">Click to upload</span> or drag and drop
-                          </>
-                        )}
-                      </div>
-                      <div className="text-white/40 text-xs">
-                        JPEG, PNG, GIF, or WebP (max 10MB each)
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <select
-                      value={selectedImageSource}
-                      onChange={e => setSelectedImageSource(e.target.value as 'manual_upload' | 'screensnap' | 'external')}
-                      className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-mhc-primary"
-                    >
-                      <option value="manual_upload">Manual Upload</option>
-                      <option value="screensnap">Screen Capture</option>
-                      <option value="external">External Source</option>
-                    </select>
-                    <input
-                      type="text"
-                      value={imageDescription}
-                      onChange={e => setImageDescription(e.target.value)}
-                      placeholder="Description (optional)"
-                      className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 focus:outline-none focus:border-mhc-primary"
-                    />
-                  </div>
-
-                  {imageUploadLoading && (
-                    <div className="flex items-center gap-3 text-mhc-text-muted text-sm">
-                      <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                      </svg>
-                      {uploadProgress ? (
-                        <span>Uploading {uploadProgress.current} of {uploadProgress.total}...</span>
-                      ) : (
-                        <span>Uploading...</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Media Section with Tabs */}
+              {/* Media Section with Tabs - Now at top */}
               {(() => {
                 const images = uploadedImages.filter(img => img.media_type !== 'video');
                 const videos = uploadedImages.filter(img => img.media_type === 'video');
@@ -1565,8 +1573,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     {mediaSubTab === 'images' && (
                       <div>
                         {images.length > 0 ? (
+                          <>
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                            {images.map((image, index) => {
+                            {(showAllImages ? images : images.slice(0, 12)).map((image, index) => {
                               const imageUrl = image.source === 'affiliate_api'
                                 ? `/images/${image.file_path}`
                                 : `/images/profiles/${image.file_path}`;
@@ -1675,6 +1684,18 @@ const Profile: React.FC<ProfilePageProps> = () => {
                               );
                             })}
                           </div>
+                          {/* Show More button */}
+                          {images.length > 12 && (
+                            <div className="mt-4 text-center">
+                              <button
+                                onClick={() => setShowAllImages(!showAllImages)}
+                                className="px-4 py-2 text-sm font-medium text-mhc-primary hover:text-white hover:bg-mhc-primary/20 rounded-lg transition-colors"
+                              >
+                                {showAllImages ? `Show Less` : `Show All (${images.length})`}
+                              </button>
+                            </div>
+                          )}
+                          </>
                         ) : imageUploadLoading ? (
                           <div className="flex items-center justify-center py-8">
                             <div className="text-mhc-text-muted text-sm">Loading images...</div>
@@ -1749,112 +1770,218 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   </div>
                 );
               })()}
+
+              {/* Upload Section - Nested CollapsibleSection, collapsed by default */}
+              <div className="mt-4">
+                <CollapsibleSection title="Upload Media" defaultCollapsed={true} className="bg-mhc-surface-light">
+                  {imageUploadError && (
+                    <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm mb-4 whitespace-pre-line">
+                      {imageUploadError}
+                    </div>
+                  )}
+                  <div className="space-y-4">
+                    {/* Drag & Drop Zone */}
+                    <div
+                      ref={dropZoneRef}
+                      onDragEnter={handleDragEnter}
+                      onDragLeave={handleDragLeave}
+                      onDragOver={handleDragOver}
+                      onDrop={handleDrop}
+                      onClick={() => !imageUploadLoading && fileInputRef.current?.click()}
+                      className={`relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
+                        isDragging
+                          ? 'border-mhc-primary bg-mhc-primary/10'
+                          : 'border-white/20 hover:border-mhc-primary/50 hover:bg-white/5'
+                      } ${imageUploadLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/gif,image/webp"
+                        multiple
+                        onChange={e => {
+                          const files = Array.from(e.target.files || []);
+                          if (files.length > 0) handleImageUpload(files);
+                        }}
+                        disabled={imageUploadLoading}
+                        className="hidden"
+                      />
+                      <div className="flex flex-col items-center gap-2">
+                        <svg className={`w-8 h-8 ${isDragging ? 'text-mhc-primary' : 'text-white/40'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        <div className="text-white/70 text-sm">
+                          {isDragging ? (
+                            <span className="text-mhc-primary font-medium">Drop images here</span>
+                          ) : (
+                            <>
+                              <span className="text-mhc-primary font-medium">Click to upload</span> or drag and drop
+                            </>
+                          )}
+                        </div>
+                        <div className="text-white/40 text-xs">
+                          JPEG, PNG, GIF, or WebP (max 10MB each)
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <select
+                        value={selectedImageSource}
+                        onChange={e => setSelectedImageSource(e.target.value as 'manual_upload' | 'screensnap' | 'external')}
+                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-mhc-primary"
+                      >
+                        <option value="manual_upload">Manual Upload</option>
+                        <option value="screensnap">Screen Capture</option>
+                        <option value="external">External Source</option>
+                      </select>
+                      <input
+                        type="text"
+                        value={imageDescription}
+                        onChange={e => setImageDescription(e.target.value)}
+                        placeholder="Description (optional)"
+                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 focus:outline-none focus:border-mhc-primary"
+                      />
+                    </div>
+
+                    {imageUploadLoading && (
+                      <div className="flex items-center gap-3 text-mhc-text-muted text-sm">
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        {uploadProgress ? (
+                          <span>Uploading {uploadProgress.current} of {uploadProgress.total}...</span>
+                        ) : (
+                          <span>Uploading...</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </CollapsibleSection>
+              </div>
             </CollapsibleSection>
           </div>
 
-          {/* Names Section (Collapsible) */}
+          {/* Relationship & Names Section (Collapsible) - Combined */}
           <div className="mb-5">
             <CollapsibleSection
               title={
                 <div className="flex items-center gap-2">
-                  <span>Names</span>
-                  {(profileNames?.irl_name || profileNames?.identity_name || (profileNames?.address_as && profileNames.address_as.length > 0)) && (
+                  <span>Relationship & Names</span>
+                  {/* Show identity/irl name in title if set */}
+                  {(profileNames?.identity_name || profileNames?.irl_name) && (
                     <span className="text-xs text-white/50 font-normal">
-                      {profileNames?.identity_name || profileNames?.irl_name || `${profileNames?.address_as?.length} terms`}
+                      ({profileNames?.identity_name || profileNames?.irl_name})
+                    </span>
+                  )}
+                  {/* Show relationship status if set */}
+                  {relationship && relationship.roles.length > 0 && (
+                    <span className="text-xs text-mhc-primary font-normal">
+                      {relationship.roles.join(', ')}{relationship.status !== 'Potential' ? ` - ${relationship.status}` : ''}
                     </span>
                   )}
                 </div>
               }
-              defaultCollapsed={true}
+              defaultCollapsed={!relationship || relationship.roles.length === 0}
               className="bg-mhc-surface"
             >
-              {profileNamesLoading ? (
-                <div className="text-white/50 text-sm py-4 text-center">Loading...</div>
-              ) : (
-                <NamesEditor
-                  names={profileNames}
-                  addressTermSeeds={addressTermSeeds}
-                  onSave={handleSaveNames}
-                />
-              )}
-            </CollapsibleSection>
-          </div>
+              {/* Relationship Subsection */}
+              <div className="mb-4">
+                <CollapsibleSection
+                  title="Relationship"
+                  defaultCollapsed={true}
+                  className="bg-mhc-surface-light"
+                >
+                  {relationshipLoading ? (
+                    <div className="text-white/50 text-sm py-4 text-center">Loading...</div>
+                  ) : (
+                    <div className="space-y-4">
+                      <RelationshipEditor
+                        relationship={relationship}
+                        traitSeeds={traitSeeds}
+                        onSave={handleSaveRelationship}
+                      />
+                      {relationship && profileData?.person?.username && (
+                        <RelationshipHistoryViewer
+                          username={profileData.person.username}
+                        />
+                      )}
+                    </div>
+                  )}
+                </CollapsibleSection>
+              </div>
 
-          {/* Relationship Section (Collapsible) - Unified */}
-          <div className="mb-5">
-            <CollapsibleSection
-              title={
-                <div className="flex items-center gap-2">
-                  <span>Relationship</span>
-                  {relationship && (
-                    <span className="text-xs text-white/50 font-normal">
-                      ({relationship.roles.join(', ')}{relationship.status !== 'Potential' ? ` - ${relationship.status}` : ''})
-                    </span>
-                  )}
-                </div>
-              }
-              defaultCollapsed={false}
-              className="bg-mhc-surface"
-            >
-              {relationshipLoading ? (
-                <div className="text-white/50 text-sm py-4 text-center">Loading...</div>
-              ) : (
-                <div className="space-y-4">
-                  <RelationshipEditor
-                    relationship={relationship}
-                    traitSeeds={traitSeeds}
-                    onSave={handleSaveRelationship}
-                  />
-                  {relationship && profileData?.person?.username && (
-                    <RelationshipHistoryViewer
-                      username={profileData.person.username}
+              {/* Names Subsection */}
+              <div className="mb-4">
+                <CollapsibleSection
+                  title={
+                    <div className="flex items-center gap-2">
+                      <span>Names</span>
+                      {(profileNames?.irl_name || profileNames?.identity_name || (profileNames?.address_as && profileNames.address_as.length > 0)) && (
+                        <span className="text-xs text-white/50 font-normal">
+                          {profileNames?.address_as?.length ? `${profileNames.address_as.length} terms` : ''}
+                        </span>
+                      )}
+                    </div>
+                  }
+                  defaultCollapsed={true}
+                  className="bg-mhc-surface-light"
+                >
+                  {profileNamesLoading ? (
+                    <div className="text-white/50 text-sm py-4 text-center">Loading...</div>
+                  ) : (
+                    <NamesEditor
+                      names={profileNames}
+                      addressTermSeeds={addressTermSeeds}
+                      onSave={handleSaveNames}
                     />
                   )}
+                </CollapsibleSection>
+              </div>
+
+              {/* Legacy Service Relationships Subsection - Only show if exists */}
+              {serviceRelationships.length > 0 && (
+                <div>
+                  <CollapsibleSection
+                    title={
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/50">Legacy Relationships</span>
+                        <span className="text-xs text-white/30 font-normal">(deprecated)</span>
+                      </div>
+                    }
+                    defaultCollapsed={true}
+                    className="bg-mhc-surface-light opacity-60"
+                  >
+                    <div className="space-y-4">
+                      {serviceRelationships.filter(r => r.service_role === 'sub').length > 0 && (
+                        <div>
+                          <h4 className="text-sm text-white/60 mb-2">Sub</h4>
+                          <ServiceRelationshipEditor
+                            relationships={serviceRelationships.filter(r => r.service_role === 'sub')}
+                            onSave={handleSaveServiceRelationship}
+                            onRemove={handleRemoveServiceRelationship}
+                            defaultRole="sub"
+                          />
+                        </div>
+                      )}
+                      {serviceRelationships.filter(r => r.service_role === 'dom').length > 0 && (
+                        <div>
+                          <h4 className="text-sm text-white/60 mb-2">Dom</h4>
+                          <ServiceRelationshipEditor
+                            relationships={serviceRelationships.filter(r => r.service_role === 'dom')}
+                            onSave={handleSaveServiceRelationship}
+                            onRemove={handleRemoveServiceRelationship}
+                            defaultRole="dom"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </CollapsibleSection>
                 </div>
               )}
             </CollapsibleSection>
           </div>
-
-          {/* Legacy Service Relationships Section (Collapsible) - Hidden by default during transition */}
-          {serviceRelationships.length > 0 && (
-            <div className="mb-5">
-              <CollapsibleSection
-                title={
-                  <div className="flex items-center gap-2">
-                    <span className="text-white/50">Legacy Relationships</span>
-                    <span className="text-xs text-white/30 font-normal">(deprecated)</span>
-                  </div>
-                }
-                defaultCollapsed={true}
-                className="bg-mhc-surface opacity-60"
-              >
-                <div className="space-y-4">
-                  {serviceRelationships.filter(r => r.service_role === 'sub').length > 0 && (
-                    <div>
-                      <h4 className="text-sm text-white/60 mb-2">Sub</h4>
-                      <ServiceRelationshipEditor
-                        relationships={serviceRelationships.filter(r => r.service_role === 'sub')}
-                        onSave={handleSaveServiceRelationship}
-                        onRemove={handleRemoveServiceRelationship}
-                        defaultRole="sub"
-                      />
-                    </div>
-                  )}
-                  {serviceRelationships.filter(r => r.service_role === 'dom').length > 0 && (
-                    <div>
-                      <h4 className="text-sm text-white/60 mb-2">Dom</h4>
-                      <ServiceRelationshipEditor
-                        relationships={serviceRelationships.filter(r => r.service_role === 'dom')}
-                        onSave={handleSaveServiceRelationship}
-                        onRemove={handleRemoveServiceRelationship}
-                        defaultRole="dom"
-                      />
-                    </div>
-                  )}
-                </div>
-              </CollapsibleSection>
-            </div>
-          )}
 
           {/* Notes Section (Collapsible) */}
           <div className="mb-5">
@@ -1870,43 +1997,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
               defaultCollapsed={false}
               className="bg-mhc-surface"
             >
-              {/* Add New Note */}
-              <div className="flex gap-3 mb-4">
-                <textarea
-                  value={newNoteContent}
-                  onChange={(e) => setNewNoteContent(e.target.value)}
-                  placeholder="Add a new note..."
-                  rows={2}
-                  className="flex-1 px-4 py-2.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                />
-                <button
-                  onClick={handleAddNote}
-                  disabled={notesSaving || !newNoteContent.trim()}
-                  className="px-5 py-2 bg-mhc-primary text-white border-none rounded-md text-sm font-semibold cursor-pointer transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed self-start"
-                >
-                  {notesSaving ? 'Adding...' : 'Add Note'}
-                </button>
-              </div>
-
-              {/* Status Message */}
-              {notesMessage && (
-                <div className={`text-sm mb-3 px-3 py-2 rounded ${
-                  notesMessage.includes('Error')
-                    ? 'bg-red-500/20 text-red-400'
-                    : 'bg-emerald-500/20 text-emerald-400'
-                }`}>
-                  {notesMessage}
-                </div>
-              )}
-
               {/* Notes List */}
               {notesLoading ? (
                 <div className="text-white/50 text-sm py-4 text-center">Loading notes...</div>
               ) : profileNotes.length === 0 ? (
-                <div className="text-white/50 text-sm py-4 text-center">No notes yet. Add one above.</div>
+                <div className="text-white/50 text-sm py-4 text-center">No notes yet. Use the "Add Note" section to create one.</div>
               ) : (
                 <div className="space-y-3">
-                  {profileNotes.map((note) => (
+                  {(showAllNotes ? profileNotes : profileNotes.slice(0, 2)).map((note, noteIndex) => (
                     <div key={note.id} className="bg-mhc-surface-light rounded-md p-4 border border-white/10">
                       {editingNoteId === note.id ? (
                         /* Editing Mode */
@@ -2019,47 +2117,20 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       )}
                     </div>
                   ))}
+                  {/* Show More Notes button */}
+                  {profileNotes.length > 2 && (
+                    <div className="mt-4 text-center">
+                      <button
+                        onClick={() => setShowAllNotes(!showAllNotes)}
+                        className="px-4 py-2 text-sm font-medium text-mhc-primary hover:text-mhc-primary-light border border-mhc-primary/30 rounded-md hover:bg-mhc-primary/10 transition-colors"
+                      >
+                        {showAllNotes ? 'Show Less' : `Show All Notes (${profileNotes.length})`}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </CollapsibleSection>
-          </div>
-
-          {/* Flags - Always visible at bottom of profile overview */}
-          <div className="mb-5 p-4 bg-mhc-surface rounded-lg border border-white/10">
-            <div className="flex flex-wrap items-center gap-6">
-              {/* Banned Me Toggle */}
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={bannedMe}
-                  onChange={handleBannedToggle}
-                  className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
-                />
-                <span className="text-mhc-text font-medium">Banned Me</span>
-              </label>
-
-              {/* Watchlist Toggle */}
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={watchList}
-                  onChange={handleWatchListToggle}
-                  className="w-5 h-5 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
-                />
-                <span className="text-mhc-text font-medium">Watchlist</span>
-              </label>
-
-              {/* Banned by Me Toggle */}
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={bannedByMe}
-                  onChange={handleBannedByMeToggle}
-                  className="w-5 h-5 rounded border-2 border-orange-500/50 bg-mhc-surface-light text-orange-500 focus:ring-orange-500 cursor-pointer"
-                />
-                <span className="text-mhc-text font-medium">Banned by Me</span>
-              </label>
-            </div>
           </div>
 
           {/* Communications Section (Collapsible) */}
@@ -2070,47 +2141,61 @@ const Profile: React.FC<ProfilePageProps> = () => {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 bg-mhc-surface rounded-t-lg pt-2.5 px-2.5 shadow-lg flex-wrap">
-            <button
-              className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
-                activeTab === 'snapshot'
-                  ? 'bg-mhc-primary text-white'
-                  : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
-              }`}
-              onClick={() => setActiveTab('snapshot')}
-            >
-              Profile
-            </button>
-            <button
-              className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
-                activeTab === 'sessions'
-                  ? 'bg-mhc-primary text-white'
-                  : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
-              }`}
-              onClick={() => setActiveTab('sessions')}
-            >
-              Sessions
-            </button>
-            <button
-              className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
-                activeTab === 'interactions'
-                  ? 'bg-mhc-primary text-white'
-                  : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
-              }`}
-              onClick={() => setActiveTab('interactions')}
-            >
-              Interactions
-            </button>
-            <button
-              className={`px-6 py-3 border-none bg-transparent text-base font-medium cursor-pointer rounded-t-md transition-all ${
-                activeTab === 'timeline'
-                  ? 'bg-mhc-primary text-white'
-                  : 'text-mhc-text-muted hover:bg-mhc-surface-light hover:text-mhc-text'
-              }`}
-              onClick={() => setActiveTab('timeline')}
-            >
-              Timeline
-            </button>
+          <div className="bg-mhc-surface rounded-t-lg pt-2.5 px-2.5 shadow-lg border-b border-white/10">
+            <div className="flex gap-1 flex-wrap">
+              <button
+                className={`px-6 py-3 text-base font-medium cursor-pointer transition-all relative ${
+                  activeTab === 'snapshot'
+                    ? 'text-mhc-primary'
+                    : 'text-mhc-text-muted hover:text-mhc-text'
+                }`}
+                onClick={() => setActiveTab('snapshot')}
+              >
+                Profile
+                {activeTab === 'snapshot' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-mhc-primary rounded-t" />
+                )}
+              </button>
+              <button
+                className={`px-6 py-3 text-base font-medium cursor-pointer transition-all relative ${
+                  activeTab === 'sessions'
+                    ? 'text-mhc-primary'
+                    : 'text-mhc-text-muted hover:text-mhc-text'
+                }`}
+                onClick={() => setActiveTab('sessions')}
+              >
+                Sessions
+                {activeTab === 'sessions' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-mhc-primary rounded-t" />
+                )}
+              </button>
+              <button
+                className={`px-6 py-3 text-base font-medium cursor-pointer transition-all relative ${
+                  activeTab === 'interactions'
+                    ? 'text-mhc-primary'
+                    : 'text-mhc-text-muted hover:text-mhc-text'
+                }`}
+                onClick={() => setActiveTab('interactions')}
+              >
+                Interactions
+                {activeTab === 'interactions' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-mhc-primary rounded-t" />
+                )}
+              </button>
+              <button
+                className={`px-6 py-3 text-base font-medium cursor-pointer transition-all relative ${
+                  activeTab === 'timeline'
+                    ? 'text-mhc-primary'
+                    : 'text-mhc-text-muted hover:text-mhc-text'
+                }`}
+                onClick={() => setActiveTab('timeline')}
+              >
+                Timeline
+                {activeTab === 'timeline' && (
+                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-mhc-primary rounded-t" />
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Tab Content */}
@@ -2121,26 +2206,27 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 {(profileData.latestSession || profileData.latestSnapshot) ? (
                   <div className="space-y-6">
                     {/* Basic Info Section */}
-                    <div>
-                      <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">
-                        {isSessionLive(profileData.latestSession) ? 'LIVE SESSION' : 'LAST SESSION'}
-                      </h4>
+                    <CollapsibleSection
+                      title={isSessionLive(profileData.latestSession) ? 'Live Session' : 'Last Session'}
+                      defaultCollapsed={false}
+                      className="bg-mhc-surface-light"
+                    >
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         {profileData.latestSession && (
                           <>
-                            <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                            <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
                               <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Viewers:</span>
                               <span className="block text-mhc-text text-lg font-semibold">{(profileData.latestSession.num_users || 0).toLocaleString()}</span>
                             </div>
-                            <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                            <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
                               <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Followers:</span>
                               <span className="block text-mhc-text text-lg font-semibold">{(profileData.latestSession.num_followers || 0).toLocaleString()}</span>
                             </div>
-                            <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                            <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
                               <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Current Show:</span>
                               <span className="block text-mhc-text text-base">{profileData.latestSession.current_show || 'Public'}</span>
                             </div>
-                            <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                            <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
                               <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Online Duration:</span>
                               <span className="block text-mhc-text text-base">{formatDuration(Math.floor(profileData.latestSession.seconds_online / 60))}</span>
                             </div>
@@ -2149,34 +2235,33 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       </div>
                       {/* Room Subject - Full Width */}
                       {profileData.latestSession?.room_subject && (
-                        <div className="mt-4 p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                        <div className="mt-4 p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
                           <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Room Subject:</span>
                           <span className="block text-mhc-text text-base">{profileData.latestSession.room_subject}</span>
                         </div>
                       )}
-                    </div>
+                    </CollapsibleSection>
 
                     {/* Financial Section */}
                     {profileData.latestSnapshot?.normalized_metrics && (
                       (profileData.latestSnapshot.normalized_metrics.income_usd !== undefined ||
                        profileData.latestSnapshot.normalized_metrics.income_tokens !== undefined) && (
-                        <div>
-                          <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">Financial</h4>
+                        <CollapsibleSection title="Financial" defaultCollapsed={true} className="bg-mhc-surface-light">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {profileData.latestSnapshot.normalized_metrics.income_usd !== undefined && (
-                              <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-emerald-500">
+                              <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-emerald-500">
                                 <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Income (USD):</span>
                                 <span className="block text-emerald-400 text-xl font-bold">${profileData.latestSnapshot.normalized_metrics.income_usd.toLocaleString()}</span>
                               </div>
                             )}
                             {profileData.latestSnapshot.normalized_metrics.income_tokens !== undefined && (
-                              <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-yellow-500">
+                              <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-yellow-500">
                                 <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Income (Tokens):</span>
                                 <span className="block text-yellow-400 text-xl font-bold">{profileData.latestSnapshot.normalized_metrics.income_tokens.toLocaleString()}</span>
                               </div>
                             )}
                           </div>
-                        </div>
+                        </CollapsibleSection>
                       )
                     )}
 
@@ -2185,112 +2270,116 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       (profileData.latestSnapshot.normalized_metrics.session_count !== undefined ||
                        profileData.latestSnapshot.normalized_metrics.total_duration_minutes !== undefined ||
                        profileData.latestSnapshot.normalized_metrics.average_duration_minutes !== undefined) && (
-                        <div>
-                          <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">Session Statistics</h4>
+                        <CollapsibleSection title="Session Statistics" defaultCollapsed={true} className="bg-mhc-surface-light">
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             {profileData.latestSnapshot.normalized_metrics.session_count !== undefined && (
-                              <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                              <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
                                 <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Session Count:</span>
                                 <span className="block text-mhc-text text-lg font-semibold">{profileData.latestSnapshot.normalized_metrics.session_count}</span>
                               </div>
                             )}
                             {profileData.latestSnapshot.normalized_metrics.total_duration_minutes !== undefined && (
-                              <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                              <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
                                 <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Total Duration:</span>
                                 <span className="block text-mhc-text text-lg font-semibold">{formatDuration(profileData.latestSnapshot.normalized_metrics.total_duration_minutes)}</span>
                               </div>
                             )}
                             {profileData.latestSnapshot.normalized_metrics.average_duration_minutes !== undefined && (
-                              <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                              <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
                                 <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Avg Duration:</span>
                                 <span className="block text-mhc-text text-lg font-semibold">{formatDuration(profileData.latestSnapshot.normalized_metrics.average_duration_minutes)}</span>
                               </div>
                             )}
                           </div>
-                        </div>
+                        </CollapsibleSection>
                       )
                     )}
 
                     {/* Tags Section */}
                     {((profileData.latestSession?.tags && profileData.latestSession.tags.length > 0) ||
                       (profileData.profile?.tags && profileData.profile.tags.length > 0)) && (
-                      <div>
-                        <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">Tags</h4>
+                      <CollapsibleSection title="Tags" defaultCollapsed={true} className="bg-mhc-surface-light">
                         <div className="flex flex-wrap gap-2">
                           {(profileData.latestSession?.tags || profileData.profile?.tags || []).map((tag: string, idx: number) => (
                             <span key={idx} className="px-3 py-1 bg-mhc-primary/20 text-mhc-primary border border-mhc-primary/30 rounded-full text-sm">{tag}</span>
                           ))}
                         </div>
-                      </div>
+                      </CollapsibleSection>
                     )}
 
                     {/* Data Sources Section */}
-                    <div>
-                      <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">Data Sources</h4>
+                    <CollapsibleSection title="Data Sources" defaultCollapsed={true} className="bg-mhc-surface-light">
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {profileData.latestSession && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-gray-500">
+                          <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-gray-500">
                             <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Affiliate API:</span>
                             <span className="block text-mhc-text text-sm">{new Date(profileData.latestSession.observed_at).toLocaleString()}</span>
                           </div>
                         )}
                         {profileData.latestSnapshot && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-gray-500">
+                          <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-gray-500">
                             <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Statbate:</span>
                             <span className="block text-mhc-text text-sm">{new Date(profileData.latestSnapshot.captured_at).toLocaleDateString()}</span>
                           </div>
                         )}
                         {profileData.profile?.scraped_at && (
-                          <div className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-gray-500">
+                          <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-gray-500">
                             <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Profile Scraper:</span>
                             <span className="block text-mhc-text text-sm">{new Date(profileData.profile.scraped_at).toLocaleString()}</span>
                           </div>
                         )}
                       </div>
-                    </div>
+                    </CollapsibleSection>
 
                     {/* Profile Details Section - merged from old Profile tab */}
-                    <div>
-                      <h4 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3">Profile Details</h4>
-                      <p className="text-mhc-text-muted text-xs mb-4">Static bio from Chaturbate profile</p>
+                    <CollapsibleSection
+                      title={
+                        <div className="flex items-center gap-2">
+                          <span>Profile Details</span>
+                          <span className="text-xs text-white/40 font-normal">(Static bio from Chaturbate)</span>
+                        </div>
+                      }
+                      defaultCollapsed={true}
+                      className="bg-mhc-surface-light"
+                    >
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                        <div className="p-4 bg-mhc-surface rounded-md">
                           <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Display Name:</span>
                           <span className={`block text-base ${profileData.profile?.display_name ? 'text-mhc-text' : 'text-white/30 italic'}`}>
                             {profileData.profile?.display_name || 'Not set'}
                           </span>
                         </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                        <div className="p-4 bg-mhc-surface rounded-md">
                           <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Age:</span>
                           <span className={`block text-base ${profileData.profile?.age ? 'text-mhc-text' : 'text-white/30 italic'}`}>
                             {profileData.profile?.age || 'Not set'}
                           </span>
                         </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                        <div className="p-4 bg-mhc-surface rounded-md">
                           <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Gender:</span>
                           <span className={`block text-base ${profileData.profile?.gender ? 'text-mhc-text' : 'text-white/30 italic'}`}>
                             {profileData.profile?.gender ? formatGender(profileData.profile.gender) : 'Not set'}
                           </span>
                         </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                        <div className="p-4 bg-mhc-surface rounded-md">
                           <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Location:</span>
                           <span className={`block text-base ${profileData.profile?.location ? 'text-mhc-text' : 'text-white/30 italic'}`}>
                             {profileData.profile?.location || 'Not set'}
                           </span>
                         </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                        <div className="p-4 bg-mhc-surface rounded-md">
                           <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Country:</span>
                           <span className={`block text-base ${profileData.profile?.country ? 'text-mhc-text' : 'text-white/30 italic'}`}>
                             {profileData.profile?.country || 'Not set'}
                           </span>
                         </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                        <div className="p-4 bg-mhc-surface rounded-md">
                           <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Languages:</span>
                           <span className={`block text-base ${profileData.profile?.spoken_languages ? 'text-mhc-text' : 'text-white/30 italic'}`}>
                             {profileData.profile?.spoken_languages || 'Not set'}
                           </span>
                         </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                        <div className="p-4 bg-mhc-surface rounded-md">
                           <span className="block font-semibold text-mhc-text-muted text-sm mb-1">New Model:</span>
                           <span className={`block text-base ${profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined ? 'text-mhc-text' : 'text-white/30 italic'}`}>
                             {profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined
@@ -2298,7 +2387,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                               : 'Unknown'}
                           </span>
                         </div>
-                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                        <div className="p-4 bg-mhc-surface rounded-md">
                           <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Broadcast:</span>
                           <span className={`block text-base ${profileData.profile?.last_broadcast ? 'text-mhc-text' : 'text-white/30 italic'}`}>
                             {profileData.profile?.last_broadcast
@@ -2308,14 +2397,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
                         </div>
                       </div>
                       {profileData.profile?.bio && (
-                        <div className="mt-4 p-4 bg-mhc-surface-light rounded-md">
+                        <div className="mt-4 p-4 bg-mhc-surface rounded-md">
                           <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Bio:</span>
                           <p className="mt-2 mb-0 leading-relaxed text-mhc-text">
                             {profileData.profile.bio}
                           </p>
                         </div>
                       )}
-                    </div>
+                    </CollapsibleSection>
 
                     {/* Social Media Links Section */}
                     <CollapsibleSection title="Social Media Links" defaultCollapsed={true}>
@@ -2334,7 +2423,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     </CollapsibleSection>
 
                     {/* Member History Section - merged from old History tab */}
-                    <CollapsibleSection title="Member History (Statbate)" defaultCollapsed={true}>
+                    <CollapsibleSection title="Member History (Statbate)" defaultCollapsed={false}>
                       <HistoryTab username={profileData.person.username} />
                     </CollapsibleSection>
 

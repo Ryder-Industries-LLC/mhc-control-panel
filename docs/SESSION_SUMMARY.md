@@ -1,70 +1,105 @@
-# Session Summary - v1.24.0
+# Session Summary - v1.25.0
 
-**Date**: 2026-01-04
+**Date**: 2026-01-05
 
 ## What Was Accomplished
 
-### 1. Bulk Image Upload Feature
+### 1. Job Status Display Overhaul
 
-Added a new "Bulk Upload" tab in Admin that allows uploading multiple images at once, with automatic username parsing from filenames.
+Completely redesigned how job status is displayed and controlled in the Admin UI.
 
-#### Backend Endpoints (`server/src/routes/profile.ts`)
-- **`POST /api/profile/bulk/validate-usernames`**: Validates an array of usernames and returns which exist
-- **`POST /api/profile/bulk/upload`**: Accepts up to 100 images via multipart form data, parses usernames from filenames, saves to matching users
+#### Changes Made
 
-#### Frontend UI (`client/src/pages/Admin.tsx`)
-- New "Bulk Upload" tab with drag & drop file zone
-- Automatic username parsing: `username.ext` or `username-suffix.ext`
-- Preview step showing which usernames were found/not found
-- Groups files by username with file counts
-- Upload progress indicator and results summary
-- Skips unknown usernames and reports in summary
+**Removed Pause Functionality:**
+- Removed `isPaused` state from all job files
+- Removed pause/resume API endpoints from `routes/job.ts`
+- Removed pause/resume handlers from Admin UI
+- Simplified to just Start/Stop controls
 
-### 2. Admin Jobs UI Improvements
+**New Status States:**
+- **Stopped** (gray): Job is not running
+- **Starting** (green): Job just started, waiting for first cycle
+- **Processing** (blue): Job is actively working
+- **Waiting** (amber): Job is between cycles, waiting for next run
 
-- Renamed "Statbate Refresh" to "Statbate API"
-- Created `JobStatusButton` component for unified job status and control buttons
-- Fixed styling inconsistencies across different job types
-- Made username bold in progress indicators
-- Removed duplicate progress indicators from expanded sections
+**Implementation:**
+- Added `hasRun` logic using `stats.totalRuns > 0` to differentiate Starting from Waiting
+- Updated `JobStatusButton` component with new state logic
+- Updated `getSimpleStatusBadge` function for consistent status display
 
-### 3. Profile Scrape Job Cookie Timing Fix
+#### Files Modified
+- `server/src/jobs/profile-scrape.job.ts` - Removed isPaused
+- `server/src/jobs/affiliate-polling.job.ts` - Removed isPaused
+- `server/src/jobs/cbhours-polling.job.ts` - Removed isPaused
+- `server/src/jobs/statbate-refresh.job.ts` - Removed isPaused
+- `server/src/routes/job.ts` - Removed pause/resume endpoints
+- `server/src/routes/system.ts` - Removed isPaused from status responses
+- `server/src/services/job-persistence.service.ts` - Deprecated isPaused
+- `client/src/pages/Admin.tsx` - Updated UI components
 
-Modified `profile-scrape.job.ts` to not block startup if cookies aren't available:
-- Job now starts even without cookies
-- Checks for cookies at the start of each `runScrape()` cycle
-- Logs a warning if cookies are not yet imported
+### 2. Social Media Link Scraping Fixes
 
-## Key Files Modified
+Fixed issues with social media link parsing in profile scraper.
 
-### Backend
-- `server/src/routes/profile.ts` - Added bulk upload and username validation endpoints
-- `server/src/jobs/profile-scrape.job.ts` - Fixed cookies timing issue
-- `server/src/jobs/affiliate-polling.job.ts` - Minor updates
-- `server/src/jobs/statbate-refresh.job.ts` - Renamed in UI
-- `server/src/routes/job.ts` - Job control updates
-- `server/src/services/job-restore.service.ts` - Service updates
-- `server/src/index.ts` - Startup flow updates
-- `server/src/worker.ts` - Worker updates
+#### Changes Made
+- Added detection for locked vs unlocked social links
+- Properly decode URL-encoded external links
+- Filter out Chaturbate's own Twitter accounts
+- Added support for more platforms (Telegram, AllMyLinks, Linktree, etc.)
 
-### Frontend
-- `client/src/pages/Admin.tsx` - Added Bulk Upload tab, JobStatusButton component, UI improvements
-- `client/src/pages/Jobs.tsx` - Minor updates
+#### File Modified
+- `server/src/services/chaturbate-scraper.service.ts`
+
+### 3. Communications/PMs Fixes
+
+Fixed the Communications tab to show complete PM conversations.
+
+#### Changes Made
+- Query now fetches messages by `metadata->>'fromUser'` OR `metadata->>'toUser'`
+- Fixed broadcaster field in Events API to use actual broadcaster from response
+
+#### Files Modified
+- `server/src/routes/profile.ts` - Updated PM query
+- `server/src/api/chaturbate/events-client.ts` - Fixed broadcaster attribution
+
+### 4. Interactions Tab Filter Chips
+
+Added filter functionality to the Interactions tab.
+
+#### Changes Made
+- Added filter chips for event types (TIP_EVENT, PRIVATE_MESSAGE, etc.)
+- Multi-select support for filtering
+
+#### File Modified
+- `client/src/components/profile/InteractionsTab.tsx`
+
+### 5. Documentation Updates
+
+Created and updated project documentation.
+
+#### Files Created/Updated
+- `CLAUDE.md` - New project context file for Claude Code sessions
+- `docs/CHANGELOG.md` - Added v1.25.0 entry
+- `docs/SESSION_SUMMARY.md` - This file
+- `docs/TODO.md` - Updated completed items
+- `docs/AGENTS.md` - Updated current status
 
 ## Current State
 
-- Both client and server build successfully
+- All code changes compile successfully
+- Server and client builds pass
 - Docker containers ready for rebuild
-- All changes tested for compilation
+- All changes committed and tagged as v1.25.0
+
+## Key Decisions Made
+
+1. **Removed Pause entirely** - Pause was confusing and rarely used. Simpler Start/Stop model is clearer.
+2. **Added "Waiting" state** - Distinguishes between "just started" and "waiting between cycles"
+3. **Deprecated isPaused in DB** - Left field in schema for backwards compatibility but always sets to false
 
 ## Next Steps
 
-1. Test bulk upload feature in browser
-2. Verify cookie-less startup for profile scrape job
-3. Test image uploads with various filename formats
-
-## File Naming Convention for Bulk Upload
-
-- `username.ext` → uploads to user "username"
-- `username-suffix.ext` → uploads to user "username" (suffix ignored)
-- Supported formats: `.jpg`, `.jpeg`, `.png`, `.gif`, `.webp`
+1. Monitor job status display in production
+2. Test social media link scraping with various profiles
+3. Verify PM threading shows correctly in Communications tab
+4. Consider adding more event type filters to Interactions tab

@@ -38,7 +38,6 @@ export interface StatbateRefreshConfig {
 
 export class StatbateRefreshJob {
   private isRunning = false;
-  private isPaused = false;
   private isProcessing = false;
   private intervalId: NodeJS.Timeout | null = null;
   private config: StatbateRefreshConfig = {
@@ -88,7 +87,6 @@ export class StatbateRefreshJob {
     const state = await JobPersistenceService.loadState(JOB_NAME);
     if (state) {
       this.isRunning = state.is_running;
-      this.isPaused = state.is_paused;
       if (state.config) {
         this.config = { ...this.config, ...state.config };
       }
@@ -125,14 +123,9 @@ export class StatbateRefreshJob {
     }
 
     // If job was running, restart it
-    if (state.is_running && !state.is_paused) {
+    if (state.is_running) {
       logger.info('Restoring statbate-refresh job to running state');
       await this.start();
-      return true;
-    } else if (state.is_running && state.is_paused) {
-      logger.info('Restoring statbate-refresh job to paused state');
-      this.isRunning = true;
-      this.isPaused = true;
       return true;
     }
 
@@ -141,11 +134,15 @@ export class StatbateRefreshJob {
 
   /**
    * Get job status
+   * Status states:
+   * - Stopped: isRunning=false
+   * - Starting: isRunning=true, isProcessing=false (just started, waiting for first cycle)
+   * - Processing: isRunning=true, isProcessing=true (actively working)
+   * - Waiting: isRunning=true, isProcessing=false (between cycles)
    */
   getStatus() {
     return {
       isRunning: this.isRunning,
-      isPaused: this.isPaused,
       isProcessing: this.isProcessing,
       intervalMinutes: this.config.intervalMinutes,
       config: this.config,
@@ -175,7 +172,7 @@ export class StatbateRefreshJob {
    * Update job configuration
    */
   async updateConfig(config: Partial<StatbateRefreshConfig>) {
-    const wasRunning = this.isRunning && !this.isPaused;
+    const wasRunning = this.isRunning;
 
     // Stop if running
     if (wasRunning) {
@@ -204,7 +201,7 @@ export class StatbateRefreshJob {
    * @param intervalMinutes How often to run the full refresh (default: 6 hours)
    */
   async start(intervalMinutes?: number) {
-    if (this.isRunning && !this.isPaused) {
+    if (this.isRunning) {
       logger.warn('Statbate refresh job is already running');
       return;
     }
@@ -220,46 +217,19 @@ export class StatbateRefreshJob {
 
     logger.info(`Starting Statbate refresh job (interval: ${this.config.intervalMinutes} minutes)`);
     this.isRunning = true;
-    this.isPaused = false;
 
     // Persist running state to database
-    await JobPersistenceService.saveRunningState(JOB_NAME, true, false);
+    await JobPersistenceService.saveRunningState(JOB_NAME, true);
 
     // Run immediately on start
     this.runRefresh();
 
     // Schedule periodic runs
     this.intervalId = setInterval(() => {
-      if (!this.isPaused) {
+      if (!this.isProcessing) {
         this.runRefresh();
       }
     }, this.config.intervalMinutes * 60 * 1000);
-  }
-
-  /**
-   * Pause the background refresh job
-   */
-  async pause() {
-    if (!this.isRunning) {
-      logger.warn('Statbate refresh job is not running');
-      return;
-    }
-    this.isPaused = true;
-    await JobPersistenceService.saveRunningState(JOB_NAME, true, true);
-    logger.info('Statbate refresh job paused');
-  }
-
-  /**
-   * Resume the background refresh job
-   */
-  async resume() {
-    if (!this.isRunning) {
-      logger.warn('Statbate refresh job is not running');
-      return;
-    }
-    this.isPaused = false;
-    await JobPersistenceService.saveRunningState(JOB_NAME, true, false);
-    logger.info('Statbate refresh job resumed');
   }
 
   /**
@@ -271,8 +241,8 @@ export class StatbateRefreshJob {
       this.intervalId = null;
     }
     this.isRunning = false;
-    this.isPaused = false;
-    await JobPersistenceService.saveRunningState(JOB_NAME, false, false);
+    this.isProcessing = false;
+    await JobPersistenceService.saveRunningState(JOB_NAME, false);
     logger.info('Statbate refresh job stopped');
   }
 
@@ -534,18 +504,13 @@ export class StatbateRefreshJob {
 
       // Process in batches
       const batchSize = this.config.batchSize;
-      for (let i = 0; i < persons.length; i += batchSize) {
-        if (this.isPaused) {
-          logger.info('Statbate refresh job paused, stopping cycle');
-          return;
-        }
-
+      for (let i = 0; i < persons.length && this.isRunning; i += batchSize) {
         const batch = persons.slice(i, i + batchSize);
         await this.processBatch(batch);
         this.stats.progress = Math.min(i + batchSize, persons.length);
 
         // Wait between batches (except for the last one)
-        if (i + batchSize < persons.length) {
+        if (i + batchSize < persons.length && this.isRunning) {
           logger.debug(`Waiting ${this.config.delayBetweenBatches / 1000}s before next batch...`);
           await this.sleep(this.config.delayBetweenBatches);
         }

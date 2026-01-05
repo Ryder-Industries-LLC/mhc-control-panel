@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-04
+**Last Updated**: 2026-01-05
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -52,12 +52,14 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Add "Show Raw Data" toggle on Communications tab _(v1.18.0)_
 - [x] Fix duplicate messages in Communications PMs _(v1.23.0 - DISTINCT ON deduplication)_
 - [x] Match PM format to Inbox conversation format _(v1.23.0 - chat bubble style)_
-- [x] Fix broadcaster attribution bug for PMs _(v1.23.0 - uses CHATURBATE_USERNAME env var)_
+- [x] Fix broadcaster attribution bug for PMs _(v1.25.0 - uses actual broadcaster from Events API response)_
+- [x] Fix Communications to show both directions of conversation _(v1.25.0 - query by fromUser OR toUser)_
 
 ### /profile - Interactions & Timeline
 
 - [x] Add deduplication for Interactions tab _(v1.23.0 - DISTINCT ON type, content, timestamp)_
 - [x] Add deduplication for Timeline tab _(v1.23.0 - DISTINCT ON type, content, timestamp)_
+- [x] Add filter chips to Interactions tab _(v1.25.0 - filter by event type)_
 
 ### /sessions
 
@@ -73,6 +75,8 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Rename "Scraper" tab to "Chaturbate Sync" _(v1.23.0)_
 - [x] Make Database & Storage cards fit on one row _(v1.23.0)_
 - [x] Merge By Role and Snapshots by Source on same row _(v1.23.0)_
+- [x] Simplify job controls to Start/Stop only _(v1.25.0 - removed Pause/Resume)_
+- [x] Add clearer job status states _(v1.25.0 - Stopped/Starting/Processing/Waiting)_
 
 ---
 
@@ -90,9 +94,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 
 ### /profile - Communications
 
-- [ ] The Communications direction is backwards - PMs in "hudson_cage's Room" are actually PMs in "username's room"
-  - [ ] Create test cases to verify correct behavior
-  - [ ] PMs in Hudson_cage's room are also showing direct messages in PMs - needs fix
+- [x] The Communications direction is backwards - PMs in "hudson_cage's Room" are actually PMs in "username's room" _(v1.25.0 - fixed broadcaster attribution)_
 - [x] Investigate why there are duplicate messages in Communications PMs _(v1.19.0 - added deduplication to InteractionService)_
 
 ### /profile - Images
