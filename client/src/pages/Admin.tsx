@@ -2734,13 +2734,25 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
         body: formData,
       });
       const result = await response.json();
-      setBulkUploadResults(result);
+
+      if (!response.ok) {
+        // Server returned an error status
+        const errorMsg = result.error || `Server error: ${response.status}`;
+        console.error('Bulk upload error:', errorMsg);
+        setBulkUploadResults({
+          uploaded: [],
+          skipped: filesToUpload.map(p => ({ filename: p.file.name, reason: errorMsg })),
+        });
+      } else {
+        setBulkUploadResults(result);
+      }
       setBulkUploadProgress(null);
     } catch (err) {
       console.error('Error uploading files:', err);
+      const errorMsg = err instanceof Error ? err.message : 'Network error - upload failed';
       setBulkUploadResults({
         uploaded: [],
-        skipped: bulkParsedFiles.map(p => ({ filename: p.file.name, reason: 'Upload failed' })),
+        skipped: filesToUpload.map(p => ({ filename: p.file.name, reason: errorMsg })),
       });
     } finally {
       setBulkIsUploading(false);

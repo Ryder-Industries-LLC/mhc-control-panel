@@ -12,6 +12,7 @@ import { HistoryTab } from '../components/profile/HistoryTab';
 import { RelationshipEditor, type Relationship, type RelationshipTraitSeed } from '../components/RelationshipEditor';
 import { NamesEditor, type ProfileNames, type AddressTermSeed } from '../components/NamesEditor';
 import { RelationshipHistoryViewer } from '../components/RelationshipHistoryViewer';
+import { StarRating } from '../components/StarRating';
 // Profile.css removed - fully migrated to Tailwind CSS
 
 interface ProfilePageProps {}
@@ -135,6 +136,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [bannedMe, setBannedMe] = useState(false);
   const [bannedByMe, setBannedByMe] = useState(false);
   const [watchList, setWatchList] = useState(false);
+  const [rating, setRating] = useState(0);
 
   // Top mover badge state
   const [topMoverStatus, setTopMoverStatus] = useState<'gainer' | 'loser' | null>(null);
@@ -258,6 +260,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
       setBannedMe(profileData.profile.banned_me || false);
       setBannedByMe(profileData.profile.banned_by_me || false);
       setWatchList(profileData.profile.watch_list || false);
+      setRating(profileData.profile.rating || 0);
     }
   }, [profileData?.profile]);
 
@@ -960,6 +963,24 @@ const Profile: React.FC<ProfilePageProps> = () => {
     }
   };
 
+  const handleRatingChange = async (newRating: number) => {
+    if (!profileData?.person?.username) return;
+
+    const oldRating = rating;
+    setRating(newRating);
+
+    try {
+      await fetch(`/api/profile/${profileData.person.username}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating: newRating }),
+      });
+    } catch (err) {
+      // Revert on error
+      setRating(oldRating);
+    }
+  };
+
   // Service relationship handlers
   const handleSaveServiceRelationship = async (
     role: 'sub' | 'dom',
@@ -1491,6 +1512,17 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   <span className="text-white/80 font-medium">Banned by Me</span>
                 </label>
               </div>
+
+              {/* Rating */}
+              <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/10">
+                <span className="text-sm text-white/60">Rating:</span>
+                <StarRating
+                  rating={rating}
+                  onChange={handleRatingChange}
+                  size="md"
+                  showLabel={true}
+                />
+              </div>
             </div>
           </div>
 
@@ -1580,7 +1612,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                 ? `/images/${image.file_path}`
                                 : `/images/profiles/${image.file_path}`;
                               const imageDate = image.captured_at || image.uploaded_at;
-                              const isUploaded = image.source !== 'affiliate_api';
                               const isProfileSource = image.source === 'profile';
 
                               return (
@@ -1660,20 +1691,18 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                         </svg>
                                       </button>
                                     )}
-                                    {isUploaded && (
-                                      <button
-                                        onClick={e => {
-                                          e.stopPropagation();
-                                          handleDeleteImage(image.id);
-                                        }}
-                                        className="p-1 bg-red-500/80 hover:bg-red-500 text-white rounded"
-                                        title="Delete"
-                                      >
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                        </svg>
-                                      </button>
-                                    )}
+                                    <button
+                                      onClick={e => {
+                                        e.stopPropagation();
+                                        handleDeleteImage(image.id);
+                                      }}
+                                      className="p-1 bg-red-500/80 hover:bg-red-500 text-white rounded"
+                                      title="Delete"
+                                    >
+                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                      </svg>
+                                    </button>
                                   </div>
                                   {image.is_current && (
                                     <div className="absolute bottom-1 right-1 bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">

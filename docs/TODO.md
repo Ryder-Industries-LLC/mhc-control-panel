@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-05
+**Last Updated**: 2026-01-06
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -143,6 +143,10 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 ### /events
 
 - [ ] Rework the page, maybe more like timeline
+
+### /people
+
+- [ ] Add CB Profile Link to List view, Grid view, and UN Cam view
 
 ### /admin
 

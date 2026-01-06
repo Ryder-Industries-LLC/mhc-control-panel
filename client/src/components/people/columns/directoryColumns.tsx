@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { BasePerson, ColumnConfig, PriorityLookup } from '../../../types/people';
+import { StarRating } from '../../StarRating';
 
 // Directory columns with full feature set
 export function getDirectoryColumns(
@@ -9,6 +10,7 @@ export function getDirectoryColumns(
   onLookup?: (username: string) => void,
   onDelete?: (id: string, username: string) => void,
   lookupLoading?: string | null,
+  onRatingChange?: (username: string, rating: number) => void,
 ): ColumnConfig<BasePerson>[] {
   return [
     {
@@ -73,6 +75,22 @@ export function getDirectoryColumns(
           <span className="text-white/30">&mdash;</span>
         );
       },
+    },
+    {
+      id: 'rating',
+      header: 'Rating',
+      width: '130px',
+      sortable: true,
+      sortField: 'rating',
+      render: (person) => (
+        <div onClick={(e) => e.stopPropagation()}>
+          <StarRating
+            rating={person.rating || 0}
+            onChange={onRatingChange ? (r) => onRatingChange(person.username, r) : undefined}
+            size="sm"
+          />
+        </div>
+      ),
     },
     {
       id: 'age',

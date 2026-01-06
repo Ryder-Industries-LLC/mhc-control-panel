@@ -7,6 +7,7 @@ import { SessionService } from '../../services/session.service.js';
 import { SessionStitcherService } from '../../services/session-stitcher.service.js';
 import { RoomVisitsService } from '../../services/room-visits.service.js';
 import { RoomPresenceService } from '../../services/room-presence.service.js';
+import { FollowHistoryService } from '../../services/follow-history.service.js';
 import { query } from '../../db/client.js';
 
 // Event type definitions based on CHATURBATE_EVENTS_API.md
@@ -387,6 +388,42 @@ export class ChaturbateEventsClient {
         broadcaster: this.username,
       },
     }, 1); // 1 minute window for deduplication
+
+    // Update profiles.follower = true (this user is now following me)
+    try {
+      await query(
+        `INSERT INTO profiles (person_id, follower, follower_checked_at, follower_since, unfollower_at)
+         VALUES ($1, TRUE, NOW(), NOW(), NULL)
+         ON CONFLICT (person_id) DO UPDATE SET
+           follower = TRUE,
+           follower_checked_at = NOW(),
+           follower_since = COALESCE(profiles.follower_since, NOW()),
+           unfollower_at = NULL`,
+        [person.id]
+      );
+
+      // Get the event_log id for linking (most recent for this event)
+      const eventLogResult = await query(
+        `SELECT id FROM event_logs
+         WHERE method = 'follow' AND username = $1
+         ORDER BY created_at DESC LIMIT 1`,
+        [username]
+      );
+      const eventId = eventLogResult.rows[0]?.id;
+
+      // Record in follow_history
+      await FollowHistoryService.record({
+        personId: person.id,
+        direction: 'follower',
+        action: 'follow',
+        source: 'events_api',
+        eventId,
+      });
+
+      logger.info('User marked as follower from Events API', { username });
+    } catch (error) {
+      logger.error('Failed to update follower status', { username, error });
+    }
   }
 
   private async handleUnfollow(event: ChaturbateEvent) {
@@ -407,6 +444,40 @@ export class ChaturbateEventsClient {
         broadcaster: this.username,
       },
     }, 1); // 1 minute window for deduplication
+
+    // Update profiles.follower = false (this user has unfollowed me)
+    try {
+      await query(
+        `UPDATE profiles SET
+           follower = FALSE,
+           follower_checked_at = NOW(),
+           unfollower_at = NOW()
+         WHERE person_id = $1`,
+        [person.id]
+      );
+
+      // Get the event_log id for linking (most recent for this event)
+      const eventLogResult = await query(
+        `SELECT id FROM event_logs
+         WHERE method = 'unfollow' AND username = $1
+         ORDER BY created_at DESC LIMIT 1`,
+        [username]
+      );
+      const eventId = eventLogResult.rows[0]?.id;
+
+      // Record in follow_history
+      await FollowHistoryService.record({
+        personId: person.id,
+        direction: 'follower',
+        action: 'unfollow',
+        source: 'events_api',
+        eventId,
+      });
+
+      logger.info('User marked as unfollower from Events API', { username });
+    } catch (error) {
+      logger.error('Failed to update unfollower status', { username, error });
+    }
   }
 
   private async handleUserEnter(event: ChaturbateEvent) {

@@ -114,6 +114,31 @@ interface StatbateConfig {
   prioritizeTippedByMe: boolean;
 }
 
+// Live Screenshot Job Types
+interface LiveScreenshotConfig {
+  intervalMinutes: number;
+  enabled: boolean;
+}
+
+interface LiveScreenshotStats {
+  lastRun: string | null;
+  totalRuns: number;
+  totalCaptures: number;
+  lastCycleCaptures: number;
+  lastCycleFollowingOnline: number;
+  errors: number;
+  currentUsername: string | null;
+  progress: number;
+  total: number;
+}
+
+interface LiveScreenshotJobStatus {
+  isRunning: boolean;
+  isProcessing: boolean;
+  config: LiveScreenshotConfig;
+  stats: LiveScreenshotStats;
+}
+
 interface StatbateStats {
   lastRun: string | null;
   totalRuns: number;
@@ -148,6 +173,7 @@ const Jobs: React.FC = () => {
     'profile-scrape': false,
     cbhours: false,
     statbate: false,
+    'live-screenshot': false,
   });
 
   // Job statuses
@@ -155,6 +181,7 @@ const Jobs: React.FC = () => {
   const [profileScrapeStatus, setProfileScrapeStatus] = useState<ProfileScrapeJobStatus | null>(null);
   const [cbhoursStatus, setCbhoursStatus] = useState<CBHoursJobStatus | null>(null);
   const [statbateStatus, setStatbateStatus] = useState<StatbateJobStatus | null>(null);
+  const [liveScreenshotStatus, setLiveScreenshotStatus] = useState<LiveScreenshotJobStatus | null>(null);
 
   // Config form states
   const [affiliateConfig, setAffiliateConfig] = useState<AffiliateConfig>({
@@ -196,6 +223,10 @@ const Jobs: React.FC = () => {
     prioritizeTippedMe: true,
     prioritizeTippedByMe: false,
   });
+  const [liveScreenshotConfig, setLiveScreenshotConfig] = useState<LiveScreenshotConfig>({
+    intervalMinutes: 30,
+    enabled: true,
+  });
 
   // Toggle job expansion
   const toggleJob = (jobId: string) => {
@@ -205,11 +236,12 @@ const Jobs: React.FC = () => {
   // Fetch all job statuses
   const fetchAllStatuses = useCallback(async () => {
     try {
-      const [affiliateRes, profileScrapeRes, cbhoursRes, statbateRes] = await Promise.all([
+      const [affiliateRes, profileScrapeRes, cbhoursRes, statbateRes, liveScreenshotRes] = await Promise.all([
         fetch('/api/job/affiliate/status'),
         fetch('/api/job/profile-scrape/status'),
         fetch('/api/job/cbhours/status'),
         fetch('/api/job/statbate/status'),
+        fetch('/api/job/live-screenshot/status'),
       ]);
 
       if (affiliateRes.ok) {
@@ -235,6 +267,14 @@ const Jobs: React.FC = () => {
         setStatbateStatus(data);
         if (data.config) {
           setStatbateConfig(data.config);
+        }
+      }
+
+      if (liveScreenshotRes.ok) {
+        const data = await liveScreenshotRes.json();
+        setLiveScreenshotStatus(data);
+        if (data.config) {
+          setLiveScreenshotConfig(data.config);
         }
       }
 
@@ -276,7 +316,8 @@ const Jobs: React.FC = () => {
         const jobName = jobPath === 'affiliate' ? 'Affiliate API' :
                        jobPath === 'profile-scrape' ? 'Profile Capture' :
                        jobPath === 'cbhours' ? 'CBHours' :
-                       jobPath === 'statbate' ? 'Statbate Refresh' : jobPath;
+                       jobPath === 'statbate' ? 'Statbate Refresh' :
+                       jobPath === 'live-screenshot' ? 'Live Screenshot' : jobPath;
         setSuccessMessage(`${jobName} configuration saved successfully`);
         setTimeout(() => setSuccessMessage(null), 3000);
       }
@@ -1258,6 +1299,153 @@ const Jobs: React.FC = () => {
     );
   };
 
+  // ===== Live Screenshot Job Section =====
+  const renderLiveScreenshotJob = () => {
+    const isExpanded = expandedJobs['live-screenshot'];
+    const status = liveScreenshotStatus;
+
+    return (
+      <div className="bg-mhc-surface border border-white/10 rounded-lg overflow-hidden">
+        {/* Collapsible Header */}
+        <div
+          className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors"
+          onClick={() => toggleJob('live-screenshot')}
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-white/40">{isExpanded ? '▼' : '▶'}</span>
+            <StatusBadge
+              isRunning={status?.isRunning || false}
+              isPaused={false}
+              isProcessing={status?.isProcessing}
+            />
+            <span className="font-semibold text-white">Live Screenshot</span>
+            {status?.isProcessing && status.stats.total > 0 && (
+              <span className="text-xs text-white/50">
+                ({status.stats.progress}/{status.stats.total})
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => handleJobControl('live-screenshot', 'run-now', setLiveScreenshotStatus)}
+              className="px-3 py-1 rounded text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
+              disabled={loading || status?.isProcessing}
+              title="Capture screenshots now"
+            >
+              Run Now
+            </button>
+            {!status?.isRunning && (
+              <button
+                onClick={() => handleJobControl('live-screenshot', 'start', setLiveScreenshotStatus)}
+                className="px-3 py-1 rounded text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
+                disabled={loading || !status?.config?.enabled}
+              >
+                Start
+              </button>
+            )}
+            {status?.isRunning && (
+              <button
+                onClick={() => handleJobControl('live-screenshot', 'stop', setLiveScreenshotStatus)}
+                className="px-3 py-1 rounded text-sm font-medium bg-red-500 text-white hover:bg-red-600 disabled:opacity-50"
+                disabled={loading}
+              >
+                Stop
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Expanded Content */}
+        {isExpanded && status && (
+          <div className="border-t border-white/10 p-4 space-y-4">
+            {/* Progress if processing */}
+            {status.isProcessing && status.stats.total > 0 && (
+              <ProgressBar
+                progress={status.stats.progress}
+                total={status.stats.total}
+                label={status.stats.currentUsername || 'Capturing screenshots...'}
+              />
+            )}
+
+            {/* Statistics */}
+            <div>
+              <h3 className="text-sm font-semibold text-white/70 uppercase mb-3">Statistics</h3>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <StatCard value={status.stats.totalRuns} label="Total Cycles" />
+                <StatCard value={status.stats.totalCaptures} label="Total Captures" />
+                <StatCard value={status.stats.lastCycleCaptures} label="Last Cycle" />
+                <StatCard value={status.stats.errors} label="Errors" />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <InfoRow label="Last Run" value={formatDate(status.stats.lastRun)} />
+                <InfoRow label="Following Online (Last)" value={status.stats.lastCycleFollowingOnline} />
+              </div>
+            </div>
+
+            {/* Current Status */}
+            <div>
+              <h3 className="text-sm font-semibold text-white/70 uppercase mb-3">Current Status</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <InfoRow label="Interval" value={`${status.config.intervalMinutes} min`} />
+                <InfoRow label="Enabled" value={status.config.enabled ? 'Yes' : 'No'} />
+              </div>
+            </div>
+
+            {/* Configuration */}
+            <div>
+              <h3 className="text-sm font-semibold text-white/70 uppercase mb-3">Configuration</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={liveScreenshotConfig.enabled}
+                    onChange={(e) => setLiveScreenshotConfig({ ...liveScreenshotConfig, enabled: e.target.checked })}
+                    className="mr-2 w-4 h-4 accent-mhc-primary"
+                  />
+                  <span className="text-sm text-white/90">Enable Job</span>
+                </label>
+
+                <div>
+                  <label className="block text-xs text-white/60 mb-1">Interval (min)</label>
+                  <input
+                    type="number"
+                    value={liveScreenshotConfig.intervalMinutes}
+                    onChange={(e) => setLiveScreenshotConfig({ ...liveScreenshotConfig, intervalMinutes: parseInt(e.target.value) })}
+                    min="5"
+                    max="1440"
+                    className="w-full p-2 border border-white/20 rounded bg-white/5 text-white text-sm focus:outline-none focus:border-mhc-primary"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-white/50 mt-2">
+                Captures screenshots from Following users who are currently live (from Affiliate API feed).
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => handleJobControl('live-screenshot', 'config', setLiveScreenshotStatus, liveScreenshotConfig)}
+                  className="px-4 py-2 rounded font-medium bg-mhc-primary text-white hover:bg-mhc-primary/80 text-sm disabled:opacity-50"
+                  disabled={loading}
+                >
+                  Save Config
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm('Reset all statistics?')) {
+                      handleJobControl('live-screenshot', 'reset-stats', setLiveScreenshotStatus);
+                    }
+                  }}
+                  className="px-3 py-2 rounded font-medium bg-gray-600 text-white hover:bg-gray-500 text-sm"
+                >
+                  Reset Stats
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="max-w-5xl mx-auto p-5">
       <h1 className="text-2xl font-bold mb-6 bg-gradient-to-r from-mhc-primary to-mhc-primary-dark bg-clip-text text-transparent">
@@ -1282,6 +1470,7 @@ const Jobs: React.FC = () => {
         {renderProfileScrapeJob()}
         {renderCBHoursJob()}
         {renderStatbateJob()}
+        {renderLiveScreenshotJob()}
       </div>
     </div>
   );

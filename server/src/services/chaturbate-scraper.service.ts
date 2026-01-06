@@ -78,6 +78,7 @@ export interface ScrapedProfileData {
   fanclubPrice: number | null;
   isOnline: boolean;
   scrapedAt: Date;
+  detectedFollowStatus: 'following' | 'not_following' | 'unknown';
 }
 
 export class ChaturbateScraperService {
@@ -607,6 +608,21 @@ export class ChaturbateScraperService {
 
       logger.info(`Profile type for ${username}: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
 
+      // Detect follow/unfollow button to determine if we're following this user
+      const detectedFollowStatus = await page.evaluate(() => {
+        // Check for unfollow button (means we ARE following)
+        const unfollowBtn = document.querySelector('div.unfollowButton[data-testid="unfollow-button"]');
+        if (unfollowBtn) return 'following';
+
+        // Check for follow button (means we are NOT following)
+        const followBtn = document.querySelector('div.followButton[data-testid="follow-button"]');
+        if (followBtn) return 'not_following';
+
+        return 'unknown';
+      }) as 'following' | 'not_following' | 'unknown';
+
+      logger.info(`Detected follow status for ${username}: ${detectedFollowStatus}`);
+
       // Extract profile data from the page
       // Note: The function passed to evaluate runs in browser context where document/window are available
       const profileData = await page.evaluate((username: string) => {
@@ -1033,6 +1049,7 @@ export class ChaturbateScraperService {
       // Add metadata
       profileData.isOnline = isOnline;
       profileData.scrapedAt = new Date();
+      profileData.detectedFollowStatus = detectedFollowStatus;
 
       // Download photos (skip locked ones, mark backgrounds)
       const downloadedPhotos: ScrapedProfileData['photos'] = [];
@@ -1103,11 +1120,18 @@ export class ChaturbateScraperService {
 
         for (const photoset of profileData.photosets) {
           try {
-            // Check if we've already downloaded this photoset
+            // Check if we've already downloaded this photoset or if user deleted it
             if (personId) {
               const hasPhotoset = await ProfileImagesService.hasPhotoset(personId, photoset.id);
               if (hasPhotoset) {
                 logger.debug(`Photoset ${photoset.id} already downloaded for ${username}, skipping`);
+                continue;
+              }
+
+              // Check if user previously deleted this photoset - don't re-download
+              const wasDeleted = await ProfileImagesService.isPhotosetDeleted(personId, photoset.id);
+              if (wasDeleted) {
+                logger.debug(`Photoset ${photoset.id} was deleted by user for ${username}, skipping`);
                 continue;
               }
             }

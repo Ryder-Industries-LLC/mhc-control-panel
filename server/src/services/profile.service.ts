@@ -1,5 +1,6 @@
 import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
+import { FollowHistoryService } from './follow-history.service.js';
 import type { ChaturbateProfile } from './profile-scraper.service.js';
 import type { ScrapedProfileData } from './chaturbate-scraper.service.js';
 
@@ -265,6 +266,11 @@ export class ProfileService {
     // Get existing profile if any
     const existingProfile = await this.getByPersonId(personId);
 
+    // Process detected follow status if available
+    if (scrapedData.detectedFollowStatus && scrapedData.detectedFollowStatus !== 'unknown') {
+      await this.processDetectedFollowStatus(personId, scrapedData.detectedFollowStatus);
+    }
+
     // Build photos array - filter out backgrounds for primary use, keep all for storage
     const profilePhotos = scrapedData.photos
       .filter(p => !p.isLocked)
@@ -373,6 +379,89 @@ export class ProfileService {
     } catch (error) {
       logger.error('Error merging scraped profile', { error, personId });
       throw error;
+    }
+  }
+
+  /**
+   * Process detected follow status from profile scrape
+   * Updates profiles.following if it differs from current status
+   * Records the change in follow_history
+   */
+  static async processDetectedFollowStatus(
+    personId: string,
+    detectedStatus: 'following' | 'not_following'
+  ): Promise<void> {
+    try {
+      // Get current following status from profiles
+      const result = await query(
+        `SELECT following FROM profiles WHERE person_id = $1`,
+        [personId]
+      );
+
+      const currentlyFollowing = result.rows[0]?.following || false;
+      const shouldBeFollowing = detectedStatus === 'following';
+
+      // Only update if status differs
+      if (currentlyFollowing !== shouldBeFollowing) {
+        logger.info('Follow status differs from profile scrape detection', {
+          personId,
+          current: currentlyFollowing,
+          detected: shouldBeFollowing,
+        });
+
+        if (shouldBeFollowing) {
+          // Update to following
+          await query(
+            `INSERT INTO profiles (person_id, following, following_checked_at, following_since, unfollowed_at)
+             VALUES ($1, TRUE, NOW(), NOW(), NULL)
+             ON CONFLICT (person_id) DO UPDATE SET
+               following = TRUE,
+               following_checked_at = NOW(),
+               following_since = COALESCE(profiles.following_since, NOW()),
+               unfollowed_at = NULL`,
+            [personId]
+          );
+
+          // Record in follow_history
+          await FollowHistoryService.record({
+            personId,
+            direction: 'following',
+            action: 'follow',
+            source: 'profile_scrape',
+          });
+
+          logger.info('Marked as following from profile scrape detection', { personId });
+        } else {
+          // Update to not following
+          await query(
+            `UPDATE profiles SET
+               following = FALSE,
+               following_checked_at = NOW(),
+               unfollowed_at = NOW()
+             WHERE person_id = $1`,
+            [personId]
+          );
+
+          // Record in follow_history
+          await FollowHistoryService.record({
+            personId,
+            direction: 'following',
+            action: 'unfollow',
+            source: 'profile_scrape',
+          });
+
+          logger.info('Marked as unfollowed from profile scrape detection', { personId });
+        }
+      } else {
+        // Status matches, just update the checked timestamp
+        await query(
+          `UPDATE profiles SET following_checked_at = NOW() WHERE person_id = $1`,
+          [personId]
+        );
+      }
+    } catch (error) {
+      logger.error('Error processing detected follow status', { error, personId });
+      // Don't throw - this is non-critical, profile merge should continue
     }
   }
 

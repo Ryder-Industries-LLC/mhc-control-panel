@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.26.0] - 2026-01-06
+
+### Added
+- **Follow History Tracking System**: Comprehensive follow/unfollow tracking from all data sources
+  - New `follow_history` table to track all follow/unfollow events
+  - `FollowHistoryService` for CRUD operations on follow history
+  - Events API integration: Auto-updates `profiles.follower` on follow/unfollow events
+  - Profile scrape detection: Detects follow/unfollow buttons during profile scrape
+  - List scrape logging: Records history when followers/following lists are scraped
+  - Backfill migration to populate history from existing `event_logs` data
+- **Follow History Page** (`/follow-history`): New page to view follow/unfollow history
+  - Two collapsible sections: "Following" (who I followed) and "Followers" (who followed me)
+  - Sortable columns: Username, Action, Source, Timestamp
+  - Filters: Username search, action type, source type, date range
+  - Local time formatting (MMM dd YYYY HH:MM)
+  - Click username to navigate to profile
+- **Live Screenshot Capture**: Automatic screenshot capture during live broadcasts
+  - Configurable interval and retention settings
+  - Admin settings UI for enabling/configuring
+- **Profile Star Rating**: 5-star rating system for profiles
+  - New `StarRating` component with interactive hover states
+  - Stored in profiles table with API endpoints
+- **Deleted Photosets Tracking**: Track photosets that have been removed from profiles
+
+### Changed
+- **Profile Scraper**: Now detects follow/unfollow buttons to determine following status
+- **Follower Scraper**: Records history entries when detecting new follows/unfollows from list comparisons
+- **Events Client**: Updates `profiles.follower` status on follow/unfollow events from Events API
+- **Twitter Link Cleanup**: Migration to remove Chaturbate's own Twitter links from social media
+
+### Fixed
+- **Follower Status**: Profiles now correctly reflect follower status from Events API events
+
+---
+
 ## [1.25.0] - 2026-01-05
 
 ### Changed

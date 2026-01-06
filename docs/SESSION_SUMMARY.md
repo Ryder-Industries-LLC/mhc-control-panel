@@ -1,105 +1,122 @@
-# Session Summary - v1.25.0
+# Session Summary - v1.26.0
 
-**Date**: 2026-01-05
+**Date**: 2026-01-06
 
 ## What Was Accomplished
 
-### 1. Job Status Display Overhaul
+### 1. Follow History Tracking System
 
-Completely redesigned how job status is displayed and controlled in the Admin UI.
+Implemented comprehensive follow/unfollow tracking from all data sources.
 
-#### Changes Made
+#### Database Changes
 
-**Removed Pause Functionality:**
-- Removed `isPaused` state from all job files
-- Removed pause/resume API endpoints from `routes/job.ts`
-- Removed pause/resume handlers from Admin UI
-- Simplified to just Start/Stop controls
+**New Table: `follow_history`**
+- Tracks all follow/unfollow events with source attribution
+- Columns: `id`, `person_id`, `direction`, `action`, `source`, `event_id`, `created_at`
+- Direction: `following` (who I follow) or `follower` (who follows me)
+- Action: `follow` or `unfollow`
+- Source: `events_api`, `profile_scrape`, `list_scrape`, `manual_import`
 
-**New Status States:**
-- **Stopped** (gray): Job is not running
-- **Starting** (green): Job just started, waiting for first cycle
-- **Processing** (blue): Job is actively working
-- **Waiting** (amber): Job is between cycles, waiting for next run
+**Migration Files:**
+- `058_follow_history.sql` - Creates follow_history table
+- `059_backfill_follow_history.sql` - Backfills from existing event_logs
 
-**Implementation:**
-- Added `hasRun` logic using `stats.totalRuns > 0` to differentiate Starting from Waiting
-- Updated `JobStatusButton` component with new state logic
-- Updated `getSimpleStatusBadge` function for consistent status display
+#### Service Layer
 
-#### Files Modified
-- `server/src/jobs/profile-scrape.job.ts` - Removed isPaused
-- `server/src/jobs/affiliate-polling.job.ts` - Removed isPaused
-- `server/src/jobs/cbhours-polling.job.ts` - Removed isPaused
-- `server/src/jobs/statbate-refresh.job.ts` - Removed isPaused
-- `server/src/routes/job.ts` - Removed pause/resume endpoints
-- `server/src/routes/system.ts` - Removed isPaused from status responses
-- `server/src/services/job-persistence.service.ts` - Deprecated isPaused
-- `client/src/pages/Admin.tsx` - Updated UI components
+**New Service: `FollowHistoryService`**
+- `record()` - Record a follow/unfollow event
+- `getByPerson()` - Get history for a specific person
+- `getAll()` - Get paginated history with filters
+- `getLatestAction()` - Get most recent action for a person
+- `getStats()` - Get summary statistics
 
-### 2. Social Media Link Scraping Fixes
+#### Integration Points
 
-Fixed issues with social media link parsing in profile scraper.
+**Events Client (`events-client.ts`):**
+- `handleFollow()` now updates `profiles.follower = true` and records history
+- `handleUnfollow()` now updates `profiles.follower = false` and records history
 
-#### Changes Made
-- Added detection for locked vs unlocked social links
-- Properly decode URL-encoded external links
-- Filter out Chaturbate's own Twitter accounts
-- Added support for more platforms (Telegram, AllMyLinks, Linktree, etc.)
+**Profile Scraper (`chaturbate-scraper.service.ts`):**
+- Detects follow/unfollow buttons during profile scrape
+- Returns `detectedFollowStatus: 'following' | 'not_following' | 'unknown'`
 
-#### File Modified
-- `server/src/services/chaturbate-scraper.service.ts`
+**Profile Service (`profile.service.ts`):**
+- `processDetectedFollowStatus()` compares detected status with stored status
+- Updates profiles.following if different and records in history
 
-### 3. Communications/PMs Fixes
+**Follower Scraper (`follower-scraper.service.ts`):**
+- Records history when detecting new follows from list scrapes
+- Records history when detecting unfollows from list comparison
 
-Fixed the Communications tab to show complete PM conversations.
+#### API Endpoints
 
-#### Changes Made
-- Query now fetches messages by `metadata->>'fromUser'` OR `metadata->>'toUser'`
-- Fixed broadcaster field in Events API to use actual broadcaster from response
+**New Routes in `followers.ts`:**
+- `GET /api/followers/history` - Paginated history with filters
+- `GET /api/followers/history/:personId` - History for specific person
+- `GET /api/followers/history-stats` - Summary statistics
 
-#### Files Modified
-- `server/src/routes/profile.ts` - Updated PM query
-- `server/src/api/chaturbate/events-client.ts` - Fixed broadcaster attribution
+### 2. Follow History Page
 
-### 4. Interactions Tab Filter Chips
+New page at `/follow-history` with full-featured UI.
 
-Added filter functionality to the Interactions tab.
+#### Features
+- Two collapsible sections: "Following" and "Followers"
+- Sortable columns (Username, Action, Source, Timestamp)
+- Filters: Username search, action dropdown, source dropdown, date range
+- Date format: "MMM dd YYYY HH:MM" in local time
+- Click username to navigate to profile
+- Clear Filters button when filters are active
 
-#### Changes Made
-- Added filter chips for event types (TIP_EVENT, PRIVATE_MESSAGE, etc.)
-- Multi-select support for filtering
+#### File Created
+- `client/src/pages/FollowHistory.tsx`
 
-#### File Modified
-- `client/src/components/profile/InteractionsTab.tsx`
+### 3. Other Features in This Release
 
-### 5. Documentation Updates
+- **Live Screenshot Capture**: Configurable screenshot capture during broadcasts
+- **Profile Star Rating**: 5-star rating system with StarRating component
+- **Deleted Photosets Tracking**: Track removed photosets
+- **Twitter Link Cleanup**: Remove Chaturbate's own Twitter links
 
-Created and updated project documentation.
+## Files Modified/Created
 
-#### Files Created/Updated
-- `CLAUDE.md` - New project context file for Claude Code sessions
-- `docs/CHANGELOG.md` - Added v1.25.0 entry
-- `docs/SESSION_SUMMARY.md` - This file
-- `docs/TODO.md` - Updated completed items
-- `docs/AGENTS.md` - Updated current status
+### Server
+- `server/src/db/migrations/054_cleanup_chaturbate_twitter_links.sql` (NEW)
+- `server/src/db/migrations/055_add_profile_rating.sql` (NEW)
+- `server/src/db/migrations/056_add_deleted_photosets_tracking.sql` (NEW)
+- `server/src/db/migrations/057_add_live_screenshot_settings.sql` (NEW)
+- `server/src/db/migrations/058_follow_history.sql` (NEW)
+- `server/src/db/migrations/059_backfill_follow_history.sql` (NEW)
+- `server/src/services/follow-history.service.ts` (NEW)
+- `server/src/jobs/live-screenshot.job.ts` (NEW)
+- `server/src/api/chaturbate/events-client.ts` (MODIFIED)
+- `server/src/services/chaturbate-scraper.service.ts` (MODIFIED)
+- `server/src/services/profile.service.ts` (MODIFIED)
+- `server/src/services/follower-scraper.service.ts` (MODIFIED)
+- `server/src/routes/followers.ts` (MODIFIED)
+
+### Client
+- `client/src/pages/FollowHistory.tsx` (NEW)
+- `client/src/components/StarRating.tsx` (NEW)
+- `client/src/App.tsx` (MODIFIED - added route and nav link)
+- Various component updates for rating and UI improvements
 
 ## Current State
 
 - All code changes compile successfully
 - Server and client builds pass
-- Docker containers ready for rebuild
-- All changes committed and tagged as v1.25.0
+- Docker containers rebuilt and running
+- All changes committed and tagged as v1.26.0
 
 ## Key Decisions Made
 
-1. **Removed Pause entirely** - Pause was confusing and rarely used. Simpler Start/Stop model is clearer.
-2. **Added "Waiting" state** - Distinguishes between "just started" and "waiting between cycles"
-3. **Deprecated isPaused in DB** - Left field in schema for backwards compatibility but always sets to false
+1. **Dedicated follow_history table** - Separate from interactions for cleaner querying and history tracking
+2. **Source attribution** - Track where each follow/unfollow event originated
+3. **Backfill from event_logs** - Populate history with historical data
+4. **Client-side filtering** - Filters applied in React for responsiveness
 
 ## Next Steps
 
-1. Monitor job status display in production
-2. Test social media link scraping with various profiles
-3. Verify PM threading shows correctly in Communications tab
-4. Consider adding more event type filters to Interactions tab
+1. Monitor follow history accuracy during live broadcasts
+2. Verify profile scrape button detection works correctly
+3. Test list scrape history recording
+4. Consider adding export functionality for follow history

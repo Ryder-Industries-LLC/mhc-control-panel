@@ -50,6 +50,11 @@ const COLOR_CLASSES: Record<CountItem['color'], {
     active: 'border-orange-500 bg-orange-500/15 shadow-lg shadow-orange-500/30',
     text: 'text-orange-400',
   },
+  pink: {
+    inactive: 'border-white/10 bg-white/5 hover:border-pink-500/30',
+    active: 'border-pink-500 bg-pink-500/15 shadow-lg shadow-pink-500/30',
+    text: 'text-pink-400',
+  },
   primary: {
     inactive: 'border-white/10 bg-white/5 hover:border-mhc-primary/30',
     active: 'border-mhc-primary bg-mhc-primary/15 shadow-lg shadow-mhc-primary/30',

@@ -74,7 +74,7 @@ const Users: React.FC = () => {
   const [, setUsernameSuggestions] = useState<string[]>([]);
 
   // Standard filter type used across tabs
-  type StandardFilter = 'all' | 'live' | 'with_image' | 'models' | 'viewers' | 'following' | 'friends' | 'watchlist';
+  type StandardFilter = 'all' | 'live' | 'with_image' | 'with_videos' | 'with_rating' | 'models' | 'viewers' | 'following' | 'friends' | 'watchlist';
 
   // Following tab state
   const [followingUsers, setFollowingUsers] = useState<FollowingPerson[]>([]);
@@ -433,6 +433,22 @@ const Users: React.FC = () => {
     }
   };
 
+  const handleRatingChange = async (username: string, newRating: number) => {
+    try {
+      await fetch(`/api/profile/${username}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating: newRating }),
+      });
+      // Update local state
+      setPersons(persons.map(p =>
+        p.username === username ? { ...p, rating: newRating } : p
+      ));
+    } catch (err) {
+      console.error('Failed to update rating:', err);
+    }
+  };
+
   const handleSort = (field: string) => {
     const typedField = field as keyof BasePerson;
     if (sortField === typedField) {
@@ -520,6 +536,12 @@ const Users: React.FC = () => {
             break;
           case 'with_image':
             if (!p.image_url) return false;
+            break;
+          case 'with_videos':
+            if (!p.has_videos) return false;
+            break;
+          case 'with_rating':
+            if (!p.rating || p.rating === 0) return false;
             break;
           case 'models':
             if (p.role !== 'MODEL') return false;
@@ -620,7 +642,8 @@ const Users: React.FC = () => {
     handleAddToPriority,
     handleOnDemandLookup,
     handleDelete,
-    lookupLoading
+    lookupLoading,
+    handleRatingChange
   );
 
   // Render Directory Tab
@@ -696,6 +719,7 @@ const Users: React.FC = () => {
           emptyMessage="No users found matching your filters."
           getPriorityLookup={getPriorityLookup}
           onTagClick={setTagFilter}
+          onRatingChange={handleRatingChange}
           className="mt-4"
         />
       ) : (
@@ -739,6 +763,8 @@ const Users: React.FC = () => {
       switch (followingFilter) {
         case 'live': return isPersonLive(p);
         case 'with_image': return !!p.image_url;
+        case 'with_videos': return !!p.has_videos;
+        case 'with_rating': return (p.rating || 0) > 0;
         case 'models': return p.role === 'MODEL';
         case 'viewers': return p.role === 'VIEWER';
         case 'following': return p.following;
@@ -788,7 +814,7 @@ const Users: React.FC = () => {
         {followingLoading ? (
           <div className="p-12 text-center text-white/50">Loading following users...</div>
         ) : viewMode === 'grid' ? (
-          <PeopleGrid data={filteredFollowing} onTagClick={setTagFilter} className="mt-4" />
+          <PeopleGrid data={filteredFollowing} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
         ) : (
           <PeopleTable
             data={filteredFollowing}
@@ -811,6 +837,8 @@ const Users: React.FC = () => {
       switch (followersFilter) {
         case 'live': return isPersonLive(p);
         case 'with_image': return !!p.image_url;
+        case 'with_videos': return !!p.has_videos;
+        case 'with_rating': return (p.rating || 0) > 0;
         case 'models': return p.role === 'MODEL';
         case 'viewers': return p.role === 'VIEWER';
         case 'following': return p.following;
@@ -860,7 +888,7 @@ const Users: React.FC = () => {
         {followersLoading ? (
           <div className="p-12 text-center text-white/50">Loading followers...</div>
         ) : viewMode === 'grid' ? (
-          <PeopleGrid data={filteredFollowers} onTagClick={setTagFilter} className="mt-4" />
+          <PeopleGrid data={filteredFollowers} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
         ) : (
           <PeopleTable
             data={filteredFollowers}
@@ -955,7 +983,7 @@ const Users: React.FC = () => {
         {relationshipsLoading ? (
           <div className="p-12 text-center text-white/50">Loading {label.toLowerCase()}...</div>
         ) : viewMode === 'grid' ? (
-          <PeopleGrid data={displayUsers} onTagClick={setTagFilter} className="mt-4" />
+          <PeopleGrid data={displayUsers} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
         ) : (
           <PeopleTable
             data={displayUsers}
@@ -1038,7 +1066,7 @@ const Users: React.FC = () => {
         {unfollowedLoading ? (
           <div className="p-12 text-center text-white/50">Loading unfollowed users...</div>
         ) : viewMode === 'grid' ? (
-          <PeopleGrid data={filteredUnfollowed} onTagClick={setTagFilter} className="mt-4" />
+          <PeopleGrid data={filteredUnfollowed} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
         ) : (
           <PeopleTable
             data={filteredUnfollowed}
@@ -1086,7 +1114,7 @@ const Users: React.FC = () => {
         {bansLoading ? (
           <div className="p-12 text-center text-white/50">Loading banned users...</div>
         ) : viewMode === 'grid' ? (
-          <PeopleGrid data={bannedUsers} onTagClick={setTagFilter} className="mt-4" />
+          <PeopleGrid data={bannedUsers} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
         ) : (
           <PeopleTable
             data={bannedUsers}
@@ -1134,7 +1162,7 @@ const Users: React.FC = () => {
         {watchlistLoading ? (
           <div className="p-12 text-center text-white/50">Loading watchlist...</div>
         ) : viewMode === 'grid' ? (
-          <PeopleGrid data={watchlistUsers} onTagClick={setTagFilter} className="mt-4" />
+          <PeopleGrid data={watchlistUsers} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
         ) : (
           <PeopleTable
             data={watchlistUsers}

@@ -12,6 +12,7 @@ export interface PeopleGridProps<T extends BasePerson> {
   getPriorityLookup?: (username: string) => PriorityLookup | null;
   onCardClick?: (person: T) => void;
   onTagClick?: (tag: string) => void;
+  onRatingChange?: (username: string, rating: number) => void;
   renderCard?: (person: T) => React.ReactNode;
   className?: string;
 }
@@ -25,6 +26,7 @@ export function PeopleGrid<T extends BasePerson>({
   getPriorityLookup,
   onCardClick,
   onTagClick,
+  onRatingChange,
   renderCard,
   className = '',
 }: PeopleGridProps<T>) {
@@ -67,6 +69,7 @@ export function PeopleGrid<T extends BasePerson>({
             priorityLookup={getPriorityLookup?.(person.username)}
             onClick={() => handleCardClick(person)}
             onTagClick={onTagClick}
+            onRatingChange={onRatingChange}
           />
         )
       )}

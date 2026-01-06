@@ -3,6 +3,7 @@ import { statbateRefreshJob } from '../jobs/statbate-refresh.job.js';
 import { affiliatePollingJob } from '../jobs/affiliate-polling.job.js';
 import { profileScrapeJob } from '../jobs/profile-scrape.job.js';
 import { cbhoursPollingJob } from '../jobs/cbhours-polling.job.js';
+import { liveScreenshotJob } from '../jobs/live-screenshot.job.js';
 import { ImageStorageService } from '../services/image-storage.service.js';
 import { pool } from '../db/client.js';
 import { logger } from '../config/logger.js';
@@ -20,6 +21,7 @@ router.get('/status', async (_req: Request, res: Response) => {
       statbateRefreshJob.syncStateFromDB(),
       affiliatePollingJob.syncStateFromDB(),
       profileScrapeJob.syncStateFromDB(),
+      liveScreenshotJob.syncStateFromDB(),
     ]);
 
     const status = {
@@ -27,6 +29,7 @@ router.get('/status', async (_req: Request, res: Response) => {
       affiliatePolling: affiliatePollingJob.getStatus(),
       profileScrape: profileScrapeJob.getStatus(),
       cbhoursPolling: cbhoursPollingJob.getStatus(),
+      liveScreenshot: liveScreenshotJob.getStatus(),
     };
     res.json(status);
   } catch (error) {
@@ -497,6 +500,99 @@ router.post('/cleanup-placeholder-images', async (_req: Request, res: Response) 
     });
   } catch (error) {
     logger.error('Cleanup placeholder images error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ===== Live Screenshot Job Endpoints =====
+
+/**
+ * GET /api/job/live-screenshot/status
+ * Get live screenshot job status
+ */
+router.get('/live-screenshot/status', async (_req: Request, res: Response) => {
+  try {
+    await liveScreenshotJob.syncStateFromDB();
+    const status = liveScreenshotJob.getStatus();
+    res.json(status);
+  } catch (error) {
+    logger.error('Get live-screenshot job status error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/live-screenshot/config
+ * Update live screenshot job configuration
+ */
+router.post('/live-screenshot/config', async (req: Request, res: Response) => {
+  try {
+    const { intervalMinutes, enabled } = req.body;
+
+    await liveScreenshotJob.updateConfig({
+      ...(intervalMinutes !== undefined && { intervalMinutes }),
+      ...(enabled !== undefined && { enabled }),
+    });
+
+    res.json({ success: true, status: liveScreenshotJob.getStatus() });
+  } catch (error) {
+    logger.error('Update live-screenshot job config error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/live-screenshot/start
+ * Start the live screenshot job
+ */
+router.post('/live-screenshot/start', async (_req: Request, res: Response) => {
+  try {
+    await liveScreenshotJob.start();
+    res.json({ success: true, status: liveScreenshotJob.getStatus() });
+  } catch (error) {
+    logger.error('Start live-screenshot job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/live-screenshot/stop
+ * Stop the live screenshot job
+ */
+router.post('/live-screenshot/stop', async (_req: Request, res: Response) => {
+  try {
+    await liveScreenshotJob.stop();
+    res.json({ success: true, status: liveScreenshotJob.getStatus() });
+  } catch (error) {
+    logger.error('Stop live-screenshot job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/live-screenshot/reset-stats
+ * Reset live screenshot job statistics
+ */
+router.post('/live-screenshot/reset-stats', (_req: Request, res: Response) => {
+  try {
+    liveScreenshotJob.resetStats();
+    res.json({ success: true, status: liveScreenshotJob.getStatus() });
+  } catch (error) {
+    logger.error('Reset live-screenshot job stats error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/live-screenshot/run-now
+ * Manually trigger a live screenshot capture cycle
+ */
+router.post('/live-screenshot/run-now', async (_req: Request, res: Response) => {
+  try {
+    await liveScreenshotJob.runOnce();
+    res.json({ success: true, status: liveScreenshotJob.getStatus() });
+  } catch (error) {
+    logger.error('Run live-screenshot job error', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

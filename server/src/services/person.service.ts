@@ -254,7 +254,9 @@ export class PersonService {
         (SELECT follower_since FROM profiles WHERE person_id = p.id LIMIT 1) as follower_since,
         (SELECT unfollowed_at FROM profiles WHERE person_id = p.id LIMIT 1) as unfollowed_at,
         (SELECT unfollower_at FROM profiles WHERE person_id = p.id LIMIT 1) as unfollower_at,
-        (SELECT banned_me FROM profiles WHERE person_id = p.id LIMIT 1) as banned_me
+        (SELECT banned_me FROM profiles WHERE person_id = p.id LIMIT 1) as banned_me,
+        (SELECT has_videos FROM profiles WHERE person_id = p.id LIMIT 1) as has_videos,
+        (SELECT rating FROM profiles WHERE person_id = p.id LIMIT 1) as rating
        FROM persons p
        WHERE is_excluded = false
        ${orderByClause}

@@ -25,6 +25,8 @@ export interface BasePerson {
   active_sub?: boolean;
   friend_tier?: number | null;
   watch_list?: boolean;
+  has_videos?: boolean;
+  rating?: number;
 }
 
 // Extended types for specific segments
@@ -101,6 +103,8 @@ export type TabType =
 export type StatFilter =
   | 'live'
   | 'with_image'
+  | 'with_videos'
+  | 'with_rating'
   | 'models'
   | 'viewers'
   | 'following'
@@ -141,7 +145,7 @@ export interface CountItem {
   id: string;
   label: string;
   value: number;
-  color: 'default' | 'red' | 'purple' | 'blue' | 'emerald' | 'yellow' | 'orange' | 'primary';
+  color: 'default' | 'red' | 'purple' | 'blue' | 'emerald' | 'yellow' | 'orange' | 'pink' | 'primary';
   clickable?: boolean;
 }
 
@@ -253,6 +257,8 @@ export const SEGMENTS: SegmentConfig[] = [
 export const DIRECTORY_SORT_OPTIONS: SortOption[] = [
   { value: 'session_observed_at-desc', label: 'Last Active (Newest)' },
   { value: 'session_observed_at-asc', label: 'Last Active (Oldest)' },
+  { value: 'rating-desc', label: 'Rating (High to Low)' },
+  { value: 'rating-asc', label: 'Rating (Low to High)' },
   { value: 'username-asc', label: 'Username (A-Z)' },
   { value: 'username-desc', label: 'Username (Z-A)' },
   { value: 'interaction_count-desc', label: 'Most Interactions' },
@@ -405,6 +411,8 @@ export const buildStandardCounts = <T extends BasePerson>(
   counts.push(
     { id: 'live', label: 'Live Now', value: data.filter(p => isPersonLive(p)).length, color: 'red' },
     { id: 'with_image', label: 'With Media', value: data.filter(p => p.image_url).length, color: 'primary' },
+    { id: 'with_videos', label: 'With Videos', value: data.filter(p => p.has_videos).length, color: 'pink' },
+    { id: 'with_rating', label: 'Rated', value: data.filter(p => (p.rating || 0) > 0).length, color: 'yellow' },
     { id: 'models', label: 'Models', value: data.filter(p => p.role === 'MODEL').length, color: 'purple' },
     { id: 'viewers', label: 'Viewers', value: data.filter(p => p.role === 'VIEWER').length, color: 'blue' },
     { id: 'following', label: 'Following', value: data.filter(p => p.following).length, color: 'emerald' },

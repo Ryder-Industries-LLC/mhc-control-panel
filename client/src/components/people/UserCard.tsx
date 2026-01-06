@@ -10,6 +10,7 @@ import {
   getFriendTierBadge,
 } from '../../types/people';
 import { formatDate } from '../../utils/formatting';
+import { StarRating } from '../StarRating';
 
 export interface UserCardProps {
   person: BasePerson;
@@ -22,6 +23,7 @@ export interface UserCardProps {
   extraBadges?: React.ReactNode;
   onClick?: () => void;
   onTagClick?: (tag: string) => void;
+  onRatingChange?: (username: string, rating: number) => void;
 }
 
 export const UserCard: React.FC<UserCardProps> = ({
@@ -35,6 +37,7 @@ export const UserCard: React.FC<UserCardProps> = ({
   extraBadges,
   onClick,
   onTagClick,
+  onRatingChange,
 }) => {
   const imageUrl = getImageUrl(person.image_url);
   const isLive = isPersonLive(person);
@@ -144,6 +147,15 @@ export const UserCard: React.FC<UserCardProps> = ({
             </span>
           )}
           {extraBadges}
+        </div>
+
+        {/* Rating */}
+        <div onClick={(e) => e.stopPropagation()}>
+          <StarRating
+            rating={person.rating || 0}
+            onChange={onRatingChange ? (r) => onRatingChange(person.username, r) : undefined}
+            size="sm"
+          />
         </div>
 
         {/* Last active + Image count */}

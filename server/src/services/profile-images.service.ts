@@ -233,13 +233,19 @@ export class ProfileImagesService {
 
   /**
    * Delete an image (both DB record and file)
+   * If the image has a photoset_id, record it to prevent re-downloading during rescrape
    */
   static async delete(imageId: string): Promise<boolean> {
     try {
-      // First get the image to know the file path
+      // First get the image to know the file path and photoset
       const image = await this.getById(imageId);
       if (!image) {
         return false;
+      }
+
+      // If this image has a photoset_id, record it as deleted to prevent re-download
+      if (image.photoset_id) {
+        await this.recordDeletedPhotoset(image.person_id, image.photoset_id);
       }
 
       // Delete from database
@@ -258,13 +264,47 @@ export class ProfileImagesService {
             logger.warn('Failed to delete image file', { imageId, filePath: image.file_path, error: fileError });
           }
         }
-        logger.info('Profile image deleted', { imageId });
+        logger.info('Profile image deleted', { imageId, photosetId: image.photoset_id });
       }
 
       return deleted;
     } catch (error) {
       logger.error('Error deleting profile image', { error, imageId });
       throw error;
+    }
+  }
+
+  /**
+   * Record a deleted photoset to prevent re-downloading
+   */
+  private static async recordDeletedPhotoset(personId: string, photosetId: string): Promise<void> {
+    const sql = `
+      INSERT INTO deleted_photosets (person_id, photoset_id)
+      VALUES ($1, $2)
+      ON CONFLICT (person_id, photoset_id) DO NOTHING
+    `;
+
+    try {
+      await query(sql, [personId, photosetId]);
+      logger.info('Recorded deleted photoset', { personId, photosetId });
+    } catch (error) {
+      logger.error('Error recording deleted photoset', { error, personId, photosetId });
+      // Don't throw - this is a non-critical operation
+    }
+  }
+
+  /**
+   * Check if a photoset was deleted by the user
+   */
+  static async isPhotosetDeleted(personId: string, photosetId: string): Promise<boolean> {
+    const sql = `SELECT 1 FROM deleted_photosets WHERE person_id = $1 AND photoset_id = $2 LIMIT 1`;
+
+    try {
+      const result = await query(sql, [personId, photosetId]);
+      return result.rows.length > 0;
+    } catch (error) {
+      logger.error('Error checking deleted photoset', { error, personId, photosetId });
+      return false; // Default to allowing download on error
     }
   }
 

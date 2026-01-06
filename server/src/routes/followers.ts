@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { logger } from '../config/logger.js';
 import { FollowerScraperService } from '../services/follower-scraper.service.js';
 import { ChaturbateScraperService } from '../services/chaturbate-scraper.service.js';
+import { FollowHistoryService, FollowDirection, FollowAction, FollowSource } from '../services/follow-history.service.js';
 
 const router = Router();
 
@@ -384,6 +385,77 @@ router.post('/scrape-followers', async (_req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error in automated followers scrape', { error });
     res.status(500).json({ error: 'Failed to scrape followers list' });
+  }
+});
+
+/**
+ * GET /api/followers/history
+ * Get paginated follow/unfollow history
+ * Query params: direction (following|follower), action (follow|unfollow), source, limit, offset
+ */
+router.get('/history', async (req: Request, res: Response) => {
+  try {
+    const {
+      direction,
+      action,
+      source,
+      limit = '50',
+      offset = '0',
+    } = req.query;
+
+    const result = await FollowHistoryService.getAll({
+      direction: direction as FollowDirection | undefined,
+      action: action as FollowAction | undefined,
+      source: source as FollowSource | undefined,
+      limit: parseInt(limit as string, 10),
+      offset: parseInt(offset as string, 10),
+    });
+
+    res.json({
+      records: result.records,
+      total: result.total,
+      limit: parseInt(limit as string, 10),
+      offset: parseInt(offset as string, 10),
+    });
+  } catch (error) {
+    logger.error('Error getting follow history', { error });
+    res.status(500).json({ error: 'Failed to get follow history' });
+  }
+});
+
+/**
+ * GET /api/followers/history/:personId
+ * Get follow history for a specific person
+ * Query params: direction (following|follower)
+ */
+router.get('/history/:personId', async (req: Request, res: Response) => {
+  try {
+    const { personId } = req.params;
+    const { direction } = req.query;
+
+    const records = await FollowHistoryService.getByPerson(
+      personId,
+      direction as FollowDirection | undefined
+    );
+
+    res.json({ records, total: records.length });
+  } catch (error) {
+    logger.error('Error getting follow history for person', { error });
+    res.status(500).json({ error: 'Failed to get follow history' });
+  }
+});
+
+/**
+ * GET /api/followers/history-stats
+ * Get summary statistics for follow history
+ */
+router.get('/history-stats', async (_req: Request, res: Response) => {
+  try {
+    const stats = await FollowHistoryService.getStats();
+    res.json(stats);
+  } catch (error) {
+    logger.error('Error getting follow history stats', { error });
+    res.status(500).json({ error: 'Failed to get follow history stats' });
   }
 });
 

@@ -12,6 +12,7 @@ import Visitors from './pages/Visitors';
 import Sessions from './pages/Sessions';
 import SessionDetail from './pages/SessionDetail';
 import Inbox from './pages/Inbox';
+import FollowHistory from './pages/FollowHistory';
 import GlobalLookup from './components/GlobalLookup';
 
 function App() {
@@ -44,6 +45,9 @@ function App() {
               <Link to="/people" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 People
               </Link>
+              <Link to="/follow-history" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
+                Follow History
+              </Link>
               <Link to="/admin" className="text-mhc-text-muted no-underline font-medium px-4 py-2 rounded-md transition-all hover:bg-mhc-surface-light hover:text-mhc-primary">
                 Admin
               </Link>
@@ -67,6 +71,7 @@ function App() {
             <Route path="/events" element={<EventsFeed />} />
             <Route path="/live" element={<LiveMonitor />} />
             <Route path="/visitors" element={<Visitors />} />
+            <Route path="/follow-history" element={<FollowHistory />} />
             <Route path="/admin" element={<Admin />} />
           </Routes>
         </main>

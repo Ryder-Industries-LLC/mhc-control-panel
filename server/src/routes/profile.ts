@@ -572,6 +572,7 @@ router.patch('/:username', async (req: Request, res: Response) => {
       friend_tier,
       stream_summary,
       watch_list,
+      rating,
     } = req.body;
 
     if (!username) {
@@ -642,6 +643,15 @@ router.patch('/:username', async (req: Request, res: Response) => {
       values.push(watch_list);
     }
 
+    if (rating !== undefined) {
+      const ratingValue = parseInt(rating, 10);
+      if (isNaN(ratingValue) || ratingValue < 0 || ratingValue > 5) {
+        return res.status(400).json({ error: 'Rating must be between 0 and 5' });
+      }
+      updates.push(`rating = $${paramIndex++}`);
+      values.push(ratingValue);
+    }
+
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
@@ -653,8 +663,8 @@ router.patch('/:username', async (req: Request, res: Response) => {
     if (existingProfile.rows.length === 0) {
       // Create minimal profile if it doesn't exist
       await query(
-        `INSERT INTO profiles (person_id, notes, banned_me, banned_by_me, active_sub, first_service_date, last_service_date, friend_tier, stream_summary, watch_list)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        `INSERT INTO profiles (person_id, notes, banned_me, banned_by_me, active_sub, first_service_date, last_service_date, friend_tier, stream_summary, watch_list, rating)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
         [
           person.id,
           notes !== undefined ? notes : null,
@@ -666,6 +676,7 @@ router.patch('/:username', async (req: Request, res: Response) => {
           friend_tier !== undefined ? friend_tier : null,
           stream_summary !== undefined ? stream_summary : null,
           watch_list !== undefined ? watch_list : false,
+          rating !== undefined ? Math.min(5, Math.max(0, parseInt(rating, 10) || 0)) : 0,
         ]
       );
 
@@ -2253,7 +2264,7 @@ router.post('/bulk/validate-usernames', async (req: Request, res: Response) => {
  * Upload multiple images with usernames parsed from filenames
  * Filename format: {username}.{ext} or {username}-{suffix}.{ext}
  */
-router.post('/bulk/upload', upload.array('images', 100), async (req: Request, res: Response) => {
+router.post('/bulk/upload', upload.array('images', 500), async (req: Request, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
 

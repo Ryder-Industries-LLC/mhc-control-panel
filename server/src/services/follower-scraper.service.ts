@@ -2,6 +2,7 @@ import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
 import * as cheerio from 'cheerio';
 import { PersonService } from './person.service.js';
+import { FollowHistoryService } from './follow-history.service.js';
 
 export interface FollowerStats {
   totalFollowing: number;
@@ -107,6 +108,13 @@ export class FollowerScraperService {
 
         if (!currentFollowing.has(person.id)) {
           newFollowing++;
+          // Record new follow in history
+          await FollowHistoryService.record({
+            personId: person.id,
+            direction: 'following',
+            action: 'follow',
+            source: 'list_scrape',
+          });
         }
       }
 
@@ -122,6 +130,13 @@ export class FollowerScraperService {
             [personId]
           );
           unfollowed++;
+          // Record unfollow in history
+          await FollowHistoryService.record({
+            personId,
+            direction: 'following',
+            action: 'unfollow',
+            source: 'list_scrape',
+          });
         }
       }
 
@@ -183,6 +198,13 @@ export class FollowerScraperService {
 
         if (!currentFollowers.has(person.id)) {
           newFollowers++;
+          // Record new follower in history
+          await FollowHistoryService.record({
+            personId: person.id,
+            direction: 'follower',
+            action: 'follow',
+            source: 'list_scrape',
+          });
         }
       }
 
@@ -198,6 +220,13 @@ export class FollowerScraperService {
             [personId]
           );
           unfollowers++;
+          // Record unfollower in history
+          await FollowHistoryService.record({
+            personId,
+            direction: 'follower',
+            action: 'unfollow',
+            source: 'list_scrape',
+          });
         }
       }
 

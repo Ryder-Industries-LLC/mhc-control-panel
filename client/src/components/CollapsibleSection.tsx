@@ -39,7 +39,7 @@ export const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
 
       <div
         className={`transition-all duration-200 ease-in-out ${
-          collapsed ? 'max-h-0 opacity-0' : 'max-h-[2000px] opacity-100'
+          collapsed ? 'max-h-0 opacity-0' : 'max-h-[20000px] opacity-100'
         } overflow-hidden`}
       >
         <div className={`p-4 ${contentClassName}`}>
