@@ -9,14 +9,21 @@
 set -e
 cd "$(dirname "$0")/.."
 
-SSD_PATH="/Volumes/Imago/MHC-Control_Panel/media"
+SSD_REAL_PATH="/Volumes/Imago/MHC-Control_Panel/media"
+SSD_SYMLINK="/Users/tracysmith/mhc-ssd-storage"
 
 check_ssd() {
-    if [ -d "$SSD_PATH" ] && [ -w "$SSD_PATH" ]; then
-        echo "✓ SSD available and writable at $SSD_PATH"
+    if [ -d "$SSD_REAL_PATH" ] && [ -w "$SSD_REAL_PATH" ]; then
+        # Ensure symlink exists
+        if [ ! -L "$SSD_SYMLINK" ]; then
+            echo "Creating symlink: $SSD_SYMLINK -> $SSD_REAL_PATH"
+            ln -sfn "$SSD_REAL_PATH" "$SSD_SYMLINK"
+        fi
+        echo "✓ SSD available and writable at $SSD_REAL_PATH"
+        echo "  (Docker mount via symlink: $SSD_SYMLINK)"
         return 0
     else
-        echo "✗ SSD not available at $SSD_PATH"
+        echo "✗ SSD not available at $SSD_REAL_PATH"
         return 1
     fi
 }

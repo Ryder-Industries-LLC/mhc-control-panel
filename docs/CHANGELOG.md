@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.27.1] - 2026-01-07
+
+### Changed
+- **SSD Storage Configuration**: Updated docker-compose.ssd.yml and start script
+  - Documented Docker Desktop for Mac limitation with external volumes (/Volumes/*)
+  - Added symlink-based workaround attempt (does not work due to Docker following symlinks)
+  - Recommend using S3 storage instead for external storage needs
+
+### Technical
+- SSD storage feature requires workaround due to Docker Desktop limitations
+- Storage system gracefully falls back to Docker volume when SSD unavailable
+
+---
+
 ## [1.27.0] - 2026-01-07
 
 ### Added

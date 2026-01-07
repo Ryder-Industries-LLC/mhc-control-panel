@@ -1,14 +1,15 @@
-# SSD Storage Override
-# Usage: docker-compose -f docker-compose.yml -f docker-compose.ssd.yml up -d
+# SSD Storage Override - NOT WORKING
+# Docker Desktop for Mac cannot mount external drives (/Volumes/*)
+# This file is kept for reference but the SSD feature requires a workaround.
 #
-# This file adds SSD bind mounts to the web and worker containers.
-# Edit the source path below to match your SSD mount point.
+# Alternative: Run transfers on the host machine outside of Docker,
+# or use S3 storage instead.
 
-services:
-  web:
-    volumes:
-      - /Volumes/Imago/MHC-Control_Panel/media:/mnt/ssd/mhc-images
-
-  worker:
-    volumes:
-      - /Volumes/Imago/MHC-Control_Panel/media:/mnt/ssd/mhc-images
+# services:
+#   web:
+#     volumes:
+#       - /Volumes/Imago/MHC-Control_Panel/media:/mnt/ssd/mhc-images
+#
+#   worker:
+#     volumes:
+#       - /Volumes/Imago/MHC-Control_Panel/media:/mnt/ssd/mhc-images
