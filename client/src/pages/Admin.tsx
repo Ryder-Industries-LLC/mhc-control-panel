@@ -299,6 +299,38 @@ const Admin: React.FC = () => {
   const [noteLineLimitSaving, setNoteLineLimitSaving] = useState(false);
   const [noteLineLimitSuccess, setNoteLineLimitSuccess] = useState<string | null>(null);
 
+  // Storage settings state
+  interface StorageConfig {
+    globalMode: 'local' | 'remote';
+    local: {
+      mode: 'auto' | 'ssd' | 'docker';
+      ssdEnabled: boolean;
+      dockerEnabled: boolean;
+      ssdPath: string;
+      dockerPath: string;
+    };
+    external: {
+      enabled: boolean;
+      s3Bucket: string;
+      s3Region: string;
+      s3Prefix: string;
+      cacheEnabled: boolean;
+      cacheMaxSizeMb: number;
+    };
+  }
+  interface StorageStatus {
+    currentWriteBackend: string | null;
+    docker: { available: boolean; path: string; fileCount: number };
+    ssd: { available: boolean; path: string; fileCount: number };
+    s3: { available: boolean; bucket: string; fileCount: number };
+  }
+  const [storageConfig, setStorageConfig] = useState<StorageConfig | null>(null);
+  const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
+  const [storageLoading, setStorageLoading] = useState(false);
+  const [storageSaving, setStorageSaving] = useState(false);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [storageSuccess, setStorageSuccess] = useState<string | null>(null);
+
   // Bulk upload state
   interface ParsedFile {
     file: File;
@@ -354,13 +386,14 @@ const Admin: React.FC = () => {
     }
   }, [activeTab]);
 
-  // Load broadcast settings, image settings, video settings, and note settings when Settings tab is active
+  // Load broadcast settings, image settings, video settings, note settings, and storage settings when Settings tab is active
   useEffect(() => {
     if (activeTab === 'settings') {
       fetchBroadcastSettings();
       fetchImageSettings();
       fetchVideoSettings();
       fetchNoteLineLimitSetting();
+      fetchStorageSettings();
     }
   }, [activeTab]);
 
@@ -395,6 +428,58 @@ const Admin: React.FC = () => {
       // Silent fail
     } finally {
       setNoteLineLimitSaving(false);
+    }
+  };
+
+  const fetchStorageSettings = async () => {
+    setStorageLoading(true);
+    setStorageError(null);
+    try {
+      const response = await fetch('/api/storage/status');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setStorageConfig(data.data.config);
+          setStorageStatus(data.data.status);
+        }
+      } else {
+        setStorageError('Failed to load storage settings');
+      }
+    } catch (err) {
+      setStorageError('Failed to load storage settings');
+      console.error('Error fetching storage settings:', err);
+    } finally {
+      setStorageLoading(false);
+    }
+  };
+
+  const saveStorageSettings = async () => {
+    if (!storageConfig) return;
+    setStorageSaving(true);
+    setStorageError(null);
+    setStorageSuccess(null);
+    try {
+      const response = await fetch('/api/storage/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(storageConfig),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setStorageConfig(data.data.config);
+          setStorageStatus(data.data.status);
+          setStorageSuccess('Storage settings saved successfully');
+          setTimeout(() => setStorageSuccess(null), 3000);
+        }
+      } else {
+        setStorageError('Failed to save storage settings');
+      }
+    } catch (err) {
+      setStorageError('Failed to save storage settings');
+      console.error('Error saving storage settings:', err);
+    } finally {
+      setStorageSaving(false);
     }
   };
 
@@ -3359,6 +3444,236 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
                     <div className="text-mhc-text-muted">No video settings available</div>
                   )}
                 </div>
+              </CollapsibleSection>
+            </div>
+
+            {/* Storage Section */}
+            <div className="mb-4">
+              <CollapsibleSection title="Storage" defaultCollapsed={true} className="bg-mhc-surface">
+                {storageError && (
+                  <div className="p-3 px-4 rounded-md mb-4 bg-red-500/15 border-l-4 border-red-500 text-red-300">
+                    {storageError}
+                  </div>
+                )}
+                {storageSuccess && (
+                  <div className="p-3 px-4 rounded-md mb-4 bg-green-500/15 border-l-4 border-green-500 text-green-300">
+                    {storageSuccess}
+                  </div>
+                )}
+                {storageLoading ? (
+                  <div className="text-mhc-text-muted">Loading storage settings...</div>
+                ) : storageConfig && storageStatus ? (
+                  <div className="space-y-6">
+                    {/* Status Display */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                      <div className={`p-4 rounded-lg border ${storageStatus.docker.available ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`w-2 h-2 rounded-full ${storageStatus.docker.available ? 'bg-emerald-500' : 'bg-gray-500'}`}></span>
+                          <span className="font-medium text-mhc-text">Docker Volume</span>
+                          {storageStatus.currentWriteBackend === 'docker' && (
+                            <span className="text-xs bg-mhc-primary/20 text-mhc-primary px-2 py-0.5 rounded">Active</span>
+                          )}
+                        </div>
+                        <div className="text-sm text-mhc-text-muted">
+                          <div>{storageStatus.docker.fileCount.toLocaleString()} files</div>
+                          <div className="text-xs truncate">{storageStatus.docker.path}</div>
+                        </div>
+                      </div>
+                      <div className={`p-4 rounded-lg border ${storageStatus.ssd.available ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`w-2 h-2 rounded-full ${storageStatus.ssd.available ? 'bg-emerald-500' : 'bg-gray-500'}`}></span>
+                          <span className="font-medium text-mhc-text">SSD Mount</span>
+                          {storageStatus.currentWriteBackend === 'ssd' && (
+                            <span className="text-xs bg-mhc-primary/20 text-mhc-primary px-2 py-0.5 rounded">Active</span>
+                          )}
+                        </div>
+                        <div className="text-sm text-mhc-text-muted">
+                          <div>{storageStatus.ssd.fileCount.toLocaleString()} files</div>
+                          <div className="text-xs truncate">{storageStatus.ssd.path}</div>
+                        </div>
+                      </div>
+                      <div className={`p-4 rounded-lg border ${storageStatus.s3.available ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`w-2 h-2 rounded-full ${storageStatus.s3.available ? 'bg-emerald-500' : 'bg-gray-500'}`}></span>
+                          <span className="font-medium text-mhc-text">AWS S3</span>
+                          {storageStatus.currentWriteBackend === 's3' && (
+                            <span className="text-xs bg-mhc-primary/20 text-mhc-primary px-2 py-0.5 rounded">Active</span>
+                          )}
+                        </div>
+                        <div className="text-sm text-mhc-text-muted">
+                          <div>{storageStatus.s3.fileCount.toLocaleString()} files</div>
+                          <div className="text-xs truncate">{storageStatus.s3.bucket || 'Not configured'}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Global Mode */}
+                    <div>
+                      <label className="block text-mhc-text mb-2 font-medium">Global Mode</label>
+                      <p className="text-mhc-text-muted text-sm mb-2">
+                        Choose where new files are stored by default.
+                      </p>
+                      <div className="flex gap-4">
+                        <label className="flex items-center gap-2 text-mhc-text cursor-pointer">
+                          <input
+                            type="radio"
+                            name="globalMode"
+                            checked={storageConfig.globalMode === 'local'}
+                            onChange={() => setStorageConfig({...storageConfig, globalMode: 'local'})}
+                            className="text-mhc-primary"
+                          />
+                          Local (Docker/SSD)
+                        </label>
+                        <label className="flex items-center gap-2 text-mhc-text cursor-pointer">
+                          <input
+                            type="radio"
+                            name="globalMode"
+                            checked={storageConfig.globalMode === 'remote'}
+                            onChange={() => setStorageConfig({...storageConfig, globalMode: 'remote'})}
+                            className="text-mhc-primary"
+                          />
+                          Remote (S3)
+                        </label>
+                      </div>
+                    </div>
+
+                    {/* Local Storage Settings */}
+                    {storageConfig.globalMode === 'local' && (
+                      <div className="border border-white/10 rounded-lg p-4">
+                        <h4 className="text-mhc-text font-medium mb-4">Local Storage</h4>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-mhc-text mb-2 text-sm">Local Mode</label>
+                            <select
+                              value={storageConfig.local.mode}
+                              onChange={(e) => setStorageConfig({
+                                ...storageConfig,
+                                local: {...storageConfig.local, mode: e.target.value as 'auto' | 'ssd' | 'docker'}
+                              })}
+                              className="w-48 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                            >
+                              <option value="auto">Auto (prefer SSD)</option>
+                              <option value="ssd">SSD only</option>
+                              <option value="docker">Docker only</option>
+                            </select>
+                          </div>
+                          <div className="flex gap-6">
+                            <label className="flex items-center gap-2 text-mhc-text text-sm cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={storageConfig.local.ssdEnabled}
+                                onChange={(e) => setStorageConfig({
+                                  ...storageConfig,
+                                  local: {...storageConfig.local, ssdEnabled: e.target.checked}
+                                })}
+                                className="rounded text-mhc-primary"
+                              />
+                              SSD Enabled
+                            </label>
+                            <label className="flex items-center gap-2 text-mhc-text text-sm cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={storageConfig.local.dockerEnabled}
+                                onChange={(e) => setStorageConfig({
+                                  ...storageConfig,
+                                  local: {...storageConfig.local, dockerEnabled: e.target.checked}
+                                })}
+                                className="rounded text-mhc-primary"
+                              />
+                              Docker Enabled
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* External S3 Settings */}
+                    <div className="border border-white/10 rounded-lg p-4">
+                      <h4 className="text-mhc-text font-medium mb-4">External Storage (S3)</h4>
+                      <div className="space-y-4">
+                        <label className="flex items-center gap-2 text-mhc-text text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={storageConfig.external.enabled}
+                            onChange={(e) => setStorageConfig({
+                              ...storageConfig,
+                              external: {...storageConfig.external, enabled: e.target.checked}
+                            })}
+                            className="rounded text-mhc-primary"
+                          />
+                          Enable S3 Storage
+                        </label>
+                        {storageConfig.external.enabled && (
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-mhc-text-muted text-xs mb-1">Bucket Name</label>
+                              <input
+                                type="text"
+                                value={storageConfig.external.s3Bucket}
+                                onChange={(e) => setStorageConfig({
+                                  ...storageConfig,
+                                  external: {...storageConfig.external, s3Bucket: e.target.value}
+                                })}
+                                placeholder="my-bucket"
+                                className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-mhc-text-muted text-xs mb-1">Region</label>
+                              <input
+                                type="text"
+                                value={storageConfig.external.s3Region}
+                                onChange={(e) => setStorageConfig({
+                                  ...storageConfig,
+                                  external: {...storageConfig.external, s3Region: e.target.value}
+                                })}
+                                placeholder="us-east-1"
+                                className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-mhc-text-muted text-xs mb-1">Key Prefix</label>
+                              <input
+                                type="text"
+                                value={storageConfig.external.s3Prefix}
+                                onChange={(e) => setStorageConfig({
+                                  ...storageConfig,
+                                  external: {...storageConfig.external, s3Prefix: e.target.value}
+                                })}
+                                placeholder="profiles/"
+                                className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-mhc-text-muted text-xs mb-1">Cache Max Size (MB)</label>
+                              <input
+                                type="number"
+                                value={storageConfig.external.cacheMaxSizeMb}
+                                onChange={(e) => setStorageConfig({
+                                  ...storageConfig,
+                                  external: {...storageConfig.external, cacheMaxSizeMb: parseInt(e.target.value) || 5000}
+                                })}
+                                className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-white/10">
+                      <button
+                        onClick={saveStorageSettings}
+                        disabled={storageSaving}
+                        className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {storageSaving ? 'Saving...' : 'Save Storage Settings'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-mhc-text-muted">No storage settings available</div>
+                )}
               </CollapsibleSection>
             </div>
 

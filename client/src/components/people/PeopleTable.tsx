@@ -101,7 +101,7 @@ export function PeopleTable<T extends BasePerson>({
   return (
     <div className={`bg-white/5 border border-white/10 rounded-xl overflow-auto max-h-[calc(100vh-400px)] min-h-[400px] ${className}`}>
       <table className="w-full border-collapse">
-        <thead className="sticky top-0 z-10">
+        <thead className="sticky top-0 z-20">
           <tr>
             {columns.map((column) => (
               <th
@@ -110,7 +110,7 @@ export function PeopleTable<T extends BasePerson>({
                 style={{ width: column.width }}
                 className={`
                   px-4 py-4 text-left font-semibold text-white/90 text-sm uppercase tracking-wide
-                  bg-[#1e2536] border-b-2 border-mhc-primary/30
+                  bg-mhc-surface border-b-2 border-mhc-primary/30
                   ${column.sortable ? 'cursor-pointer select-none hover:bg-white/8' : ''}
                   ${column.align === 'center' ? 'text-center' : ''}
                   ${column.align === 'right' ? 'text-right' : ''}

@@ -12,6 +12,7 @@ import { cbhoursPollingJob } from '../jobs/cbhours-polling.job.js';
 import { statbateRefreshJob } from '../jobs/statbate-refresh.job.js';
 import { finalizeSessionsJob } from '../jobs/finalize-sessions.job.js';
 import { liveScreenshotJob } from '../jobs/live-screenshot.job.js';
+import { mediaTransferJob } from '../jobs/media-transfer.job.js';
 import { logger } from '../config/logger.js';
 
 export class JobRestoreService {
@@ -30,6 +31,7 @@ export class JobRestoreService {
         statbateRefreshJob.init(),
         finalizeSessionsJob.init(),
         liveScreenshotJob.init(),
+        mediaTransferJob.init(),
       ]);
       logger.info('All job state records initialized');
     } catch (error) {
@@ -63,6 +65,7 @@ export class JobRestoreService {
       { name: 'statbate-refresh', job: statbateRefreshJob },
       { name: 'finalize-sessions', job: finalizeSessionsJob },
       { name: 'live-screenshot', job: liveScreenshotJob },
+      { name: 'media-transfer', job: mediaTransferJob },
     ];
 
     for (const { name, job } of jobs) {
@@ -101,6 +104,7 @@ export class JobRestoreService {
       { name: 'profile-scrape', job: profileScrapeJob },
       { name: 'statbate-refresh', job: statbateRefreshJob },
       { name: 'live-screenshot', job: liveScreenshotJob },
+      { name: 'media-transfer', job: mediaTransferJob },
     ];
 
     for (const { name, job } of autoStartJobs) {
@@ -145,6 +149,7 @@ export class JobRestoreService {
       statbateRefreshJob.stop(),
       finalizeSessionsJob.stop(),
       liveScreenshotJob.stop(),
+      mediaTransferJob.stop(),
     ]);
 
     logger.info('All jobs stopped');
@@ -165,6 +170,7 @@ export class JobRestoreService {
       statbateRefreshJob.halt(),
       finalizeSessionsJob.halt(),
       liveScreenshotJob.halt(),
+      mediaTransferJob.halt(),
     ]);
 
     logger.info('All jobs halted');

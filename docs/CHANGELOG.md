@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.27.0] - 2026-01-07
+
+### Added
+- **Storage Provider System**: Multi-provider media storage architecture
+  - New storage routes (`/api/storage/*`) for provider management
+  - S3-compatible storage service with local fallback
+  - Storage settings table for per-provider configuration
+  - Media transfer job for migrating between storage providers
+- **Follow Detection Regression Tests**: Comprehensive test suite for profile scrape follow detection
+  - 11 tests covering all HTML fixtures (followed/not-followed, online/offline)
+  - Tests verify global UI elements are NOT used as evidence
+  - Uses Cheerio for server-side DOM testing
+- **Profile Username History**: Track historical usernames for profiles
+- **Start Script**: New `scripts/start.sh` for streamlined server startup
+
+### Changed
+- **People Table Sticky Headers**: Improved sticky column headers in People views
+  - Z-index increased from 10 to 20 for proper stacking
+  - Background now uses theme variable (`bg-mhc-surface`) instead of hardcoded color
+- **Jest Configuration**: Added `transformIgnorePatterns` for ESM module compatibility
+
+### Fixed
+- **Profile Scrape Follow Detection**: Fixed false positives in follow status detection
+  - **Root cause**: Detection was checking button EXISTENCE instead of VISIBILITY
+  - Both follow/unfollow buttons exist in DOM; only one is visible (`display: inline` vs `display: none`)
+  - Now correctly checks `getComputedStyle()` display property with inline style fallback
+  - Returns `unknown` when visibility cannot be confidently determined
+  - Migration 064 invalidates affected profile_scrape records for re-scraping
+
+### Technical
+- New migrations: 060-064 (storage columns, storage settings, media transfer, username history, follow detection fix)
+- New service: `storage/` directory with multi-provider architecture
+- New job: `media-transfer.job.ts` for storage migration
+
+---
+
 ## [1.26.0] - 2026-01-06
 
 ### Added

@@ -1,0 +1,14 @@
+# SSD Storage Override
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.ssd.yml up -d
+#
+# This file adds SSD bind mounts to the web and worker containers.
+# Edit the source path below to match your SSD mount point.
+
+services:
+  web:
+    volumes:
+      - /Volumes/Imago/MHC-Control_Panel/media:/mnt/ssd/mhc-images
+
+  worker:
+    volumes:
+      - /Volumes/Imago/MHC-Control_Panel/media:/mnt/ssd/mhc-images

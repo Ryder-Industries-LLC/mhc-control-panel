@@ -11,6 +11,9 @@ export default {
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!(@exodus/bytes|html-encoding-sniffer)/)',
+  ],
   extensionsToTreatAsEsm: ['.ts'],
   collectCoverageFrom: [
     'server/src/**/*.ts',

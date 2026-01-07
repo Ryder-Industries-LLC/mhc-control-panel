@@ -23,6 +23,7 @@ import relationshipRoutes from './routes/relationship.js';
 import sessionsV2Routes from './routes/sessions-v2.js';
 import settingsRoutes from './routes/settings.js';
 import inboxRoutes from './routes/inbox.js';
+import storageRoutes from './routes/storage.js';
 
 export function createApp() {
   const app = express();
@@ -37,10 +38,15 @@ export function createApp() {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
 
-  // Serve static images
+  // Serve static images from Docker volume
   const imagesPath = path.join(process.cwd(), 'data', 'images');
   app.use('/images', express.static(imagesPath));
-  logger.info('Serving static images from', { path: imagesPath });
+  logger.info('Serving static images from Docker volume', { path: imagesPath });
+
+  // Serve static images from SSD mount (if available)
+  const ssdImagesPath = '/mnt/ssd/mhc-images';
+  app.use('/ssd-images', express.static(ssdImagesPath));
+  logger.info('Serving static images from SSD mount', { path: ssdImagesPath });
 
   // Request logging
   app.use((req: Request, _res: Response, next: NextFunction) => {
@@ -76,6 +82,7 @@ export function createApp() {
   app.use('/api/sessions-v2', sessionsV2Routes);
   app.use('/api/settings', settingsRoutes);
   app.use('/api/inbox', inboxRoutes);
+  app.use('/api/storage', storageRoutes);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

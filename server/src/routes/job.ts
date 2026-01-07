@@ -4,6 +4,7 @@ import { affiliatePollingJob } from '../jobs/affiliate-polling.job.js';
 import { profileScrapeJob } from '../jobs/profile-scrape.job.js';
 import { cbhoursPollingJob } from '../jobs/cbhours-polling.job.js';
 import { liveScreenshotJob } from '../jobs/live-screenshot.job.js';
+import { mediaTransferJob } from '../jobs/media-transfer.job.js';
 import { ImageStorageService } from '../services/image-storage.service.js';
 import { pool } from '../db/client.js';
 import { logger } from '../config/logger.js';
@@ -22,6 +23,7 @@ router.get('/status', async (_req: Request, res: Response) => {
       affiliatePollingJob.syncStateFromDB(),
       profileScrapeJob.syncStateFromDB(),
       liveScreenshotJob.syncStateFromDB(),
+      mediaTransferJob.syncStateFromDB(),
     ]);
 
     const status = {
@@ -30,6 +32,7 @@ router.get('/status', async (_req: Request, res: Response) => {
       profileScrape: profileScrapeJob.getStatus(),
       cbhoursPolling: cbhoursPollingJob.getStatus(),
       liveScreenshot: liveScreenshotJob.getStatus(),
+      mediaTransfer: mediaTransferJob.getStatus(),
     };
     res.json(status);
   } catch (error) {
@@ -593,6 +596,105 @@ router.post('/live-screenshot/run-now', async (_req: Request, res: Response) => 
     res.json({ success: true, status: liveScreenshotJob.getStatus() });
   } catch (error) {
     logger.error('Run live-screenshot job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ===== Media Transfer Job Endpoints =====
+
+/**
+ * GET /api/job/media-transfer/status
+ * Get media transfer job status
+ */
+router.get('/media-transfer/status', async (_req: Request, res: Response) => {
+  try {
+    await mediaTransferJob.syncStateFromDB();
+    const status = mediaTransferJob.getStatus();
+    res.json(status);
+  } catch (error) {
+    logger.error('Get media-transfer job status error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/media-transfer/config
+ * Update media transfer job configuration
+ */
+router.post('/media-transfer/config', async (req: Request, res: Response) => {
+  try {
+    const { intervalMinutes, destination, batchSize, enabled } = req.body;
+
+    await mediaTransferJob.updateConfig({
+      ...(intervalMinutes !== undefined && { intervalMinutes }),
+      ...(destination !== undefined && { destination }),
+      ...(batchSize !== undefined && { batchSize }),
+      ...(enabled !== undefined && { enabled }),
+    });
+
+    res.json({ success: true, status: mediaTransferJob.getStatus() });
+  } catch (error) {
+    logger.error('Update media-transfer job config error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/media-transfer/start
+ * Start the media transfer job
+ */
+router.post('/media-transfer/start', async (_req: Request, res: Response) => {
+  try {
+    await mediaTransferJob.start();
+    res.json({ success: true, status: mediaTransferJob.getStatus() });
+  } catch (error) {
+    logger.error('Start media-transfer job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/media-transfer/stop
+ * Stop the media transfer job
+ */
+router.post('/media-transfer/stop', async (_req: Request, res: Response) => {
+  try {
+    await mediaTransferJob.stop();
+    res.json({ success: true, status: mediaTransferJob.getStatus() });
+  } catch (error) {
+    logger.error('Stop media-transfer job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/media-transfer/reset-stats
+ * Reset media transfer job statistics
+ */
+router.post('/media-transfer/reset-stats', (_req: Request, res: Response) => {
+  try {
+    mediaTransferJob.resetStats();
+    res.json({ success: true, status: mediaTransferJob.getStatus() });
+  } catch (error) {
+    logger.error('Reset media-transfer job stats error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/media-transfer/run-now
+ * Manually trigger a media transfer cycle
+ */
+router.post('/media-transfer/run-now', async (_req: Request, res: Response) => {
+  try {
+    const result = await mediaTransferJob.runNow();
+    res.json({
+      success: result.success,
+      message: result.message,
+      status: mediaTransferJob.getStatus(),
+    });
+  } catch (error) {
+    logger.error('Run media-transfer job error', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

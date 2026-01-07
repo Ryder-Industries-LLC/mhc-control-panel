@@ -608,16 +608,43 @@ export class ChaturbateScraperService {
 
       logger.info(`Profile type for ${username}: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
 
-      // Detect follow/unfollow button to determine if we're following this user
+      // Detect follow status by checking VISIBILITY of profile-specific buttons
+      // Both buttons exist in DOM but only one is visible at a time (display: inline vs none)
       const detectedFollowStatus = await page.evaluate(() => {
-        // Check for unfollow button (means we ARE following)
+        // Get profile-specific follow/unfollow buttons
         const unfollowBtn = document.querySelector('div.unfollowButton[data-testid="unfollow-button"]');
-        if (unfollowBtn) return 'following';
-
-        // Check for follow button (means we are NOT following)
         const followBtn = document.querySelector('div.followButton[data-testid="follow-button"]');
-        if (followBtn) return 'not_following';
 
+        // Helper to check computed display style
+        const getDisplay = (el: Element | null): string => {
+          if (!el) return 'none';
+          const style = window.getComputedStyle(el);
+          return style.display || 'none';
+        };
+
+        const unfollowDisplay = getDisplay(unfollowBtn);
+        const followDisplay = getDisplay(followBtn);
+
+        // Only trust visible buttons (display !== 'none')
+        if (unfollowDisplay !== 'none' && unfollowDisplay !== '') {
+          return 'following';
+        }
+        if (followDisplay !== 'none' && followDisplay !== '') {
+          return 'not_following';
+        }
+
+        // Fallback: check inline style attribute if computed style fails
+        const unfollowStyle = unfollowBtn?.getAttribute('style') || '';
+        const followStyle = followBtn?.getAttribute('style') || '';
+
+        if (unfollowStyle.includes('display: inline') || unfollowStyle.includes('display:inline')) {
+          return 'following';
+        }
+        if (followStyle.includes('display: inline') || followStyle.includes('display:inline')) {
+          return 'not_following';
+        }
+
+        // Cannot confidently determine - return unknown
         return 'unknown';
       }) as 'following' | 'not_following' | 'unknown';
 

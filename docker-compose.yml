@@ -45,6 +45,10 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
       OPENAI_MAX_TOKENS: ${OPENAI_MAX_TOKENS:-6000}
+      # AWS S3 for external storage (optional)
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
     volumes:
       - browser_data:/app/data
       - image_data:/app/data/images
@@ -69,6 +73,12 @@ services:
       # Set these in .env file - see .env.example
       CHATURBATE_USERNAME: ${CHATURBATE_USERNAME}
       CHATURBATE_EVENTS_TOKEN: ${CHATURBATE_EVENTS_TOKEN}
+      # AWS S3 for external storage (optional)
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+    volumes:
+      - image_data:/app/data/images
     depends_on:
       db:
         condition: service_healthy
