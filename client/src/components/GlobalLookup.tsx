@@ -175,7 +175,7 @@ export const GlobalLookup: React.FC<GlobalLookupProps> = ({ inline = false }) =>
           }}
           onKeyDown={handleKeyDown}
           placeholder="Search users... (⌘K)"
-          className="w-48 px-3 py-1.5 bg-mhc-surface-light border border-white/20 rounded-md text-white placeholder-mhc-text-muted focus:outline-none focus:border-mhc-primary focus:w-64 transition-all text-sm"
+          className="w-60 px-3 py-1.5 bg-mhc-surface-light border border-white/20 rounded-md text-white placeholder-mhc-text-muted focus:outline-none focus:border-mhc-primary focus:w-80 transition-all text-sm"
         />
         {loading && (
           <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-mhc-primary animate-spin" viewBox="0 0 24 24">

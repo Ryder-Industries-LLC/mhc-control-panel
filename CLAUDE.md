@@ -1,8 +1,8 @@
 # CLAUDE.md - Project Context for Claude Code
 
 **Project:** MHC Control Panel
-**Version:** 1.25.0
-**Last Updated:** 2026-01-05
+**Version:** 1.28.0
+**Last Updated:** 2026-01-07
 
 ---
 
@@ -123,23 +123,42 @@ cd client && npm test
 
 ---
 
-## Recent Changes (v1.25.0)
+## Recent Changes (v1.28.0)
 
-### Job Status Display Overhaul
-- Removed "Pause" functionality entirely from all jobs
-- Simplified to Start/Stop controls only
-- New status states: Stopped, Starting, Processing, Waiting
-- "Waiting" shows when job is between cycles (after first run)
-- "Starting" shows when job just started (before first run)
+### Major UI/UX Overhaul
 
-### Profile Page Improvements
-- Fixed social media link scraping (locked vs unlocked detection)
-- Fixed Communications/PMs query to show both directions
-- Added Interactions tab filter chips
-- Various UI reorganizations
+- **Navigation Restructure**: Two-row layout with logo spanning both rows
+  - Row 1: Directory, Inbox, Stats, Broadcasts, Follow History, Event Log, Admin
+  - Row 2: Global search and contextual actions
+- **Renamed Pages**: Dashboard → Stats, Sessions → Broadcasts, People → Directory
+- **New Event Log Page** (`/event-log`): View Chaturbate Events API data with filters
+- **Inter Font**: Site-wide typography update
+
+### Profile Improvements
+
+- New boolean attribute checkboxes: Smoke on Cam, Leather/Fetish, Profile Smoke, Had Interaction
+- Profile attributes stored as boolean columns (migration 065)
+
+### Admin Reorganization
+
+- Data Sources and Chaturbate Sync moved to Settings tab
+- Follower Trends moved to Follow History page
+
+### Inbox Fix
+
+- Fixed chat bubble alignment using `env.CHATURBATE_USERNAME` for `is_from_broadcaster`
+
+### People/Directory Page
+
+- Added CB and UN Cams external links in list and grid views
 
 ### Files Modified
-- All job files (`*.job.ts`) - Removed isPaused logic
-- `routes/job.ts` - Removed pause/resume endpoints
-- `routes/system.ts` - Removed isPaused from status
-- `pages/Admin.tsx` - Updated JobStatusButton with new states
+
+- `client/src/App.tsx` - Two-row navigation, route changes
+- `client/src/pages/EventLog.tsx` - New page
+- `client/src/pages/Admin.tsx` - Reorganized sections
+- `client/src/pages/Sessions.tsx` - AI Summary button
+- `client/src/pages/BroadcasterDashboard.tsx` - Account Stats collapsible
+- `client/src/pages/FollowHistory.tsx` - 24h filter, Follower Trends section
+- `server/src/routes/inbox.ts` - Fixed is_from_broadcaster logic
+- `server/src/services/profile.service.ts` - New attribute methods

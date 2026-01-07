@@ -81,10 +81,9 @@ class StorageService {
    * Initialize storage providers based on configuration
    */
   private async initializeProviders(): Promise<void> {
-    // Always create Docker provider (it's the default)
-    if (this.config.local.dockerEnabled) {
-      this.dockerProvider = new DockerProvider(this.config.local.dockerPath);
-    }
+    // Always create Docker provider - it's the default fallback
+    // even if not "enabled" for primary writes
+    this.dockerProvider = new DockerProvider(this.config.local.dockerPath);
 
     // Create SSD provider if enabled
     if (this.config.local.ssdEnabled) {

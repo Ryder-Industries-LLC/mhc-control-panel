@@ -168,32 +168,7 @@ interface SystemStats {
   };
 }
 
-type AdminTab = 'jobs' | 'system-stats' | 'follower-trends' | 'data-sources' | 'scraper' | 'bulk-upload' | 'settings';
-
-interface FollowerMover {
-  username: string;
-  person_id: string;
-  total_change: number;
-  current_count: number;
-}
-
-interface FollowerRecentChange {
-  id: string;
-  username: string;
-  person_id: string;
-  follower_count: number;
-  delta: number;
-  recorded_at: string;
-  source: string;
-}
-
-interface FollowerTrendsDashboard {
-  topGainers: FollowerMover[];
-  topLosers: FollowerMover[];
-  recentChanges: FollowerRecentChange[];
-  totalTracked: number;
-  totalWithChanges: number;
-}
+type AdminTab = 'jobs' | 'system-stats' | 'data-sources' | 'scraper' | 'bulk-upload' | 'settings';
 
 const Admin: React.FC = () => {
   const { theme, setTheme, themes } = useTheme();
@@ -201,10 +176,6 @@ const Admin: React.FC = () => {
   const [expandedJobs, setExpandedJobs] = useState<Record<string, boolean>>({});
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
-  const [followerTrends, setFollowerTrends] = useState<FollowerTrendsDashboard | null>(null);
-  const [trendsDays, setTrendsDays] = useState<number>(7);
-  const [recentChangesPage, setRecentChangesPage] = useState(0);
-  const RECENT_CHANGES_PER_PAGE = 20;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -222,8 +193,6 @@ const Admin: React.FC = () => {
   const [cookieStatus, setCookieStatus] = useState<string | null>(null);
   const [scraping, setScraping] = useState(false);
   const [scrapeStatus, setScrapeStatus] = useState<string | null>(null);
-  const [sessionSectionCollapsed, setSessionSectionCollapsed] = useState(true);
-  const [syncSectionCollapsed, setSyncSectionCollapsed] = useState(true);
   const [lastSyncDate, setLastSyncDate] = useState<string | null>(null);
 
   // Profile scrape job state
@@ -371,13 +340,6 @@ const Admin: React.FC = () => {
       fetchSystemStats();
     }
   }, [activeTab]);
-
-  // Load follower trends when on Follower Trends tab
-  useEffect(() => {
-    if (activeTab === 'follower-trends') {
-      fetchFollowerTrends();
-    }
-  }, [activeTab, trendsDays]);
 
   // Check cookie status when on Scraper tab
   useEffect(() => {
@@ -684,23 +646,6 @@ const Admin: React.FC = () => {
       }
       const data = await response.json();
       setSystemStats(data);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchFollowerTrends = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/api/system/follower-trends/dashboard?days=${trendsDays}&limit=10`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch follower trends');
-      }
-      const data = await response.json();
-      setFollowerTrends(data);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -1377,7 +1322,7 @@ const Admin: React.FC = () => {
       {!hasCookies && (
         <div className="p-3 px-4 rounded-md mb-5 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
           <strong className="font-bold mr-1">Note:</strong> No cookies imported. Profile capture requires authenticated Chaturbate cookies.
-          Go to the <button className="underline font-semibold" onClick={() => setActiveTab('scraper')}>Chaturbate Sync tab</button> to import cookies.
+          Go to <button className="underline font-semibold" onClick={() => setActiveTab('settings')}>Settings</button> → Chaturbate Sync to import cookies.
         </div>
       )}
 
@@ -2061,49 +2006,49 @@ const Admin: React.FC = () => {
           >
             <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">
               <Link
-                to="/?tab=following"
+                to="/people?tab=following"
                 className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
               >
                 <div className="text-2xl font-bold mb-1">{systemStats.following.followingCount}</div>
                 <div className="text-xs opacity-90 uppercase tracking-wide">Following</div>
               </Link>
               <Link
-                to="/?tab=followers"
+                to="/people?tab=followers"
                 className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
               >
                 <div className="text-2xl font-bold mb-1">{systemStats.following.followerCount}</div>
                 <div className="text-xs opacity-90 uppercase tracking-wide">Followers</div>
               </Link>
               <Link
-                to="/?tab=subs"
+                to="/people?tab=subs"
                 className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
               >
                 <div className="text-2xl font-bold mb-1">{systemStats.following.subsCount}</div>
                 <div className="text-xs opacity-90 uppercase tracking-wide">Active Subs</div>
               </Link>
               <Link
-                to="/?tab=doms"
+                to="/people?tab=doms"
                 className="text-center p-4 bg-gradient-to-br from-pink-600 to-pink-800 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
               >
                 <div className="text-2xl font-bold mb-1">{systemStats.following.activeDomsCount || 0}</div>
                 <div className="text-xs opacity-90 uppercase tracking-wide">Active Doms</div>
               </Link>
               <Link
-                to="/?tab=friends"
+                to="/people?tab=friends"
                 className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
               >
                 <div className="text-2xl font-bold mb-1">{systemStats.following.friendsCount}</div>
                 <div className="text-xs opacity-90 uppercase tracking-wide">Friends</div>
               </Link>
               <Link
-                to="/?tab=watchlist"
+                to="/people?tab=watchlist"
                 className="text-center p-4 bg-gradient-to-br from-yellow-600 to-yellow-800 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
               >
                 <div className="text-2xl font-bold mb-1">{systemStats.following.watchlistCount || 0}</div>
                 <div className="text-xs opacity-90 uppercase tracking-wide">Watchlist</div>
               </Link>
               <Link
-                to="/?tab=bans"
+                to="/people?tab=bans"
                 className="text-center p-4 bg-gradient-to-br from-red-600 to-red-800 rounded-lg text-white hover:opacity-90 transition-opacity cursor-pointer block no-underline"
               >
                 <div className="text-2xl font-bold mb-1">{systemStats.following.bannedCount}</div>
@@ -2112,9 +2057,9 @@ const Admin: React.FC = () => {
             </div>
           </CollapsibleSection>
 
-          {/* Database & Storage - Collapsible, collapsed by default */}
+          {/* Database - Collapsible, collapsed by default */}
           <CollapsibleSection
-            title="Database & Storage"
+            title="Database"
             defaultCollapsed={true}
             className="mb-5"
           >
@@ -2125,12 +2070,36 @@ const Admin: React.FC = () => {
                 <div className="text-xs opacity-90 uppercase tracking-wide">Database Size</div>
               </div>
               <Link
-                to="/"
+                to="/people"
                 className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity block no-underline"
               >
                 <div className="text-2xl font-bold mb-1">{systemStats.database.totalPersons.toLocaleString()}</div>
                 <div className="text-xs opacity-90 uppercase tracking-wide">Total Persons</div>
               </Link>
+              {/* Role breakdown cards */}
+              {Object.entries(systemStats.database.byRole).map(([role, count]) => (
+                <Link
+                  key={role}
+                  to={`/people?role=${role}`}
+                  className="text-center p-4 bg-gradient-primary rounded-lg text-white hover:opacity-90 transition-opacity block no-underline"
+                >
+                  <div className="text-2xl font-bold mb-1">{count.toLocaleString()}</div>
+                  <div className="text-xs opacity-90 uppercase tracking-wide">
+                    {role === 'VIEWER' ? 'Viewers' : role === 'MODEL' ? 'Models' : role}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </CollapsibleSection>
+
+          {/* Media - Collapsible, collapsed by default */}
+          <CollapsibleSection
+            title="Media"
+            defaultCollapsed={true}
+            className="mb-5"
+          >
+            {/* Images and Videos stats */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
               <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
                 <div className="text-2xl font-bold mb-1">{systemStats.database.imagesStored.toLocaleString()}</div>
                 <div className="text-xs opacity-90 uppercase tracking-wide">Images</div>
@@ -2145,42 +2114,26 @@ const Admin: React.FC = () => {
                   <div className="text-xs opacity-70">{formatBytes(systemStats.database.videoSizeBytes)}</div>
                 )}
               </div>
+              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{systemStats.database.usersWithVideos || 0}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Users with Videos</div>
+              </div>
             </div>
 
-            {/* Role breakdown and Source breakdown on same row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {/* Role breakdown */}
+            {/* Source breakdown */}
+            {Object.keys(systemStats.database.bySource).length > 0 && (
               <div>
-                <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">By Role</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {Object.entries(systemStats.database.byRole).map(([role, count]) => (
-                    <Link
-                      key={role}
-                      to={`/?role=${role}`}
-                      className="flex justify-between items-center p-2 bg-white/5 rounded-md border border-white/10 hover:border-mhc-primary/50 transition-colors no-underline text-sm"
-                    >
-                      <span className="font-semibold text-white/70">{role}:</span>
+                <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Snapshots by Source</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {Object.entries(systemStats.database.bySource).map(([source, count]) => (
+                    <div key={source} className="flex justify-between items-center p-2 bg-white/5 rounded-md border border-white/10 text-sm">
+                      <span className="font-semibold text-white/70">{source}:</span>
                       <span className="text-white font-medium">{count.toLocaleString()}</span>
-                    </Link>
+                    </div>
                   ))}
                 </div>
               </div>
-
-              {/* Source breakdown */}
-              {Object.keys(systemStats.database.bySource).length > 0 && (
-                <div>
-                  <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Snapshots by Source</h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    {Object.entries(systemStats.database.bySource).map(([source, count]) => (
-                      <div key={source} className="flex justify-between items-center p-2 bg-white/5 rounded-md border border-white/10 text-sm">
-                        <span className="font-semibold text-white/70">{source}:</span>
-                        <span className="text-white font-medium">{count.toLocaleString()}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
           </CollapsibleSection>
 
           {/* Activity & Real-time - Collapsible, collapsed by default */}
@@ -2244,485 +2197,6 @@ const Admin: React.FC = () => {
           Loading system statistics...
         </div>
       )}
-    </>
-  );
-
-  const renderFollowerTrendsTab = () => (
-    <>
-      {/* Header with Stats Cards */}
-      <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-        <div className="p-5 border-b border-white/10">
-          <h2 className="m-0 text-2xl text-white">Follower Trends</h2>
-        </div>
-        <div className="p-5">
-          {followerTrends && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
-                <div className="text-2xl font-bold mb-1">{followerTrends.totalTracked}</div>
-                <div className="text-xs opacity-90 uppercase tracking-wide">Models Tracked</div>
-              </div>
-              <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
-                <div className="text-2xl font-bold mb-1">{followerTrends.totalWithChanges}</div>
-                <div className="text-xs opacity-90 uppercase tracking-wide">With Changes</div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Sticky Time Period Selector */}
-      <div className="sticky top-0 z-10 bg-mhc-dark/95 backdrop-blur-sm py-3 mb-5 -mx-5 px-5 border-b border-white/10">
-        <div className="flex items-center justify-between">
-          <span className="text-white/70 text-sm font-medium">Time Period:</span>
-          <div className="flex gap-2 flex-wrap">
-            {[7, 14, 30, 60, 180, 365].map(days => (
-              <button
-                key={days}
-                onClick={() => setTrendsDays(days)}
-                className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-all ${
-                  trendsDays === days
-                    ? 'bg-mhc-primary text-white'
-                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                }`}
-              >
-                {days === 365 ? '1y' : `${days}d`}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {followerTrends && (
-        <>
-          {/* Top Gainers */}
-          <CollapsibleSection
-            title={`Top Gainers (${trendsDays === 365 ? '1 year' : `${trendsDays} days`})`}
-            defaultCollapsed={true}
-            className="mb-5"
-          >
-            {followerTrends.topGainers.length === 0 ? (
-              <p className="text-white/60 text-center py-4">No data yet. Follower counts are tracked during polling jobs.</p>
-            ) : (
-              <div className="space-y-3">
-                {followerTrends.topGainers.map((mover, index) => (
-                  <div
-                    key={mover.person_id}
-                    className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 hover:border-emerald-500/30 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-white/40 font-mono text-sm w-6">#{index + 1}</span>
-                      <a
-                        href={`/profile/${mover.username}`}
-                        className="text-mhc-primary hover:text-mhc-primary-light font-medium"
-                      >
-                        {mover.username}
-                      </a>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-white/60 text-sm">
-                        {mover.current_count?.toLocaleString() || 'N/A'} followers
-                      </span>
-                      <span className="text-emerald-400 font-bold text-lg">
-                        +{mover.total_change.toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CollapsibleSection>
-
-          {/* Top Losers */}
-          <CollapsibleSection
-            title={`Top Losers (${trendsDays === 365 ? '1 year' : `${trendsDays} days`})`}
-            defaultCollapsed={true}
-            className="mb-5"
-          >
-            {followerTrends.topLosers.length === 0 ? (
-              <p className="text-white/60 text-center py-4">No data yet. Follower counts are tracked during polling jobs.</p>
-            ) : (
-              <div className="space-y-3">
-                {followerTrends.topLosers.map((mover, index) => (
-                  <div
-                    key={mover.person_id}
-                    className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 hover:border-red-500/30 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-white/40 font-mono text-sm w-6">#{index + 1}</span>
-                      <a
-                        href={`/profile/${mover.username}`}
-                        className="text-mhc-primary hover:text-mhc-primary-light font-medium"
-                      >
-                        {mover.username}
-                      </a>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-white/60 text-sm">
-                        {mover.current_count?.toLocaleString() || 'N/A'} followers
-                      </span>
-                      <span className="text-red-400 font-bold text-lg">
-                        {mover.total_change.toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CollapsibleSection>
-
-          {/* Recent Changes */}
-          <CollapsibleSection
-            title={
-              <div className="flex items-center gap-2">
-                <span>Recent Significant Changes</span>
-                {followerTrends.recentChanges.length > 0 && (
-                  <span className="text-xs text-white/50 font-normal">({followerTrends.recentChanges.length})</span>
-                )}
-              </div>
-            }
-            defaultCollapsed={true}
-            className="mb-5"
-          >
-            {followerTrends.recentChanges.length === 0 ? (
-              <p className="text-white/60 text-center py-4">No significant changes recorded yet.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-white/60 text-sm">Changes of 50+ followers</span>
-                  <span className="text-white/50 text-xs">
-                    Showing {Math.min((recentChangesPage + 1) * RECENT_CHANGES_PER_PAGE, followerTrends.recentChanges.length)} of {followerTrends.recentChanges.length}
-                  </span>
-                </div>
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-left border-b border-white/10">
-                      <th className="pb-3 text-white/70 font-semibold">Username</th>
-                      <th className="pb-3 text-white/70 font-semibold text-right">Count</th>
-                      <th className="pb-3 text-white/70 font-semibold text-right">Change</th>
-                      <th className="pb-3 text-white/70 font-semibold text-right">Source</th>
-                      <th className="pb-3 text-white/70 font-semibold text-right">When</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {followerTrends.recentChanges
-                      .slice(recentChangesPage * RECENT_CHANGES_PER_PAGE, (recentChangesPage + 1) * RECENT_CHANGES_PER_PAGE)
-                      .map(change => (
-                        <tr key={change.id} className="border-b border-white/5 hover:bg-white/5">
-                          <td className="py-3">
-                            <a
-                              href={`/profile/${change.username}`}
-                              className="text-mhc-primary hover:text-mhc-primary-light"
-                            >
-                              {change.username}
-                            </a>
-                          </td>
-                          <td className="py-3 text-right text-white/80">
-                            {change.follower_count.toLocaleString()}
-                          </td>
-                          <td className={`py-3 text-right font-bold ${change.delta > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {change.delta > 0 ? '+' : ''}{change.delta.toLocaleString()}
-                          </td>
-                          <td className="py-3 text-right">
-                            <span className="px-2 py-0.5 rounded text-xs bg-white/10 text-white/70">
-                              {change.source}
-                            </span>
-                          </td>
-                          <td className="py-3 text-right text-white/60 text-sm">
-                            {new Date(change.recorded_at).toLocaleString()}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-                {/* Pagination Controls */}
-                {followerTrends.recentChanges.length > RECENT_CHANGES_PER_PAGE && (
-                  <div className="flex justify-center items-center gap-4 mt-4">
-                    <button
-                      onClick={() => setRecentChangesPage(prev => Math.max(0, prev - 1))}
-                      disabled={recentChangesPage === 0}
-                      className="px-3 py-1.5 rounded-md text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-white/10 text-white hover:bg-mhc-primary"
-                    >
-                      ← Previous
-                    </button>
-                    <span className="text-white/60 text-xs">
-                      Page {recentChangesPage + 1} of {Math.ceil(followerTrends.recentChanges.length / RECENT_CHANGES_PER_PAGE)}
-                    </span>
-                    <button
-                      onClick={() => setRecentChangesPage(prev => Math.min(Math.ceil(followerTrends.recentChanges.length / RECENT_CHANGES_PER_PAGE) - 1, prev + 1))}
-                      disabled={recentChangesPage >= Math.ceil(followerTrends.recentChanges.length / RECENT_CHANGES_PER_PAGE) - 1}
-                      className="px-3 py-1.5 rounded-md text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-white/10 text-white hover:bg-mhc-primary"
-                    >
-                      Next →
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </CollapsibleSection>
-        </>
-      )}
-
-      {!followerTrends && loading && (
-        <div className="text-center p-10 text-white/60">
-          Loading follower trends...
-        </div>
-      )}
-    </>
-  );
-
-  const renderScraperTab = () => {
-    const baseBadge = "px-3 py-1 rounded-full text-sm font-semibold uppercase";
-
-    return (
-      <>
-        {/* Chaturbate Session Card */}
-        <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5 overflow-hidden">
-          <div
-            className="p-4 flex justify-between items-center cursor-pointer hover:bg-white/5 transition-colors"
-            onClick={() => setSessionSectionCollapsed(!sessionSectionCollapsed)}
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-white/40">{sessionSectionCollapsed ? '▶' : '▼'}</span>
-              <h2 className="m-0 text-xl text-white">Chaturbate Session</h2>
-            </div>
-            {hasCookies ? (
-              <span className={`${baseBadge} bg-mhc-success text-white`}>Authenticated</span>
-            ) : (
-              <span className={`${baseBadge} bg-mhc-warning text-white`}>Not Authenticated</span>
-            )}
-          </div>
-          {!sessionSectionCollapsed && (
-            <div className="border-t border-white/10 p-5">
-              <p className="text-white/60 text-base p-4 bg-white/5 rounded-lg mb-4">
-                Import your Chaturbate session cookies to enable syncing of your following and followers lists.
-              </p>
-              <div className="flex flex-wrap gap-3 mt-4">
-                <button
-                  className={`px-5 py-2.5 rounded-md text-base font-semibold transition-all ${
-                    hasCookies
-                      ? 'bg-gray-500 text-white hover:bg-gray-600'
-                      : 'bg-mhc-primary text-white hover:bg-indigo-600'
-                  }`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowCookieDialog(true);
-                  }}
-                >
-                  {hasCookies ? 'Update Cookies' : 'Import Cookies'}
-                </button>
-              </div>
-              {cookieStatus && (
-                <div className="p-3 px-4 rounded-md mt-4 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
-                  {cookieStatus}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Sync Connections Card */}
-        <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5 overflow-hidden">
-          <div
-            className="p-4 flex justify-between items-center cursor-pointer hover:bg-white/5 transition-colors"
-            onClick={() => setSyncSectionCollapsed(!syncSectionCollapsed)}
-          >
-            <div className="flex items-center gap-3">
-              <span className="text-white/40">{syncSectionCollapsed ? '▶' : '▼'}</span>
-              <h2 className="m-0 text-xl text-white">Sync Connections</h2>
-            </div>
-            {lastSyncDate && (
-              <span className="text-white/50 text-sm">
-                Last synced: {new Date(lastSyncDate).toLocaleDateString()} {new Date(lastSyncDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </span>
-            )}
-          </div>
-          {!syncSectionCollapsed && (
-            <div className="border-t border-white/10 p-5">
-              <p className="text-white/60 text-base p-4 bg-white/5 rounded-lg mb-4">
-                Sync your following and followers lists from Chaturbate.
-                This uses your imported session cookies to fetch all pages.
-              </p>
-              <div className="flex flex-wrap gap-3 mt-4">
-                <button
-                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleAutoScrape('following');
-                  }}
-                  disabled={scraping || !hasCookies}
-                >
-                  {scraping ? 'Syncing...' : 'Sync Following'}
-                </button>
-                <button
-                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleAutoScrape('followers');
-                  }}
-                  disabled={scraping || !hasCookies}
-                >
-                  {scraping ? 'Syncing...' : 'Sync Followers'}
-                </button>
-              </div>
-              {!hasCookies && (
-                <div className="p-3 px-4 rounded-md mt-4 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
-                  Import cookies first to enable syncing.
-                </div>
-              )}
-              {scrapeStatus && (
-                <div className="p-3 px-4 rounded-md mt-4 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300">
-                  {scrapeStatus}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Cookie Import Dialog */}
-        {showCookieDialog && (
-          <div
-            className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
-            onClick={() => setShowCookieDialog(false)}
-          >
-            <div
-              className="bg-mhc-surface border border-white/10 rounded-xl max-w-2xl w-11/12 max-h-[90vh] overflow-y-auto"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex justify-between items-center p-6 border-b border-white/10">
-                <h2 className="m-0 text-xl text-white">Import Chaturbate Cookies</h2>
-                <button
-                  className="bg-transparent border-none text-white/60 text-2xl cursor-pointer px-2 py-1 leading-none hover:text-white"
-                  onClick={() => setShowCookieDialog(false)}
-                >
-                  ×
-                </button>
-              </div>
-              <div className="p-6">
-                <p className="text-white/80 text-sm leading-loose mb-4">
-                  <strong className="text-white">Step 1:</strong> Log in to Chaturbate in your browser (handle 2FA if needed)
-                  <br />
-                  <strong className="text-white">Step 2:</strong> Press F12 to open Developer Tools, go to Application tab, Storage, Cookies, https://chaturbate.com
-                  <br />
-                  <strong className="text-white">Step 3:</strong> Right-click on any cookie and select "Show Requests With This Cookie"
-                  <br />
-                  <strong className="text-white">Step 4:</strong> In Network tab, click any request, then Headers, Request Headers, cookie:
-                  <br />
-                  <strong className="text-white">Step 5:</strong> Copy the ENTIRE cookie value (all the key=value pairs separated by semicolons)
-                  <br />
-                  <strong className="text-white">Step 6:</strong> Paste this command in Console tab and press Enter:
-                </p>
-                <pre className="bg-black/30 border border-white/10 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto my-4 whitespace-pre-wrap break-all">
-{`const cookieStr = "PASTE_COOKIE_STRING_HERE";
-copy(JSON.stringify(cookieStr.split('; ').map(c => {
-  const [name, ...v] = c.split('=');
-  return {
-    name,
-    value: v.join('='),
-    domain: '.chaturbate.com',
-    path: '/',
-    secure: true,
-    httpOnly: name === 'sessionid',
-    sameSite: 'Lax'
-  };
-})))`}
-                </pre>
-                <p className="text-white/80 text-sm mb-2">
-                  <strong className="text-white">Step 7:</strong> The cookies are now in your clipboard. Paste them below:
-                </p>
-                <textarea
-                  className="w-full bg-white/5 border border-white/20 rounded-lg p-4 text-white font-mono text-sm resize-y mt-2 focus:outline-none focus:border-mhc-primary"
-                  placeholder="Paste cookies JSON array here..."
-                  value={cookiesInput}
-                  onChange={(e) => setCookiesInput(e.target.value)}
-                  rows={8}
-                />
-                <div className="flex justify-end gap-4 mt-6 pt-4 border-t border-white/10">
-                  <button
-                    className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-gray-500 text-white hover:bg-gray-600"
-                    onClick={() => setShowCookieDialog(false)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600"
-                    onClick={handleImportCookies}
-                  >
-                    Import Cookies
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </>
-    );
-  };
-
-  const renderDataSourcesTab = () => (
-    <>
-      <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-        <div className="p-5 border-b border-white/10 flex justify-between items-center">
-          <h2 className="m-0 text-2xl text-white">Data Sources Status</h2>
-        </div>
-        <div className="p-5">
-          <div className="flex flex-col gap-4">
-            <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
-              <div className="text-lg font-semibold text-white mb-2 flex items-center gap-3">
-                <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase bg-green-500/20 text-green-400 border border-green-500/50">Active</span>
-                Chaturbate Affiliate API
-              </div>
-              <div className="text-sm text-white/60">Real-time online models data</div>
-            </div>
-            <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
-              <div className="text-lg font-semibold text-white mb-2 flex items-center gap-3">
-                <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase bg-blue-500/20 text-blue-400 border border-blue-500/50">Ready</span>
-                CBHours API
-              </div>
-              <div className="text-sm text-white/60">Historical tracking and rank data (not polling yet)</div>
-            </div>
-            <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
-              <div className="text-lg font-semibold text-white mb-2 flex items-center gap-3">
-                <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase bg-green-500/20 text-green-400 border border-green-500/50">Active</span>
-                Chaturbate Events API
-              </div>
-              <div className="text-sm text-white/60">Hudson's room events only</div>
-            </div>
-            <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
-              <div className="text-lg font-semibold text-white mb-2 flex items-center gap-3">
-                <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase bg-green-500/20 text-green-400 border border-green-500/50">Active</span>
-                Chaturbate Stats API
-              </div>
-              <div className="text-sm text-white/60">Hudson's broadcast statistics</div>
-            </div>
-            <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
-              <div className="text-lg font-semibold text-white mb-2 flex items-center gap-3">
-                <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase bg-yellow-500/20 text-yellow-400 border border-yellow-500/50">On-Demand</span>
-                StatBate API
-              </div>
-              <div className="text-sm text-white/60">Tips and member analysis</div>
-            </div>
-            <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
-              <div className="text-lg font-semibold text-white mb-2 flex items-center gap-3">
-                <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase bg-green-500/20 text-green-400 border border-green-500/50">Active</span>
-                Profile Scraping
-              </div>
-              <div className="text-sm text-white/60">Bio, photos, social links (background job + manual)</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg mb-5">
-        <div className="p-5 border-b border-white/10 flex justify-between items-center">
-          <h2 className="m-0 text-2xl text-white">Source Priority Configuration</h2>
-        </div>
-        <div className="p-5">
-          <p className="text-white/60 text-base p-4 bg-white/5 rounded-lg">
-            Data source priority is configured via the <code className="bg-white/10 px-2 py-0.5 rounded font-mono">v_person_current_state</code> database view.
-            See <a href="https://github.com/your-repo/docs/DATA_SOURCE_STRATEGY.md" target="_blank" rel="noopener noreferrer" className="text-mhc-primary hover:text-mhc-primary-light underline">DATA_SOURCE_STRATEGY.md</a> for details.
-          </p>
-        </div>
-      </div>
     </>
   );
 
@@ -3090,36 +2564,6 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
           </button>
           <button
             className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all ${
-              activeTab === 'follower-trends'
-                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary border-b-mhc-primary font-semibold'
-                : 'bg-mhc-surface/60 text-white/90 hover:bg-mhc-primary/10 hover:text-mhc-primary-light hover:border-mhc-primary/40'
-            }`}
-            onClick={() => setActiveTab('follower-trends')}
-          >
-            Follower Trends
-          </button>
-          <button
-            className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all ${
-              activeTab === 'data-sources'
-                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary border-b-mhc-primary font-semibold'
-                : 'bg-mhc-surface/60 text-white/90 hover:bg-mhc-primary/10 hover:text-mhc-primary-light hover:border-mhc-primary/40'
-            }`}
-            onClick={() => setActiveTab('data-sources')}
-          >
-            Data Sources
-          </button>
-          <button
-            className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all ${
-              activeTab === 'scraper'
-                ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary border-b-mhc-primary font-semibold'
-                : 'bg-mhc-surface/60 text-white/90 hover:bg-mhc-primary/10 hover:text-mhc-primary-light hover:border-mhc-primary/40'
-            }`}
-            onClick={() => setActiveTab('scraper')}
-          >
-            Chaturbate Sync
-          </button>
-          <button
-            className={`px-6 py-3 text-base font-medium rounded-t-lg border border-white/20 border-b-2 -mb-0.5 mr-2 transition-all ${
               activeTab === 'bulk-upload'
                 ? 'bg-mhc-primary/15 text-mhc-primary border-mhc-primary border-b-mhc-primary font-semibold'
                 : 'bg-mhc-surface/60 text-white/90 hover:bg-mhc-primary/10 hover:text-mhc-primary-light hover:border-mhc-primary/40'
@@ -3156,9 +2600,6 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
       <div className="mt-4">
         {activeTab === 'jobs' && renderJobsTab()}
         {activeTab === 'system-stats' && renderSystemStatsTab()}
-        {activeTab === 'follower-trends' && renderFollowerTrendsTab()}
-        {activeTab === 'data-sources' && renderDataSourcesTab()}
-        {activeTab === 'scraper' && renderScraperTab()}
         {activeTab === 'bulk-upload' && renderBulkUploadTab()}
         {activeTab === 'settings' && (
           <div className="bg-mhc-surface-light rounded-lg p-6">
@@ -3466,12 +2907,26 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
                   <div className="space-y-6">
                     {/* Status Display */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                      <div className={`p-4 rounded-lg border ${storageStatus.docker.available ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
+                      <div className={`p-4 rounded-lg border ${
+                        storageStatus.currentWriteBackend === 'docker'
+                          ? 'border-emerald-500/50 bg-emerald-500/15'
+                          : storageStatus.docker.available
+                            ? 'border-amber-500/30 bg-amber-500/5'
+                            : 'border-white/10 bg-white/5'
+                      }`}>
                         <div className="flex items-center gap-2 mb-2">
-                          <span className={`w-2 h-2 rounded-full ${storageStatus.docker.available ? 'bg-emerald-500' : 'bg-gray-500'}`}></span>
+                          <span className={`w-2 h-2 rounded-full ${
+                            storageStatus.currentWriteBackend === 'docker'
+                              ? 'bg-emerald-500'
+                              : storageStatus.docker.available
+                                ? 'bg-amber-500'
+                                : 'bg-gray-500'
+                          }`}></span>
                           <span className="font-medium text-mhc-text">Docker Volume</span>
-                          {storageStatus.currentWriteBackend === 'docker' && (
-                            <span className="text-xs bg-mhc-primary/20 text-mhc-primary px-2 py-0.5 rounded">Active</span>
+                          {storageStatus.currentWriteBackend === 'docker' ? (
+                            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-medium">Primary</span>
+                          ) : storageStatus.docker.available && (
+                            <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded font-medium">Backup</span>
                           )}
                         </div>
                         <div className="text-sm text-mhc-text-muted">
@@ -3479,12 +2934,26 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
                           <div className="text-xs truncate">{storageStatus.docker.path}</div>
                         </div>
                       </div>
-                      <div className={`p-4 rounded-lg border ${storageStatus.ssd.available ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
+                      <div className={`p-4 rounded-lg border ${
+                        storageStatus.currentWriteBackend === 'ssd'
+                          ? 'border-emerald-500/50 bg-emerald-500/15'
+                          : storageStatus.ssd.available
+                            ? 'border-amber-500/30 bg-amber-500/5'
+                            : 'border-white/10 bg-white/5'
+                      }`}>
                         <div className="flex items-center gap-2 mb-2">
-                          <span className={`w-2 h-2 rounded-full ${storageStatus.ssd.available ? 'bg-emerald-500' : 'bg-gray-500'}`}></span>
+                          <span className={`w-2 h-2 rounded-full ${
+                            storageStatus.currentWriteBackend === 'ssd'
+                              ? 'bg-emerald-500'
+                              : storageStatus.ssd.available
+                                ? 'bg-amber-500'
+                                : 'bg-gray-500'
+                          }`}></span>
                           <span className="font-medium text-mhc-text">SSD Mount</span>
-                          {storageStatus.currentWriteBackend === 'ssd' && (
-                            <span className="text-xs bg-mhc-primary/20 text-mhc-primary px-2 py-0.5 rounded">Active</span>
+                          {storageStatus.currentWriteBackend === 'ssd' ? (
+                            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-medium">Primary</span>
+                          ) : storageStatus.ssd.available && (
+                            <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded font-medium">Backup</span>
                           )}
                         </div>
                         <div className="text-sm text-mhc-text-muted">
@@ -3492,12 +2961,26 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
                           <div className="text-xs truncate">{storageStatus.ssd.path}</div>
                         </div>
                       </div>
-                      <div className={`p-4 rounded-lg border ${storageStatus.s3.available ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-white/10 bg-white/5'}`}>
+                      <div className={`p-4 rounded-lg border ${
+                        storageStatus.currentWriteBackend === 's3'
+                          ? 'border-emerald-500/50 bg-emerald-500/15'
+                          : storageStatus.s3.available
+                            ? 'border-amber-500/30 bg-amber-500/5'
+                            : 'border-white/10 bg-white/5'
+                      }`}>
                         <div className="flex items-center gap-2 mb-2">
-                          <span className={`w-2 h-2 rounded-full ${storageStatus.s3.available ? 'bg-emerald-500' : 'bg-gray-500'}`}></span>
+                          <span className={`w-2 h-2 rounded-full ${
+                            storageStatus.currentWriteBackend === 's3'
+                              ? 'bg-emerald-500'
+                              : storageStatus.s3.available
+                                ? 'bg-amber-500'
+                                : 'bg-gray-500'
+                          }`}></span>
                           <span className="font-medium text-mhc-text">AWS S3</span>
-                          {storageStatus.currentWriteBackend === 's3' && (
-                            <span className="text-xs bg-mhc-primary/20 text-mhc-primary px-2 py-0.5 rounded">Active</span>
+                          {storageStatus.currentWriteBackend === 's3' ? (
+                            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-medium">Primary</span>
+                          ) : storageStatus.s3.available && (
+                            <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded font-medium">Backup</span>
                           )}
                         </div>
                         <div className="text-sm text-mhc-text-muted">
@@ -3536,56 +3019,6 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
                         </label>
                       </div>
                     </div>
-
-                    {/* Local Storage Settings */}
-                    {storageConfig.globalMode === 'local' && (
-                      <div className="border border-white/10 rounded-lg p-4">
-                        <h4 className="text-mhc-text font-medium mb-4">Local Storage</h4>
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-mhc-text mb-2 text-sm">Local Mode</label>
-                            <select
-                              value={storageConfig.local.mode}
-                              onChange={(e) => setStorageConfig({
-                                ...storageConfig,
-                                local: {...storageConfig.local, mode: e.target.value as 'auto' | 'ssd' | 'docker'}
-                              })}
-                              className="w-48 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
-                            >
-                              <option value="auto">Auto (prefer SSD)</option>
-                              <option value="ssd">SSD only</option>
-                              <option value="docker">Docker only</option>
-                            </select>
-                          </div>
-                          <div className="flex gap-6">
-                            <label className="flex items-center gap-2 text-mhc-text text-sm cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={storageConfig.local.ssdEnabled}
-                                onChange={(e) => setStorageConfig({
-                                  ...storageConfig,
-                                  local: {...storageConfig.local, ssdEnabled: e.target.checked}
-                                })}
-                                className="rounded text-mhc-primary"
-                              />
-                              SSD Enabled
-                            </label>
-                            <label className="flex items-center gap-2 text-mhc-text text-sm cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={storageConfig.local.dockerEnabled}
-                                onChange={(e) => setStorageConfig({
-                                  ...storageConfig,
-                                  local: {...storageConfig.local, dockerEnabled: e.target.checked}
-                                })}
-                                className="rounded text-mhc-primary"
-                              />
-                              Docker Enabled
-                            </label>
-                          </div>
-                        </div>
-                      </div>
-                    )}
 
                     {/* External S3 Settings */}
                     <div className="border border-white/10 rounded-lg p-4">
@@ -3670,6 +3103,42 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
                         {storageSaving ? 'Saving...' : 'Save Storage Settings'}
                       </button>
                     </div>
+
+                    {/* Media Transfer Section */}
+                    <div className="border border-white/10 rounded-lg p-4 mt-6">
+                      <h4 className="text-mhc-text font-medium mb-4">Media Transfer</h4>
+                      <p className="text-mhc-text-muted text-sm mb-4">
+                        Transfer media files between storage providers. Files are safely copied, verified with SHA256, then deleted from source.
+                      </p>
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const response = await fetch('/api/job/media-transfer/run-now', { method: 'POST' });
+                              const data = await response.json();
+                              if (data.success) {
+                                setStorageSuccess(data.message || 'Transfer started');
+                                setTimeout(() => setStorageSuccess(null), 5000);
+                              } else {
+                                setStorageError(data.message || 'Transfer failed');
+                              }
+                            } catch (err) {
+                              setStorageError('Failed to start transfer');
+                            }
+                          }}
+                          className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors text-sm"
+                        >
+                          Run Transfer Now
+                        </button>
+                        <span className="text-mhc-text-muted text-sm">
+                          Transfers files from Docker to the configured destination (SSD or S3)
+                        </span>
+                      </div>
+                      <p className="text-xs text-mhc-text-muted mt-3">
+                        Note: For SSD storage on Docker Desktop for Mac, the SSD path must be added as a bind mount in docker-compose.yml.
+                        Due to Docker Desktop limitations, external volumes (/Volumes/*) cannot be mounted directly.
+                      </p>
+                    </div>
                   </div>
                 ) : (
                   <div className="text-mhc-text-muted">No storage settings available</div>
@@ -3708,9 +3177,215 @@ copy(JSON.stringify(cookieStr.split('; ').map(c => {
                 </div>
               </CollapsibleSection>
             </div>
+
+            {/* Chaturbate Sync Section (moved from separate tab) */}
+            <div className="mb-4">
+              <CollapsibleSection title="Chaturbate Sync" defaultCollapsed={true} className="bg-mhc-surface">
+                {/* Chaturbate Session */}
+                <div className="mb-4 p-4 bg-white/5 rounded-lg">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-white font-medium">Session Authentication</h4>
+                    {hasCookies ? (
+                      <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase bg-green-500/20 text-green-400 border border-green-500/50">Authenticated</span>
+                    ) : (
+                      <span className="px-3 py-1 rounded-full text-xs font-semibold uppercase bg-amber-500/20 text-amber-400 border border-amber-500/50">Not Authenticated</span>
+                    )}
+                  </div>
+                  <p className="text-white/60 text-sm mb-3">
+                    Import your Chaturbate session cookies to enable syncing of your following and followers lists.
+                  </p>
+                  <button
+                    className={`px-4 py-2 rounded-md text-sm font-semibold transition-all ${
+                      hasCookies
+                        ? 'bg-gray-500 text-white hover:bg-gray-600'
+                        : 'bg-mhc-primary text-white hover:bg-indigo-600'
+                    }`}
+                    onClick={() => setShowCookieDialog(true)}
+                  >
+                    {hasCookies ? 'Update Cookies' : 'Import Cookies'}
+                  </button>
+                  {cookieStatus && (
+                    <div className="p-3 px-4 rounded-md mt-3 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300 text-sm">
+                      {cookieStatus}
+                    </div>
+                  )}
+                </div>
+
+                {/* Sync Connections */}
+                <div className="p-4 bg-white/5 rounded-lg">
+                  <div className="flex justify-between items-center mb-3">
+                    <h4 className="text-white font-medium">Sync Connections</h4>
+                    {lastSyncDate && (
+                      <span className="text-white/50 text-xs">
+                        Last synced: {new Date(lastSyncDate).toLocaleDateString()} {new Date(lastSyncDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-white/60 text-sm mb-3">
+                    Sync your following and followers lists from Chaturbate.
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      className="px-4 py-2 rounded-md text-sm font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => handleAutoScrape('following')}
+                      disabled={scraping || !hasCookies}
+                    >
+                      {scraping ? 'Syncing...' : 'Sync Following'}
+                    </button>
+                    <button
+                      className="px-4 py-2 rounded-md text-sm font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => handleAutoScrape('followers')}
+                      disabled={scraping || !hasCookies}
+                    >
+                      {scraping ? 'Syncing...' : 'Sync Followers'}
+                    </button>
+                  </div>
+                  {!hasCookies && (
+                    <div className="p-3 px-4 rounded-md mt-3 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300 text-sm">
+                      Import cookies first to enable syncing.
+                    </div>
+                  )}
+                  {scrapeStatus && (
+                    <div className="p-3 px-4 rounded-md mt-3 bg-amber-500/15 border-l-4 border-amber-500 text-amber-300 text-sm">
+                      {scrapeStatus}
+                    </div>
+                  )}
+                </div>
+              </CollapsibleSection>
+            </div>
+
+            {/* Data Sources Section (moved from separate tab) */}
+            <div className="mb-4">
+              <CollapsibleSection title="Data Sources" defaultCollapsed={true} className="bg-mhc-surface">
+                <div className="flex flex-col gap-3">
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-lg flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-white">Chaturbate Affiliate API</div>
+                      <div className="text-xs text-white/60">Real-time online models data</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-green-500/20 text-green-400 border border-green-500/50">Active</span>
+                  </div>
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-lg flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-white">CBHours API</div>
+                      <div className="text-xs text-white/60">Historical tracking and rank data</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-blue-500/20 text-blue-400 border border-blue-500/50">Ready</span>
+                  </div>
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-lg flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-white">Chaturbate Events API</div>
+                      <div className="text-xs text-white/60">Room events (tips, follows, etc.)</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-green-500/20 text-green-400 border border-green-500/50">Active</span>
+                  </div>
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-lg flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-white">Chaturbate Stats API</div>
+                      <div className="text-xs text-white/60">Broadcast statistics</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-green-500/20 text-green-400 border border-green-500/50">Active</span>
+                  </div>
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-lg flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-white">StatBate API</div>
+                      <div className="text-xs text-white/60">Tips and member analysis</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-yellow-500/20 text-yellow-400 border border-yellow-500/50">On-Demand</span>
+                  </div>
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-lg flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-white">Profile Scraping</div>
+                      <div className="text-xs text-white/60">Bio, photos, social links</div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold uppercase bg-green-500/20 text-green-400 border border-green-500/50">Active</span>
+                  </div>
+                </div>
+                <p className="text-white/50 text-xs mt-4">
+                  Data source priority is configured via the <code className="bg-white/10 px-1.5 py-0.5 rounded font-mono">v_person_current_state</code> database view.
+                </p>
+              </CollapsibleSection>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Cookie Import Dialog */}
+      {showCookieDialog && (
+        <div
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+          onClick={() => setShowCookieDialog(false)}
+        >
+          <div
+            className="bg-mhc-surface border border-white/10 rounded-xl max-w-2xl w-11/12 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center p-6 border-b border-white/10">
+              <h2 className="m-0 text-xl text-white">Import Chaturbate Cookies</h2>
+              <button
+                className="bg-transparent border-none text-white/60 text-2xl cursor-pointer px-2 py-1 leading-none hover:text-white"
+                onClick={() => setShowCookieDialog(false)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-white/80 text-sm leading-loose mb-4">
+                <strong className="text-white">Step 1:</strong> Log in to Chaturbate in your browser (handle 2FA if needed)
+                <br />
+                <strong className="text-white">Step 2:</strong> Press F12 to open Developer Tools, go to Application tab, Storage, Cookies, https://chaturbate.com
+                <br />
+                <strong className="text-white">Step 3:</strong> Right-click on any cookie and select "Show Requests With This Cookie"
+                <br />
+                <strong className="text-white">Step 4:</strong> In Network tab, click any request, then Headers, Request Headers, cookie:
+                <br />
+                <strong className="text-white">Step 5:</strong> Copy the ENTIRE cookie value (all the key=value pairs separated by semicolons)
+                <br />
+                <strong className="text-white">Step 6:</strong> Paste this command in Console tab and press Enter:
+              </p>
+              <pre className="bg-black/30 border border-white/10 rounded-lg p-4 font-mono text-xs text-green-400 overflow-x-auto my-4 whitespace-pre-wrap break-all">
+{`const cookieStr = "PASTE_COOKIE_STRING_HERE";
+copy(JSON.stringify(cookieStr.split('; ').map(c => {
+  const [name, ...v] = c.split('=');
+  return {
+    name,
+    value: v.join('='),
+    domain: '.chaturbate.com',
+    path: '/',
+    secure: true,
+    httpOnly: name === 'sessionid',
+    sameSite: 'Lax'
+  };
+})))`}
+              </pre>
+              <p className="text-white/80 text-sm mb-2">
+                <strong className="text-white">Step 7:</strong> The cookies are now in your clipboard. Paste them below:
+              </p>
+              <textarea
+                className="w-full bg-white/5 border border-white/20 rounded-lg p-4 text-white font-mono text-sm resize-y mt-2 focus:outline-none focus:border-mhc-primary"
+                placeholder="Paste cookies JSON array here..."
+                value={cookiesInput}
+                onChange={(e) => setCookiesInput(e.target.value)}
+                rows={8}
+              />
+              <div className="flex justify-end gap-4 mt-6 pt-4 border-t border-white/10">
+                <button
+                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-gray-500 text-white hover:bg-gray-600"
+                  onClick={() => setShowCookieDialog(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="px-5 py-2.5 rounded-md text-base font-semibold transition-all bg-mhc-primary text-white hover:bg-indigo-600"
+                  onClick={handleImportCookies}
+                >
+                  Import Cookies
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

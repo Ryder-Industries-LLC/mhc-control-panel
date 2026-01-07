@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.28.0] - 2026-01-07
+
+### Added
+
+- **Event Log Page** (`/event-log`): New page to view Chaturbate Events API events
+  - Styled view with method badges and event details
+  - Raw JSON toggle for debugging
+  - Filter by event type (tip, follow, mediaPurchase, privateMessage, etc.)
+  - Stats cards showing event counts by type
+- **Profile Attribute Checkboxes**: New boolean attributes on profiles
+  - Smoke on Cam (manual toggle)
+  - Leather/Fetish Gear (manual toggle)
+  - Profile Smoke (auto-populated from smoke_drink field)
+  - Had Interaction (manual toggle)
+  - New migration `065_add_profile_attributes.sql`
+- **External Links**: CB and UN Cams links added to People page
+  - List view: Links column in table
+  - Grid view: Links below username on UserCard
+- **AI Summary Button**: Generate/View Summary button on Broadcasts page
+- **24h Time Filter**: Added 24-hour option to Follow History time filters
+
+### Changed
+
+- **Navigation Restructure**: Complete two-row navigation redesign
+  - Row 1: Main navigation links
+  - Row 2: Global search and contextual actions
+  - New order: Directory, Inbox, Stats, Broadcasts, Follow History, Event Log, Admin
+- **Dashboard Renamed to Stats**: `/dashboard` → `/stats` (with alias for backwards compatibility)
+- **Sessions Renamed to Broadcasts**: `/sessions` → `/broadcasts` (with alias for backwards compatibility)
+- **People Renamed to Directory**: Navigation shows "Directory" instead of "People"
+- **Account Stats Collapsible**: Stats page Account Stats section now collapsible by default with "Last updated" on title line
+- **GlobalLookup Width**: Search input expanded by ~25% (`w-48` → `w-60`)
+- **Inter Font**: Site-wide Inter font with proper weight variants (400-700)
+- **Admin Page Reorganization**:
+  - Data Sources moved to Settings tab (collapsible, collapsed by default)
+  - Chaturbate Sync moved to Settings tab (collapsible, collapsed by default)
+  - Follower Trends moved to Follow History page
+
+### Fixed
+
+- **Inbox Chat Bubble Alignment**: Fixed `is_from_broadcaster` flag using `env.CHATURBATE_USERNAME`
+  - Messages now correctly show on proper side based on sender
+  - Applied fix to both thread view and search endpoints
+
+### Technical
+- New migration: `065_add_profile_attributes.sql` for profile boolean attributes
+- ProfileService: Added `getAttributes()` and `updateAttributes()` methods
+- New page component: `client/src/pages/EventLog.tsx`
+
+---
+
 ## [1.27.1] - 2026-01-07
 
 ### Changed

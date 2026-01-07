@@ -124,6 +124,28 @@ export const UserCard: React.FC<UserCardProps> = ({
           </Link>
         </div>
 
+        {/* External links */}
+        <div className="flex gap-2">
+          <a
+            href={`https://chaturbate.com/${person.username}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] px-1.5 py-0.5 bg-orange-500/20 text-orange-300 hover:bg-orange-500/40 rounded transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            CB
+          </a>
+          <a
+            href={`https://uncams.com/${person.username}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] px-1.5 py-0.5 bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/40 rounded transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            UN
+          </a>
+        </div>
+
         {/* Status badges row */}
         <div className="flex flex-wrap gap-1">
           {person.active_sub && (

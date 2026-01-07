@@ -1324,6 +1324,99 @@ router.patch('/:username/names', async (req: Request, res: Response) => {
 });
 
 // ============================================================
+// PROFILE ATTRIBUTES ENDPOINTS
+// ============================================================
+
+/**
+ * GET /api/profile/:username/attributes
+ * Get profile attributes (smoke_on_cam, leather_fetish, profile_smoke, had_interaction)
+ */
+router.get('/:username/attributes', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const attributes = await ProfileService.getAttributes(person.id);
+    if (!attributes) {
+      // Return defaults if no profile exists
+      return res.json({
+        attributes: {
+          smoke_on_cam: false,
+          leather_fetish: false,
+          profile_smoke: false,
+          had_interaction: false,
+        },
+      });
+    }
+
+    res.json({ attributes });
+  } catch (error) {
+    logger.error('Error getting profile attributes', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * PATCH /api/profile/:username/attributes
+ * Update profile attributes (smoke_on_cam, leather_fetish, had_interaction)
+ * Note: profile_smoke is auto-populated and cannot be manually updated
+ */
+router.patch('/:username/attributes', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { smoke_on_cam, leather_fetish, had_interaction } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Validate inputs are booleans if provided
+    if (smoke_on_cam !== undefined && typeof smoke_on_cam !== 'boolean') {
+      return res.status(400).json({ error: 'smoke_on_cam must be a boolean' });
+    }
+    if (leather_fetish !== undefined && typeof leather_fetish !== 'boolean') {
+      return res.status(400).json({ error: 'leather_fetish must be a boolean' });
+    }
+    if (had_interaction !== undefined && typeof had_interaction !== 'boolean') {
+      return res.status(400).json({ error: 'had_interaction must be a boolean' });
+    }
+
+    // Get or create person
+    const person = await PersonService.findOrCreate({ username, role: 'MODEL' });
+    if (!person) {
+      return res.status(500).json({ error: 'Failed to get person record' });
+    }
+
+    // Ensure profile exists
+    let profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      await query('INSERT INTO profiles (person_id) VALUES ($1)', [person.id]);
+    }
+
+    const attributes = await ProfileService.updateAttributes(person.id, {
+      smoke_on_cam,
+      leather_fetish,
+      had_interaction,
+    });
+
+    logger.info('Profile attributes updated', { username, attributes });
+    res.json({ attributes });
+  } catch (error) {
+    logger.error('Error updating profile attributes', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
 // PROFILE IMAGES ENDPOINTS
 // ============================================================
 

@@ -42,6 +42,7 @@ const Sessions: React.FC = () => {
   const [totalSessions, setTotalSessions] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
+  const [generatingSummary, setGeneratingSummary] = useState<string | null>(null);
   const PAGE_SIZE = 20;
 
   useEffect(() => {
@@ -134,6 +135,31 @@ const Sessions: React.FC = () => {
     }
   };
 
+  const handleGenerateSummary = async (e: React.MouseEvent, sessionId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    setGeneratingSummary(sessionId);
+    try {
+      const res = await fetch(`/api/sessions-v2/${sessionId}/summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (res.ok) {
+        // Refresh the session data to get the new summary status
+        fetchData(false);
+      } else {
+        const err = await res.json();
+        alert(`Failed to generate summary: ${err.error}`);
+      }
+    } catch (err) {
+      alert('Failed to generate summary: Network error');
+    } finally {
+      setGeneratingSummary(null);
+    }
+  };
+
   const formatDurationMinutes = (minutes: number | null) => {
     if (!minutes) return '-';
     return formatDuration(minutes);
@@ -185,9 +211,8 @@ const Sessions: React.FC = () => {
       <div className="flex justify-between items-start mb-8">
         <div>
           <h1 className="text-3xl font-bold mb-2 bg-gradient-primary bg-clip-text text-transparent">
-            Sessions
+            Broadcasts
           </h1>
-          <p className="text-mhc-text-muted">Broadcast sessions derived from Events API data</p>
         </div>
         <div className="flex gap-3">
           <button
@@ -199,7 +224,7 @@ const Sessions: React.FC = () => {
                 : 'bg-white/10 hover:bg-white/20 text-white'
             }`}
           >
-            {rebuilding ? 'Rebuilding...' : 'Rebuild Sessions'}
+            {rebuilding ? 'Rebuilding...' : 'Rebuild'}
           </button>
         </div>
       </div>
@@ -227,7 +252,7 @@ const Sessions: React.FC = () => {
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mt-4">
             <div className="text-center p-3 bg-white/5 rounded-lg">
               <div className="text-2xl font-bold text-mhc-primary">{stats.totalSessions}</div>
-              <div className="text-xs text-white/60 uppercase">Sessions</div>
+              <div className="text-xs text-white/60 uppercase">Broadcasts</div>
             </div>
             <div className="text-center p-3 bg-white/5 rounded-lg">
               <div className="text-2xl font-bold text-mhc-primary">{formatDurationMinutes(stats.totalMinutes)}</div>
@@ -255,21 +280,23 @@ const Sessions: React.FC = () => {
         </CollapsibleSection>
       )}
 
-      {/* Sessions List */}
-      <div className="bg-mhc-surface/60 border border-white/10 rounded-lg shadow-lg">
-        <div className="p-4 border-b border-white/10 flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-white">
-            Sessions
+      {/* Broadcasts List */}
+      <CollapsibleSection
+        title={
+          <span>
+            Broadcasts
             <span className="text-sm text-white/50 font-normal ml-3">
               {sessions.length} of {totalSessions}
             </span>
-          </h2>
-        </div>
-
+          </span>
+        }
+        defaultCollapsed={true}
+        className="bg-mhc-surface/60"
+      >
         <div className="divide-y divide-white/10">
           {sessions.length === 0 ? (
             <div className="p-10 text-center text-white/60">
-              No sessions found for this time period.
+              No broadcasts found for this time period.
             </div>
           ) : (
             <>
@@ -296,11 +323,26 @@ const Sessions: React.FC = () => {
                         </span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      {session.aiSummaryStatus === 'generated' && (
-                        <span className="px-2 py-0.5 rounded text-xs bg-mhc-primary/20 text-mhc-primary border border-mhc-primary/30">
-                          AI Summary
-                        </span>
+                    <div className="text-right flex items-center gap-2">
+                      {session.status !== 'active' && (
+                        session.aiSummaryStatus === 'generated' ? (
+                          <span className="px-2 py-0.5 rounded text-xs bg-mhc-primary/20 text-mhc-primary border border-mhc-primary/30">
+                            AI Summary
+                          </span>
+                        ) : session.aiSummaryStatus === 'generating' || generatingSummary === session.id ? (
+                          <span className="px-2 py-0.5 rounded text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                            <span className="animate-spin text-[10px]">&#9696;</span>
+                            Generating...
+                          </span>
+                        ) : (
+                          <button
+                            onClick={(e) => handleGenerateSummary(e, session.id)}
+                            disabled={generatingSummary !== null}
+                            className="px-2 py-0.5 rounded text-xs bg-white/10 text-white/70 border border-white/20 hover:bg-mhc-primary/20 hover:text-mhc-primary hover:border-mhc-primary/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Generate Summary
+                          </button>
+                        )
                       )}
                     </div>
                   </div>
@@ -381,7 +423,7 @@ const Sessions: React.FC = () => {
             </>
           )}
         </div>
-      </div>
+      </CollapsibleSection>
     </div>
   );
 };

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, HudsonResponse, Session, Interaction } from '../api/client';
 import { formatDate, formatNumber, formatFullDate, formatMilitaryTime, formatDuration } from '../utils/formatting';
 import Badge from '../components/Badge';
+import { CollapsibleSection } from '../components/CollapsibleSection';
 // Hudson.css removed - fully migrated to Tailwind CSS
 
 interface SessionStats {
@@ -203,7 +204,7 @@ const BroadcasterDashboard: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto p-5">
       <div className="flex justify-between items-center mb-10 py-8 border-b-2 border-mhc-primary">
-        <h1 className="text-mhc-primary text-4xl font-bold m-0">Broadcaster Dashboard</h1>
+        <h1 className="text-mhc-primary text-4xl font-bold m-0">Stats</h1>
         <div className="flex gap-4 items-center">
           <label className="flex items-center text-mhc-text-muted cursor-pointer">
             <input
@@ -342,13 +343,20 @@ const BroadcasterDashboard: React.FC = () => {
 
       {/* Chaturbate Stats */}
       {data.cbStats && (
-        <div className="bg-mhc-surface p-6 rounded-xl mb-6 shadow-lg">
-          <h2 className="text-mhc-text mt-0 mb-5 text-xl font-semibold border-b-2 border-mhc-primary pb-2">Chaturbate Account Stats</h2>
-          {data.cbSnapshot && (
-            <div className="p-3 bg-mhc-surface-light rounded-md text-mhc-text-muted text-sm mb-5">
-              Last updated: {formatDate(data.cbSnapshot.created_at)}
+        <CollapsibleSection
+          title={
+            <div className="flex items-center justify-between w-full">
+              <span>Account Stats</span>
+              {data.cbSnapshot && (
+                <span className="text-mhc-text-muted text-sm font-normal ml-4">
+                  Last updated: {formatDate(data.cbSnapshot.created_at)}
+                </span>
+              )}
             </div>
-          )}
+          }
+          defaultCollapsed={true}
+          className="mb-6 bg-mhc-surface"
+        >
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <div className="flex flex-col p-4 bg-mhc-surface-light rounded-md relative">
               <span className="text-mhc-text-muted font-medium text-sm mb-2">Followers</span>
@@ -396,7 +404,7 @@ const BroadcasterDashboard: React.FC = () => {
               <span className="text-mhc-text font-semibold text-2xl">{formatNumber((data.cbStats as any).votes_up)} / {formatNumber((data.cbStats as any).votes_down)}</span>
             </div>
           </div>
-        </div>
+        </CollapsibleSection>
       )}
 
       {/* Recent Sessions with Expandable Activity */}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { CollapsibleSection as CollapsibleSectionComponent } from '../components/CollapsibleSection';
 
 interface FollowHistoryRecord {
   id: string;
@@ -21,8 +22,35 @@ interface HistoryStats {
   followerUnfollows: number;
 }
 
+// Follower Trends interfaces (moved from Admin)
+interface TopMover {
+  person_id: string;
+  username: string;
+  total_change: number;
+  current_count: number | null;
+}
+
+interface RecentChange {
+  id: string;
+  username: string;
+  follower_count: number;
+  delta: number;
+  source: string;
+  recorded_at: string;
+}
+
+interface FollowerTrendsDashboard {
+  totalTracked: number;
+  totalWithChanges: number;
+  topGainers: TopMover[];
+  topLosers: TopMover[];
+  recentChanges: RecentChange[];
+}
+
 type SortField = 'username' | 'action' | 'source' | 'created_at';
 type SortDirection = 'asc' | 'desc';
+
+const RECENT_CHANGES_PER_PAGE = 20;
 
 const FollowHistory: React.FC = () => {
   const [followingHistory, setFollowingHistory] = useState<FollowHistoryRecord[]>([]);
@@ -32,6 +60,12 @@ const FollowHistory: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [followingExpanded, setFollowingExpanded] = useState(false);
   const [followerExpanded, setFollowerExpanded] = useState(false);
+
+  // Follower Trends state (moved from Admin)
+  const [followerTrends, setFollowerTrends] = useState<FollowerTrendsDashboard | null>(null);
+  const [trendsDays, setTrendsDays] = useState(30);
+  const [recentChangesPage, setRecentChangesPage] = useState(0);
+  const [trendsLoading, setTrendsLoading] = useState(false);
 
   // Sorting state for each section
   const [followingSortField, setFollowingSortField] = useState<SortField>('created_at');
@@ -49,6 +83,27 @@ const FollowHistory: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  // Load follower trends when trendsDays changes
+  useEffect(() => {
+    loadFollowerTrends();
+  }, [trendsDays]);
+
+  const loadFollowerTrends = async () => {
+    try {
+      setTrendsLoading(true);
+      const res = await fetch(`/api/followers/trends?days=${trendsDays}`);
+      if (res.ok) {
+        const data = await res.json();
+        setFollowerTrends(data);
+        setRecentChangesPage(0); // Reset pagination when data changes
+      }
+    } catch (err) {
+      console.error('Failed to load follower trends', err);
+    } finally {
+      setTrendsLoading(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -373,23 +428,188 @@ const FollowHistory: React.FC = () => {
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-white/5 rounded-lg border border-white/10 p-4">
-            <div className="text-2xl font-bold text-emerald-400">{stats.totalFollows}</div>
+            <div className="text-2xl font-bold text-emerald-400">{stats.totalFollows.toLocaleString()}</div>
             <div className="text-white/60 text-sm">Total Follows</div>
           </div>
           <div className="bg-white/5 rounded-lg border border-white/10 p-4">
-            <div className="text-2xl font-bold text-red-400">{stats.totalUnfollows}</div>
+            <div className="text-2xl font-bold text-red-400">{stats.totalUnfollows.toLocaleString()}</div>
             <div className="text-white/60 text-sm">Total Unfollows</div>
           </div>
           <div className="bg-white/5 rounded-lg border border-white/10 p-4">
-            <div className="text-2xl font-bold text-purple-400">{stats.followingFollows}</div>
+            <div className="text-2xl font-bold text-purple-400">{stats.followingFollows.toLocaleString()}</div>
             <div className="text-white/60 text-sm">I Followed</div>
           </div>
           <div className="bg-white/5 rounded-lg border border-white/10 p-4">
-            <div className="text-2xl font-bold text-blue-400">{stats.followerFollows}</div>
+            <div className="text-2xl font-bold text-blue-400">{stats.followerFollows.toLocaleString()}</div>
             <div className="text-white/60 text-sm">Followed Me</div>
           </div>
         </div>
       )}
+
+      {/* Follower Trends Section (moved from Admin) */}
+      <CollapsibleSectionComponent
+        title={
+          <div className="flex items-center justify-between w-full">
+            <span>Follower Trends</span>
+            <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+              {[1, 7, 14, 30, 60, 180, 365].map(days => (
+                <button
+                  key={days}
+                  onClick={() => setTrendsDays(days)}
+                  className={`px-2 py-1 rounded text-xs font-semibold transition-all ${
+                    trendsDays === days
+                      ? 'bg-mhc-primary text-white'
+                      : 'bg-white/10 text-white/70 hover:bg-white/20'
+                  }`}
+                >
+                  {days === 1 ? '24h' : days === 365 ? '1y' : `${days}d`}
+                </button>
+              ))}
+            </div>
+          </div>
+        }
+        defaultCollapsed={true}
+        className="mb-6"
+      >
+        {trendsLoading ? (
+          <div className="text-center py-8 text-white/60">Loading follower trends...</div>
+        ) : followerTrends ? (
+          <div className="space-y-6">
+            {/* Stats Cards */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-4 bg-gradient-to-br from-mhc-primary to-mhc-primary-dark rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{followerTrends.totalTracked.toLocaleString()}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Models Tracked</div>
+              </div>
+              <div className="text-center p-4 bg-gradient-to-br from-mhc-primary to-mhc-primary-dark rounded-lg text-white">
+                <div className="text-2xl font-bold mb-1">{followerTrends.totalWithChanges.toLocaleString()}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">With Changes</div>
+              </div>
+            </div>
+
+            {/* Top Gainers */}
+            <div className="bg-white/5 rounded-lg border border-white/10 p-4">
+              <h4 className="text-white font-semibold mb-3">Top Gainers ({trendsDays === 365 ? '1 year' : `${trendsDays} days`})</h4>
+              {followerTrends.topGainers.length === 0 ? (
+                <p className="text-white/50 text-sm">No data yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {followerTrends.topGainers.slice(0, 10).map((mover, index) => (
+                    <div key={mover.person_id} className="flex items-center justify-between p-2 bg-white/5 rounded hover:bg-white/10 transition-colors">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/40 font-mono text-xs w-5">#{index + 1}</span>
+                        <Link to={`/people/${mover.username}`} className="text-mhc-primary hover:underline text-sm">
+                          {mover.username}
+                        </Link>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-white/50 text-xs">{mover.current_count?.toLocaleString() || 'N/A'}</span>
+                        <span className="text-emerald-400 font-bold">+{mover.total_change.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Top Losers */}
+            <div className="bg-white/5 rounded-lg border border-white/10 p-4">
+              <h4 className="text-white font-semibold mb-3">Top Losers ({trendsDays === 365 ? '1 year' : `${trendsDays} days`})</h4>
+              {followerTrends.topLosers.length === 0 ? (
+                <p className="text-white/50 text-sm">No data yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {followerTrends.topLosers.slice(0, 10).map((mover, index) => (
+                    <div key={mover.person_id} className="flex items-center justify-between p-2 bg-white/5 rounded hover:bg-white/10 transition-colors">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white/40 font-mono text-xs w-5">#{index + 1}</span>
+                        <Link to={`/people/${mover.username}`} className="text-mhc-primary hover:underline text-sm">
+                          {mover.username}
+                        </Link>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-white/50 text-xs">{mover.current_count?.toLocaleString() || 'N/A'}</span>
+                        <span className="text-red-400 font-bold">{mover.total_change.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Recent Changes */}
+            <div className="bg-white/5 rounded-lg border border-white/10 p-4">
+              <h4 className="text-white font-semibold mb-3">
+                Recent Significant Changes
+                {followerTrends.recentChanges.length > 0 && (
+                  <span className="text-xs text-white/50 font-normal ml-2">({followerTrends.recentChanges.length})</span>
+                )}
+              </h4>
+              {followerTrends.recentChanges.length === 0 ? (
+                <p className="text-white/50 text-sm">No significant changes recorded yet.</p>
+              ) : (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left border-b border-white/10">
+                          <th className="pb-2 text-white/70 font-medium">Username</th>
+                          <th className="pb-2 text-white/70 font-medium text-right">Count</th>
+                          <th className="pb-2 text-white/70 font-medium text-right">Change</th>
+                          <th className="pb-2 text-white/70 font-medium text-right">When</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {followerTrends.recentChanges
+                          .slice(recentChangesPage * RECENT_CHANGES_PER_PAGE, (recentChangesPage + 1) * RECENT_CHANGES_PER_PAGE)
+                          .map(change => (
+                            <tr key={change.id} className="border-b border-white/5 hover:bg-white/5">
+                              <td className="py-2">
+                                <Link to={`/people/${change.username}`} className="text-mhc-primary hover:underline">
+                                  {change.username}
+                                </Link>
+                              </td>
+                              <td className="py-2 text-right text-white/70">{change.follower_count.toLocaleString()}</td>
+                              <td className={`py-2 text-right font-bold ${change.delta > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {change.delta > 0 ? '+' : ''}{change.delta.toLocaleString()}
+                              </td>
+                              <td className="py-2 text-right text-white/50 text-xs">
+                                {new Date(change.recorded_at).toLocaleDateString()}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {followerTrends.recentChanges.length > RECENT_CHANGES_PER_PAGE && (
+                    <div className="flex justify-center items-center gap-4 mt-4">
+                      <button
+                        onClick={() => setRecentChangesPage(prev => Math.max(0, prev - 1))}
+                        disabled={recentChangesPage === 0}
+                        className="px-3 py-1 rounded text-xs font-medium transition-all disabled:opacity-40 bg-white/10 text-white hover:bg-mhc-primary"
+                      >
+                        ← Prev
+                      </button>
+                      <span className="text-white/50 text-xs">
+                        Page {recentChangesPage + 1} of {Math.ceil(followerTrends.recentChanges.length / RECENT_CHANGES_PER_PAGE)}
+                      </span>
+                      <button
+                        onClick={() => setRecentChangesPage(prev => Math.min(Math.ceil(followerTrends.recentChanges.length / RECENT_CHANGES_PER_PAGE) - 1, prev + 1))}
+                        disabled={recentChangesPage >= Math.ceil(followerTrends.recentChanges.length / RECENT_CHANGES_PER_PAGE) - 1}
+                        className="px-3 py-1 rounded text-xs font-medium transition-all disabled:opacity-40 bg-white/10 text-white hover:bg-mhc-primary"
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-8 text-white/50">No follower trends data available.</div>
+        )}
+      </CollapsibleSectionComponent>
 
       {/* Filters */}
       <div className="bg-white/5 rounded-lg border border-white/10 p-4 mb-6">

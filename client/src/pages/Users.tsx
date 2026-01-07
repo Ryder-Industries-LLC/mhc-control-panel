@@ -1272,6 +1272,7 @@ const Users: React.FC = () => {
   // Main render
   return (
     <PeopleLayout
+      title={`Directory (${persons.length.toLocaleString()})`}
       activeSegment={activeTab}
       onSegmentChange={setActiveTab}
       error={error}

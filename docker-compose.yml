@@ -52,6 +52,8 @@ services:
     volumes:
       - browser_data:/app/data
       - image_data:/app/data/images
+      # SSD/External storage - requires /Volumes in Docker file sharing
+      - /Volumes/Imago/MHC-Control_Panel/media:/mnt/ssd/mhc-images
     depends_on:
       db:
         condition: service_healthy
@@ -79,6 +81,8 @@ services:
       AWS_REGION: ${AWS_REGION:-us-east-1}
     volumes:
       - image_data:/app/data/images
+      # SSD/External storage - requires /Volumes in Docker file sharing
+      - /Volumes/Imago/MHC-Control_Panel/media:/mnt/ssd/mhc-images
     depends_on:
       db:
         condition: service_healthy

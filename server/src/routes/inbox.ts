@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
+import { env } from '../config/env.js';
 
 const router = Router();
 
@@ -165,13 +166,17 @@ router.get('/thread/:username', async (req: Request, res: Response) => {
       [username]
     );
 
+    // Get broadcaster username from env - this is who "you" are in the chat
+    const broadcasterUsername = env.CHATURBATE_USERNAME.toLowerCase();
+
     const messages: PMMessage[] = result.rows.map(row => ({
       id: row.id,
       timestamp: row.timestamp,
       from_user: row.from_user,
       to_user: row.to_user,
       message: row.message,
-      is_from_broadcaster: row.from_user?.toLowerCase() !== username.toLowerCase(),
+      // Message is from broadcaster if from_user matches the broadcaster's username
+      is_from_broadcaster: row.from_user?.toLowerCase() === broadcasterUsername,
     }));
 
     res.json({
@@ -277,6 +282,9 @@ router.get('/search', async (req: Request, res: Response) => {
       [searchTerm, limitNum]
     );
 
+    // Get broadcaster username from env
+    const broadcasterUsername = env.CHATURBATE_USERNAME.toLowerCase();
+
     res.json({
       query: q,
       results: result.rows.map(row => ({
@@ -285,7 +293,8 @@ router.get('/search', async (req: Request, res: Response) => {
         from_user: row.from_user,
         to_user: row.to_user,
         message: row.message,
-        is_from_broadcaster: row.from_user?.toLowerCase() !== row.username?.toLowerCase(),
+        // Message is from broadcaster if from_user matches the broadcaster's username
+        is_from_broadcaster: row.from_user?.toLowerCase() === broadcasterUsername,
       })),
     });
   } catch (error) {

@@ -159,6 +159,38 @@ export function getLastActiveColumn<T extends BasePerson>(): ColumnConfig<T> {
   };
 }
 
+// External links column (CB and UN Cams)
+export function getLinksColumn<T extends BasePerson>(): ColumnConfig<T> {
+  return {
+    id: 'links',
+    header: 'Links',
+    width: '80px',
+    align: 'center',
+    render: (person) => (
+      <div className="flex gap-1.5 justify-center">
+        <a
+          href={`https://chaturbate.com/${person.username}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[10px] px-1.5 py-0.5 bg-orange-500/20 text-orange-300 hover:bg-orange-500/40 rounded transition-colors font-semibold"
+          onClick={(e) => e.stopPropagation()}
+        >
+          CB
+        </a>
+        <a
+          href={`https://uncams.com/${person.username}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-[10px] px-1.5 py-0.5 bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/40 rounded transition-colors font-semibold"
+          onClick={(e) => e.stopPropagation()}
+        >
+          UN
+        </a>
+      </div>
+    ),
+  };
+}
+
 // Get standard base columns in order
 export function getBaseColumns<T extends BasePerson>(): ColumnConfig<T>[] {
   return [
@@ -168,5 +200,6 @@ export function getBaseColumns<T extends BasePerson>(): ColumnConfig<T>[] {
     getTagsColumn<T>(),
     getImagesCountColumn<T>(),
     getLastActiveColumn<T>(),
+    getLinksColumn<T>(),
   ];
 }

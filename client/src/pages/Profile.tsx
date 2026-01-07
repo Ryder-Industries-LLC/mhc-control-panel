@@ -107,12 +107,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const tabFromUrl = queryParams.get('tab') as TabType | null;
 
   const [username, setUsername] = useState(urlUsername || '');
-  const [lookupCollapsed, setLookupCollapsed] = useState(!!urlUsername);
   const [activeTab, setActiveTab] = useState<TabType>(tabFromUrl || 'snapshot');
   const [loading, setLoading] = useState(false);
   const [profileData, setProfileData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
-  const [usernameSuggestions, setUsernameSuggestions] = useState<string[]>([]);
   const [showRawData, setShowRawData] = useState(false);
 
   // Image history state
@@ -137,6 +135,12 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [bannedByMe, setBannedByMe] = useState(false);
   const [watchList, setWatchList] = useState(false);
   const [rating, setRating] = useState(0);
+
+  // New profile attributes (Phase 3)
+  const [smokeOnCam, setSmokeOnCam] = useState(false);
+  const [leatherFetish, setLeatherFetish] = useState(false);
+  const [profileSmoke, setProfileSmoke] = useState(false);
+  const [hadInteraction, setHadInteraction] = useState(false);
 
   // Top mover badge state
   const [topMoverStatus, setTopMoverStatus] = useState<'gainer' | 'loser' | null>(null);
@@ -164,6 +168,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
   // Media subtab state (images vs videos)
   const [mediaSubTab, setMediaSubTab] = useState<'images' | 'videos'>('images');
   const [showAllImages, setShowAllImages] = useState(false);
+  const [imageSourceFilter, setImageSourceFilter] = useState<string | null>(null); // null = 'All'
 
   // Social links state
   const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
@@ -223,7 +228,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
         })
         .then(data => {
           setProfileData(data);
-          setLookupCollapsed(true);
         })
         .catch(err => {
           setError(err instanceof Error ? err.message : 'Unknown error');
@@ -235,25 +239,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
     }
   }, [urlUsername]);
 
-  // Username autocomplete suggestions
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (username.length >= 2) {
-        try {
-          const suggestions = await api.searchUsernames(username);
-          setUsernameSuggestions(suggestions);
-        } catch (err) {
-          console.error('Failed to fetch username suggestions', err);
-          setUsernameSuggestions([]);
-        }
-      } else {
-        setUsernameSuggestions([]);
-      }
-    }, 300); // 300ms debounce
-
-    return () => clearTimeout(timer);
-  }, [username]);
-
   // Sync profile attribute states from profile data
   useEffect(() => {
     if (profileData?.profile) {
@@ -261,6 +246,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
       setBannedByMe(profileData.profile.banned_by_me || false);
       setWatchList(profileData.profile.watch_list || false);
       setRating(profileData.profile.rating || 0);
+      // New attributes
+      setSmokeOnCam(profileData.profile.smoke_on_cam || false);
+      setLeatherFetish(profileData.profile.leather_fetish || false);
+      setProfileSmoke(profileData.profile.profile_smoke || false);
+      setHadInteraction(profileData.profile.had_interaction || false);
     }
   }, [profileData?.profile]);
 
@@ -502,44 +492,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
         });
     }
   }, [profileData?.person?.username]);
-
-  const handleLookup = async (lookupUsername?: string) => {
-    const usernameToLookup = lookupUsername || username;
-    if (!usernameToLookup) {
-      setError('Please enter a username');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Fetch enriched profile data
-      const response = await fetch(`/api/profile/${usernameToLookup}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch profile');
-      }
-      const data = await response.json();
-      setProfileData(data);
-      setLookupCollapsed(true);
-
-      // Update URL without reloading
-      if (!urlUsername || urlUsername !== usernameToLookup) {
-        navigate(`/profile/${usernameToLookup}`, { replace: true });
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      setProfileData(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleLookup();
-    }
-  };
 
   // Add a new note
   const handleAddNote = async () => {
@@ -981,6 +933,58 @@ const Profile: React.FC<ProfilePageProps> = () => {
     }
   };
 
+  // New profile attribute handlers
+  const handleSmokeOnCamToggle = async () => {
+    if (!profileData?.person?.username) return;
+
+    const newValue = !smokeOnCam;
+    setSmokeOnCam(newValue);
+
+    try {
+      await fetch(`/api/profile/${profileData.person.username}/attributes`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ smoke_on_cam: newValue }),
+      });
+    } catch (err) {
+      setSmokeOnCam(!newValue);
+    }
+  };
+
+  const handleLeatherFetishToggle = async () => {
+    if (!profileData?.person?.username) return;
+
+    const newValue = !leatherFetish;
+    setLeatherFetish(newValue);
+
+    try {
+      await fetch(`/api/profile/${profileData.person.username}/attributes`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leather_fetish: newValue }),
+      });
+    } catch (err) {
+      setLeatherFetish(!newValue);
+    }
+  };
+
+  const handleHadInteractionToggle = async () => {
+    if (!profileData?.person?.username) return;
+
+    const newValue = !hadInteraction;
+    setHadInteraction(newValue);
+
+    try {
+      await fetch(`/api/profile/${profileData.person.username}/attributes`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ had_interaction: newValue }),
+      });
+    } catch (err) {
+      setHadInteraction(!newValue);
+    }
+  };
+
   // Service relationship handlers
   const handleSaveServiceRelationship = async (
     role: 'sub' | 'dom',
@@ -1076,46 +1080,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
   return (
     <div className="max-w-7xl mx-auto p-5">
       <h1 className="text-mhc-primary text-4xl font-bold mb-8 py-4 border-b-2 border-mhc-primary">Profile Viewer</h1>
-
-      {/* Lookup Section */}
-      <div className="bg-mhc-surface rounded-lg shadow-lg mb-5">
-        <div
-          className="px-5 py-4 border-b border-gray-700 flex justify-between items-center cursor-pointer hover:bg-mhc-surface-light transition-colors"
-          onClick={() => setLookupCollapsed(!lookupCollapsed)}
-        >
-          <h2 className="m-0 text-xl font-semibold text-mhc-text">Lookup User {lookupCollapsed ? '▼' : '▲'}</h2>
-        </div>
-
-        {!lookupCollapsed && (
-          <div className="p-5">
-            <div className="flex gap-3">
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value.replace(/\//g, ''))}
-                onKeyPress={handleKeyPress}
-                placeholder="Enter username..."
-                disabled={loading}
-                list="profile-username-suggestions"
-                autoComplete="off"
-                className="flex-1 px-4 py-2.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-base focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20 disabled:opacity-50"
-              />
-              <datalist id="profile-username-suggestions">
-                {usernameSuggestions.map((suggestion, idx) => (
-                  <option key={idx} value={suggestion} />
-                ))}
-              </datalist>
-              <button
-                onClick={() => handleLookup()}
-                disabled={loading}
-                className="px-6 py-2.5 bg-gradient-primary text-white border-none rounded-md text-base font-semibold cursor-pointer transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? 'Loading...' : 'Lookup'}
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
 
       {error && (
         <div className="bg-red-500/20 border-l-4 border-red-500 text-red-300 px-4 py-3 rounded-md mb-5">
@@ -1511,6 +1475,46 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   />
                   <span className="text-white/80 font-medium">Banned by Me</span>
                 </label>
+
+                {/* Smoke on Cam Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={smokeOnCam}
+                    onChange={handleSmokeOnCamToggle}
+                    className="w-5 h-5 rounded border-2 border-gray-400/50 bg-mhc-surface-light text-gray-400 focus:ring-gray-400 cursor-pointer"
+                  />
+                  <span className="text-white/80 font-medium">Smoke on Cam</span>
+                </label>
+
+                {/* Leather/Fetish Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={leatherFetish}
+                    onChange={handleLeatherFetishToggle}
+                    className="w-5 h-5 rounded border-2 border-purple-500/50 bg-mhc-surface-light text-purple-500 focus:ring-purple-500 cursor-pointer"
+                  />
+                  <span className="text-white/80 font-medium">Leather/Fetish</span>
+                </label>
+
+                {/* Had Interaction Toggle */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={hadInteraction}
+                    onChange={handleHadInteractionToggle}
+                    className="w-5 h-5 rounded border-2 border-emerald-500/50 bg-mhc-surface-light text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                  />
+                  <span className="text-white/80 font-medium">Had Interaction</span>
+                </label>
+
+                {/* Profile Smoke (read-only indicator) */}
+                {profileSmoke && (
+                  <div className="flex items-center gap-2 px-2 py-1 bg-amber-500/20 rounded-md">
+                    <span className="text-amber-400 text-sm">🚬 Profile Smoke</span>
+                  </div>
+                )}
               </div>
 
               {/* Rating */}
@@ -1572,8 +1576,30 @@ const Profile: React.FC<ProfilePageProps> = () => {
             >
               {/* Media Section with Tabs - Now at top */}
               {(() => {
-                const images = uploadedImages.filter(img => img.media_type !== 'video');
+                const allImages = uploadedImages.filter(img => img.media_type !== 'video');
                 const videos = uploadedImages.filter(img => img.media_type === 'video');
+
+                // Count images by source for filter chips
+                const sourceCountsMap: Record<string, number> = {};
+                allImages.forEach(img => {
+                  const src = img.source || 'unknown';
+                  sourceCountsMap[src] = (sourceCountsMap[src] || 0) + 1;
+                });
+
+                // Filter images based on selected source filter
+                const images = imageSourceFilter
+                  ? allImages.filter(img => img.source === imageSourceFilter)
+                  : allImages;
+
+                // Source filter chip config
+                const sourceFilters: { key: string | null; label: string; color: string }[] = [
+                  { key: null, label: 'All', color: 'bg-mhc-primary' },
+                  { key: 'affiliate_api', label: 'Auto', color: 'bg-blue-500' },
+                  { key: 'profile', label: 'Profile', color: 'bg-cyan-500' },
+                  { key: 'screensnap', label: 'Snap', color: 'bg-purple-500' },
+                  { key: 'external', label: 'Ext', color: 'bg-orange-500' },
+                  { key: 'manual_upload', label: 'Upload', color: 'bg-green-500' },
+                ];
 
                 return (
                   <div>
@@ -1587,7 +1613,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                             : 'border-transparent text-mhc-text-muted hover:text-mhc-text hover:border-white/30'
                         }`}
                       >
-                        Images ({images.length})
+                        Images ({allImages.length})
                       </button>
                       <button
                         onClick={() => setMediaSubTab('videos')}
@@ -1604,6 +1630,34 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     {/* Images Tab Content */}
                     {mediaSubTab === 'images' && (
                       <div>
+                        {/* Image Source Filter Chips */}
+                        {allImages.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-4">
+                            {sourceFilters.map(filter => {
+                              const count = filter.key === null
+                                ? allImages.length
+                                : (sourceCountsMap[filter.key] || 0);
+                              if (filter.key !== null && count === 0) return null;
+                              const isActive = imageSourceFilter === filter.key;
+                              return (
+                                <button
+                                  key={filter.key || 'all'}
+                                  onClick={() => {
+                                    setImageSourceFilter(filter.key);
+                                    setShowAllImages(false); // Reset pagination when filter changes
+                                  }}
+                                  className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
+                                    isActive
+                                      ? `${filter.color} text-white`
+                                      : `${filter.color}/20 text-white/70 hover:${filter.color}/40 hover:text-white`
+                                  }`}
+                                >
+                                  {filter.label} ({count})
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                         {images.length > 0 ? (
                           <>
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
