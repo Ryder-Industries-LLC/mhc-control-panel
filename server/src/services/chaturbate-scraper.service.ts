@@ -4,13 +4,15 @@ import puppeteerExtra from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { logger } from '../config/logger.js';
 import { FollowerScraperService } from './follower-scraper.service.js';
-import { ImageStorageService } from './image-storage.service.js';
 import { ProfileImagesService } from './profile-images.service.js';
+import { storageService } from './storage/storage.service.js';
 import { query } from '../db/client.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { promises as fs } from 'fs';
+import axios from 'axios';
+import crypto from 'crypto';
 
 // Add stealth plugin to avoid detection
 puppeteerExtra.use(StealthPlugin());
@@ -1088,11 +1090,37 @@ export class ChaturbateScraperService {
         }
 
         try {
-          const localPath = await ImageStorageService.downloadAndSave(
-            photo.url,
+          // Download image using axios
+          const response = await axios.get(photo.url, {
+            responseType: 'arraybuffer',
+            timeout: 30000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            },
+          });
+
+          // Skip placeholder images
+          if (Math.abs(response.data.length - 5045) <= 100) {
+            downloadedPhotos.push({ ...photo, localPath: null });
+            continue;
+          }
+
+          // Generate unique filename
+          const timestamp = Date.now();
+          const hash = crypto.createHash('md5').update(photo.url).digest('hex').substring(0, 8);
+          const filename = `${timestamp}_${hash}.jpg`;
+          const mimeType = response.headers['content-type'] || 'image/jpeg';
+
+          // Save using new storage service with username-based path
+          const result = await storageService.writeWithUsername(
             username,
-            photo.isBackground ? 'full' : 'thumbnail'
+            'profile',
+            filename,
+            Buffer.from(response.data),
+            mimeType
           );
+
+          const localPath = result.success ? result.relativePath : null;
 
           downloadedPhotos.push({
             ...photo,
@@ -1254,14 +1282,51 @@ export class ChaturbateScraperService {
 
               try {
                 if (item.isVideo) {
-                  // Download video
-                  const result = await ImageStorageService.downloadVideo(
-                    item.url,
-                    personId,
-                    { maxSizeBytes: maxVideoSize, photosetId: photoset.id, title: photoset.title }
+                  // Download video using axios
+                  // First check file size with HEAD request
+                  let fileSize = 0;
+                  let mimeType = 'video/mp4';
+                  try {
+                    const headResponse = await axios.head(item.url, { timeout: 10000 });
+                    fileSize = parseInt(headResponse.headers['content-length'] || '0', 10);
+                    mimeType = headResponse.headers['content-type'] || 'video/mp4';
+                    if (fileSize > maxVideoSize) {
+                      logger.info(`Skipping video - exceeds max size`, {
+                        personId,
+                        fileSize,
+                        maxSize: maxVideoSize,
+                      });
+                      continue;
+                    }
+                  } catch (headError) {
+                    // Proceed with download anyway
+                  }
+
+                  const response = await axios.get(item.url, {
+                    responseType: 'arraybuffer',
+                    timeout: 300000, // 5 minute timeout
+                    maxContentLength: maxVideoSize,
+                    headers: {
+                      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                    },
+                  });
+
+                  const actualSize = response.data.length;
+                  const actualMimeType = response.headers['content-type'] || mimeType;
+                  const timestamp = Date.now();
+                  const hash = crypto.createHash('md5').update(item.url).digest('hex').substring(0, 8);
+                  const ext = actualMimeType.includes('mp4') ? '.mp4' : actualMimeType.includes('webm') ? '.webm' : '.mp4';
+                  const filename = `${timestamp}_${hash}${ext}`;
+
+                  const result = await storageService.writeWithUsername(
+                    username,
+                    'profile',
+                    filename,
+                    Buffer.from(response.data),
+                    actualMimeType
                   );
 
-                  if (result) {
+                  if (result.success) {
                     // Save to database
                     await ProfileImagesService.create({
                       personId,
@@ -1270,8 +1335,10 @@ export class ChaturbateScraperService {
                       mediaType: 'video',
                       photosetId: photoset.id,
                       title: photoset.title,
-                      fileSize: result.fileSize,
-                      mimeType: result.mimeType,
+                      fileSize: actualSize,
+                      mimeType: actualMimeType,
+                      username,
+                      storageProvider: 'ssd',
                     });
 
                     profileMedia.push({
@@ -1280,21 +1347,42 @@ export class ChaturbateScraperService {
                       mediaType: 'video',
                       photosetId: photoset.id,
                       title: photoset.title,
-                      fileSize: result.fileSize,
-                      mimeType: result.mimeType,
+                      fileSize: actualSize,
+                      mimeType: actualMimeType,
                     });
 
-                    logger.info(`Downloaded video from photoset ${photoset.id}`, { size: result.fileSize });
+                    logger.info(`Downloaded video from photoset ${photoset.id}`, { size: actualSize });
                   }
                 } else {
-                  // Download image
-                  const result = await ImageStorageService.downloadProfileImage(
-                    item.url,
-                    personId,
-                    { photosetId: photoset.id, title: photoset.title }
+                  // Download image using axios
+                  const response = await axios.get(item.url, {
+                    responseType: 'arraybuffer',
+                    timeout: 30000,
+                    headers: {
+                      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                    },
+                  });
+
+                  // Skip placeholder images
+                  if (Math.abs(response.data.length - 5045) <= 100) {
+                    continue;
+                  }
+
+                  const mimeType = response.headers['content-type'] || 'image/jpeg';
+                  const timestamp = Date.now();
+                  const hash = crypto.createHash('md5').update(item.url).digest('hex').substring(0, 8);
+                  const ext = mimeType.includes('png') ? '.png' : mimeType.includes('gif') ? '.gif' : '.jpg';
+                  const filename = `${timestamp}_${hash}${ext}`;
+
+                  const result = await storageService.writeWithUsername(
+                    username,
+                    'profile',
+                    filename,
+                    Buffer.from(response.data),
+                    mimeType
                   );
 
-                  if (result) {
+                  if (result.success) {
                     // Save to database
                     await ProfileImagesService.create({
                       personId,
@@ -1303,8 +1391,10 @@ export class ChaturbateScraperService {
                       mediaType: 'image',
                       photosetId: photoset.id,
                       title: photoset.title,
-                      fileSize: result.fileSize,
-                      mimeType: result.mimeType,
+                      fileSize: response.data.length,
+                      mimeType,
+                      username,
+                      storageProvider: 'ssd',
                     });
 
                     profileMedia.push({
@@ -1313,8 +1403,8 @@ export class ChaturbateScraperService {
                       mediaType: 'image',
                       photosetId: photoset.id,
                       title: photoset.title,
-                      fileSize: result.fileSize,
-                      mimeType: result.mimeType,
+                      fileSize: response.data.length,
+                      mimeType,
                     });
 
                     logger.debug(`Downloaded image from photoset ${photoset.id}`);

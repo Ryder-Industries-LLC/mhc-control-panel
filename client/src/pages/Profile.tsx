@@ -34,6 +34,22 @@ const isSessionLive = (session: any): boolean => {
   return observedAt > thirtyMinutesAgo;
 };
 
+/**
+ * Get the correct image URL for profile images.
+ *
+ * All images are now served from /images/ which has fallback logic on the server:
+ * - First tries SSD (new username-based paths: people/{username}/{folder}/...)
+ * - Then falls back to Docker volume (legacy UUID paths during migration)
+ *
+ * New path structure: /images/people/{username}/{auto|uploads|snaps|profile}/filename
+ * Legacy paths: /images/{uuid}/filename or /images/profiles/{uuid}/filename
+ */
+const getProfileImageUrl = (image: { file_path: string; storage_provider?: string | null; source?: string }): string => {
+  // All images now served from unified /images/ route
+  // Server handles fallback between SSD and Docker paths
+  return `/images/${image.file_path}`;
+};
+
 // Get the best available image URL
 // - If live: use Chaturbate's real-time thumbnail
 // - If offline: use our locally cached image
@@ -1123,7 +1139,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     <img
                       src={
                         currentProfileImage
-                          ? `/images/profiles/${currentProfileImage.file_path}`
+                          ? getProfileImageUrl(currentProfileImage)
                           : imageHistory.length > 0
                             ? `/images/${imageHistory[currentImageIndex]?.image_url}`
                             : getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession))
@@ -1662,9 +1678,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                           <>
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
                             {(showAllImages ? images : images.slice(0, 12)).map((image, index) => {
-                              const imageUrl = image.source === 'affiliate_api'
-                                ? `/images/${image.file_path}`
-                                : `/images/profiles/${image.file_path}`;
+                              const imageUrl = getProfileImageUrl(image);
                               const imageDate = image.captured_at || image.uploaded_at;
                               const isProfileSource = image.source === 'profile';
 
@@ -1731,7 +1745,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                             image.id,
                                             isAffiliate,
                                             isAffiliate ? {
-                                              imageUrl: `/images/${image.file_path}`,
+                                              imageUrl: getProfileImageUrl(image),
                                               capturedAt: image.captured_at || image.uploaded_at,
                                               viewers: image.viewers,
                                             } : undefined
@@ -1795,7 +1809,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                         {videos.length > 0 ? (
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                             {videos.map((video) => {
-                              const videoUrl = `/images/profiles/${video.file_path}`;
+                              const videoUrl = getProfileImageUrl(video);
                               const videoDate = video.captured_at || video.uploaded_at;
                               const fileSizeMB = video.file_size ? (video.file_size / (1024 * 1024)).toFixed(1) : null;
 

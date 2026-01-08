@@ -1,9 +1,11 @@
 import { feedCacheService } from '../services/feed-cache.service.js';
 import { ProfileImagesService } from '../services/profile-images.service.js';
-import { ImageStorageService } from '../services/image-storage.service.js';
+import { storageService } from '../services/storage/storage.service.js';
 import { JobPersistenceService } from '../services/job-persistence.service.js';
 import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
+import axios from 'axios';
+import crypto from 'crypto';
 
 /**
  * Background job to capture screenshots from live Following users
@@ -302,24 +304,52 @@ export class LiveScreenshotJob {
         }
 
         try {
-          // Download the image
-          const result = await ImageStorageService.downloadProfileImage(
-            roomData.image_url,
-            person.person_id
+          // Download the image using new storage service
+          const response = await axios.get(roomData.image_url, {
+            responseType: 'arraybuffer',
+            timeout: 30000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            },
+          });
+
+          // Skip placeholder images (Chaturbate placeholder is ~5045 bytes)
+          if (Math.abs(response.data.length - 5045) <= 100) {
+            logger.debug(`Skipping placeholder image for ${username}`);
+            continue;
+          }
+
+          // Generate unique filename
+          const timestamp = Date.now();
+          const hash = crypto.createHash('md5').update(roomData.image_url).digest('hex').substring(0, 8);
+          const filename = `${timestamp}_${hash}.jpg`;
+          const mimeType = response.headers['content-type'] || 'image/jpeg';
+
+          // Save using new storage service with username-based path
+          const result = await storageService.writeWithUsername(
+            username,
+            'screensnap',
+            filename,
+            Buffer.from(response.data),
+            mimeType
           );
 
-          if (result) {
+          if (result.success) {
             // Create profile_images record with source='screensnap'
             await ProfileImagesService.create({
               personId: person.person_id,
               filePath: result.relativePath,
               source: 'screensnap',
               capturedAt: new Date(),
-              fileSize: result.fileSize,
-              mimeType: result.mimeType,
+              fileSize: result.size,
+              mimeType,
+              username, // Include username for new schema
+              storageProvider: 'ssd',
             });
             captures++;
-            logger.debug(`Screenshot captured for ${username}`);
+            logger.debug(`Screenshot captured for ${username}`, { path: result.relativePath });
+          } else {
+            logger.warn(`Failed to save screenshot for ${username}`, { error: result.error });
           }
         } catch (err) {
           logger.error('Failed to capture screenshot', { username, error: err });

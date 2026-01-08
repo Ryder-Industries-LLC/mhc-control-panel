@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.29.0] - 2026-01-08
+
+### Added
+
+- **Username-Based Storage Architecture**: Complete redesign of image storage system
+  - New path structure: `people/{username}/{folder}/{filename}`
+  - Folders: `auto/` (affiliate thumbnails), `uploads/` (manual), `snaps/` (live screenshots), `profile/` (scraped)
+  - Per-user `all/` folder with symlinks to all files for easy browsing
+  - Global `/all/` folder with `{username}_{filename}` symlinks for Finder navigation
+- **Storage Migration Job**: Background job to migrate ~50K existing images
+  - New API endpoints: `/api/storage/migrate/start`, `/status`, `/pause`, `/resume`, `/stop`, `/cleanup`
+  - Progress tracking with stats (total, migrated, skipped, failed)
+- **Operation Queue**: Queue system for when SSD storage is temporarily unavailable
+  - Automatic retry every 5 minutes when SSD becomes available
+  - API endpoints: `/api/storage/queue`, `/api/storage/queue/process`
+- **Database on SSD**: PostgreSQL data directory moved to external SSD for persistence
+
+### Changed
+
+- **Storage Service Refactor**: Removed Docker fallback, SSD-only writes with S3 for future production
+  - `writeWithUsername()` method for new path structure with automatic symlink creation
+  - Docker provider kept read-only for legacy file access during migration
+- **All Image Writers Updated**: BroadcastSession, LiveScreenshot, ChaturbateScraper, ProfileImages
+  - Now use new storage service with username-based paths
+  - Include username and storage_provider in database records
+- **Frontend URL Simplification**: Unified `/images/` route serves all images
+  - SSD-first with Docker fallback for legacy files
+  - Removed complex URL logic from Profile.tsx
+- **Docker Compose**: Database bind mount to SSD (`/Volumes/Imago/MHC-Control_Panel/db`)
+
+### Fixed
+
+- **ESM Compatibility**: Fixed `require('crypto')` to proper ES module import in broadcast-session.service
+- **Migration Pagination Bug**: Fixed OFFSET-based query that skipped records during in-place updates
+
+### Technical
+
+- New migration: `067_storage_username_paths.sql` - adds `username`, `legacy_file_path` columns to profile_images
+- New job: `storage-migration.job.ts` - migrates files from UUID paths to username paths
+- Updated: `ssd-provider.ts` - new methods for username paths and symlink creation
+- Updated: `storage.service.ts` - operation queue, writeWithUsername(), removed Docker fallback
+
+### Migration Notes
+
+50,828 images successfully migrated to new path structure:
+- 2,191 user folders created in `/Volumes/Imago/MHC-Control_Panel/media/people/`
+- 50,889 global symlinks in `/Volumes/Imago/MHC-Control_Panel/media/all/`
+
+---
+
 ## [1.28.0] - 2026-01-07
 
 ### Added

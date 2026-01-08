@@ -2,23 +2,44 @@
  * Storage Service
  *
  * Facade service that selects the appropriate storage provider based on configuration.
- * Manages the pluggable storage system with Docker, SSD, and S3 backends.
+ * Manages the pluggable storage system with SSD (primary) and S3 (remote) backends.
+ *
+ * NOTE: Docker storage has been deprecated. All writes go to SSD.
+ * When SSD is unavailable, operations are queued for later processing.
+ * Docker provider is kept for reading legacy files during migration.
  */
 
 import { pool } from '../../db/client.js';
 import { StorageProvider, StorageConfig, StorageProviderType, StorageWriteResult, StorageReadResult, StorageFileStats, DEFAULT_STORAGE_CONFIG, isSymlinkCapable } from './types.js';
 import { DockerProvider } from './docker-provider.js';
-import { SSDProvider } from './ssd-provider.js';
+import { SSDProvider, MediaSource } from './ssd-provider.js';
 import { S3Provider } from './s3-provider.js';
 import { BaseStorageProvider } from './base-provider.js';
 import { logger } from '../../config/logger.js';
 
+/**
+ * Queued operation for when SSD is unavailable
+ */
+export interface QueuedOperation {
+  id: string;
+  type: 'write' | 'symlink';
+  relativePath: string;
+  buffer?: Buffer;
+  mimeType?: string;
+  username: string;
+  source: string;
+  createdAt: Date;
+  retryCount: number;
+}
+
 class StorageService {
   private config: StorageConfig = DEFAULT_STORAGE_CONFIG;
-  private dockerProvider: DockerProvider | null = null;
+  private dockerProvider: DockerProvider | null = null; // Legacy - read-only for migration
   private ssdProvider: SSDProvider | null = null;
   private s3Provider: S3Provider | null = null;
   private initialized = false;
+  private operationQueue: QueuedOperation[] = [];
+  private queueProcessorRunning = false;
 
   /**
    * Initialize the storage service by loading config and creating providers
@@ -81,16 +102,15 @@ class StorageService {
    * Initialize storage providers based on configuration
    */
   private async initializeProviders(): Promise<void> {
-    // Always create Docker provider - it's the default fallback
-    // even if not "enabled" for primary writes
+    // Docker provider - LEGACY read-only for migration
+    // Only create if there are still Docker-stored files to read
     this.dockerProvider = new DockerProvider(this.config.local.dockerPath);
 
-    // Create SSD provider if enabled
-    if (this.config.local.ssdEnabled) {
-      this.ssdProvider = new SSDProvider(this.config.local.ssdPath);
-    }
+    // SSD provider - PRIMARY storage for all writes
+    // Always create - this is now the required storage backend
+    this.ssdProvider = new SSDProvider(this.config.local.ssdPath);
 
-    // Create S3 provider if enabled and configured
+    // Create S3 provider if enabled and configured (for remote/production)
     if (this.config.external.enabled && this.config.external.s3Bucket) {
       this.s3Provider = new S3Provider({
         bucket: this.config.external.s3Bucket,
@@ -98,6 +118,9 @@ class StorageService {
         prefix: this.config.external.s3Prefix,
       });
     }
+
+    // Start queue processor for handling operations when SSD was unavailable
+    this.startQueueProcessor();
   }
 
   /**
@@ -189,6 +212,7 @@ class StorageService {
 
   /**
    * Get the current write provider based on configuration
+   * NOTE: Docker fallback has been removed. Returns null if SSD unavailable (operations will be queued)
    */
   async getWriteProvider(): Promise<StorageProvider | null> {
     await this.ensureInitialized();
@@ -198,37 +222,16 @@ class StorageService {
       if (this.s3Provider && await this.s3Provider.isAvailable()) {
         return this.s3Provider;
       }
-      logger.warn('[StorageService] S3 not available, falling back to local');
+      logger.warn('[StorageService] S3 not available, will queue operation');
     }
 
-    // Local mode
-    const localMode = this.config.local.mode;
-
-    if (localMode === 'auto') {
-      // Prefer SSD if available
-      if (this.ssdProvider && await this.ssdProvider.isAvailable()) {
-        return this.ssdProvider;
-      }
-      // Fall back to Docker
-      if (this.dockerProvider && await this.dockerProvider.isAvailable()) {
-        return this.dockerProvider;
-      }
-    } else if (localMode === 'ssd') {
-      if (this.ssdProvider && await this.ssdProvider.isAvailable()) {
-        return this.ssdProvider;
-      }
-      // Fall back to Docker if SSD unavailable
-      logger.warn('[StorageService] SSD not available, falling back to Docker');
-      if (this.dockerProvider && await this.dockerProvider.isAvailable()) {
-        return this.dockerProvider;
-      }
-    } else if (localMode === 'docker') {
-      if (this.dockerProvider && await this.dockerProvider.isAvailable()) {
-        return this.dockerProvider;
-      }
+    // Local mode - SSD only (no Docker fallback)
+    if (this.ssdProvider && await this.ssdProvider.isAvailable()) {
+      return this.ssdProvider;
     }
 
-    logger.error('[StorageService] No storage provider available!');
+    // SSD not available - caller should queue the operation
+    logger.warn('[StorageService] SSD not available - operation will be queued');
     return null;
   }
 
@@ -257,9 +260,10 @@ class StorageService {
    */
   async getStatus(): Promise<{
     currentWriteBackend: StorageProviderType | null;
-    docker: { available: boolean; path: string; fileCount?: number };
+    docker: { available: boolean; path: string; fileCount?: number; deprecated: boolean };
     ssd: { available: boolean; path: string; fileCount?: number };
     s3: { available: boolean; bucket: string; fileCount?: number };
+    queue: { length: number; oldestOperation: Date | null };
   }> {
     await this.ensureInitialized();
 
@@ -283,6 +287,7 @@ class StorageService {
         available: this.dockerProvider ? await this.dockerProvider.isAvailable() : false,
         path: this.config.local.dockerPath,
         fileCount: counts['docker'] || 0,
+        deprecated: true, // Docker storage is deprecated - read-only for migration
       },
       ssd: {
         available: this.ssdProvider ? await this.ssdProvider.isAvailable() : false,
@@ -294,12 +299,14 @@ class StorageService {
         bucket: this.config.external.s3Bucket,
         fileCount: counts['s3'] || 0,
       },
+      queue: this.getQueueStatus(),
     };
   }
 
   /**
-   * Write a file using the current write provider
-   * Automatically falls back to Docker if preferred provider fails
+   * Write a file using the current write provider (SSD or S3)
+   * NOTE: Docker fallback removed. If SSD unavailable, returns error.
+   * Callers should use writeWithUsername() for new code, which handles queuing.
    */
   async write(relativePath: string, data: Buffer, mimeType?: string): Promise<StorageWriteResult> {
     const provider = await this.getWriteProvider();
@@ -310,27 +317,188 @@ class StorageService {
         absolutePath: '',
         size: 0,
         sha256: '',
-        error: 'No storage provider available',
+        error: 'SSD storage not available - operation not queued (use writeWithUsername for queuing)',
       };
     }
 
-    const result = await provider.write(relativePath, data, mimeType);
+    return provider.write(relativePath, data, mimeType);
+  }
 
-    // If write failed and we weren't already using Docker, try Docker as fallback
-    if (!result.success && provider.type !== 'docker' && this.dockerProvider) {
-      logger.warn(`[StorageService] ${provider.type} write failed, falling back to Docker`, {
-        relativePath,
-        originalError: result.error,
+  /**
+   * Write a file using the new username-based path structure
+   * Automatically creates symlinks in /all/ folders
+   * Queues operation if SSD is unavailable
+   */
+  async writeWithUsername(
+    username: string,
+    source: MediaSource,
+    filename: string,
+    data: Buffer,
+    mimeType?: string
+  ): Promise<StorageWriteResult & { userSymlink?: string; globalSymlink?: string }> {
+    await this.ensureInitialized();
+
+    // Check if SSD is available
+    if (!this.ssdProvider || !await this.ssdProvider.isAvailable()) {
+      // Queue the operation for later
+      const operationId = this.queueOperation({
+        type: 'write',
+        relativePath: `people/${username}/${this.sourceToFolder(source)}/${filename}`,
+        buffer: data,
+        mimeType,
+        username,
+        source,
       });
 
-      const fallbackResult = await this.dockerProvider.write(relativePath, data, mimeType);
-      if (fallbackResult.success) {
-        logger.info(`[StorageService] Fallback to Docker succeeded for ${relativePath}`);
-      }
-      return fallbackResult;
+      logger.warn(`[StorageService] SSD unavailable, queued write operation: ${operationId}`);
+
+      return {
+        success: false,
+        relativePath: `people/${username}/${this.sourceToFolder(source)}/${filename}`,
+        absolutePath: '',
+        size: 0,
+        sha256: '',
+        error: `SSD unavailable - operation queued (ID: ${operationId})`,
+        queued: true,
+        queueId: operationId,
+      } as StorageWriteResult & { queued?: boolean; queueId?: string };
     }
 
-    return result;
+    // Use SSD provider's username-based write
+    return this.ssdProvider.writeWithUsername(username, source, filename, data, mimeType);
+  }
+
+  /**
+   * Map source type to folder name
+   */
+  private sourceToFolder(source: string): string {
+    const mapping: Record<string, string> = {
+      'affiliate_api': 'auto',
+      'manual_upload': 'uploads',
+      'screensnap': 'snaps',
+      'profile': 'profile',
+      'external': 'uploads',
+      'imported': 'uploads',
+    };
+    return mapping[source] || 'uploads';
+  }
+
+  /**
+   * Queue an operation for later processing
+   */
+  private queueOperation(params: {
+    type: 'write' | 'symlink';
+    relativePath: string;
+    buffer?: Buffer;
+    mimeType?: string;
+    username: string;
+    source: string;
+  }): string {
+    const id = `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const operation: QueuedOperation = {
+      id,
+      type: params.type,
+      relativePath: params.relativePath,
+      buffer: params.buffer,
+      mimeType: params.mimeType,
+      username: params.username,
+      source: params.source,
+      createdAt: new Date(),
+      retryCount: 0,
+    };
+
+    this.operationQueue.push(operation);
+    logger.info(`[StorageService] Queued operation ${id}: ${params.type} ${params.relativePath}`);
+
+    // Alert if queue is getting large
+    if (this.operationQueue.length > 100) {
+      logger.error(`[StorageService] Operation queue has ${this.operationQueue.length} items - SSD may be disconnected!`);
+    }
+
+    return id;
+  }
+
+  /**
+   * Start the background queue processor
+   */
+  private startQueueProcessor(): void {
+    if (this.queueProcessorRunning) return;
+    this.queueProcessorRunning = true;
+
+    // Process queue every 5 minutes
+    setInterval(async () => {
+      await this.processQueue();
+    }, 5 * 60 * 1000);
+
+    logger.info('[StorageService] Queue processor started');
+  }
+
+  /**
+   * Process queued operations
+   */
+  async processQueue(): Promise<{ processed: number; failed: number; remaining: number }> {
+    if (this.operationQueue.length === 0) {
+      return { processed: 0, failed: 0, remaining: 0 };
+    }
+
+    // Check if SSD is available
+    if (!this.ssdProvider || !await this.ssdProvider.isAvailable()) {
+      logger.debug(`[StorageService] Queue processor: SSD still unavailable, ${this.operationQueue.length} operations pending`);
+      return { processed: 0, failed: 0, remaining: this.operationQueue.length };
+    }
+
+    logger.info(`[StorageService] Processing ${this.operationQueue.length} queued operations`);
+
+    let processed = 0;
+    let failed = 0;
+    const failedOperations: QueuedOperation[] = [];
+
+    while (this.operationQueue.length > 0) {
+      const operation = this.operationQueue.shift()!;
+
+      try {
+        if (operation.type === 'write' && operation.buffer) {
+          const result = await this.ssdProvider!.writeWithUsername(
+            operation.username,
+            operation.source as MediaSource,
+            operation.relativePath.split('/').pop()!,
+            operation.buffer,
+            operation.mimeType
+          );
+
+          if (result.success) {
+            processed++;
+            logger.debug(`[StorageService] Processed queued write: ${operation.id}`);
+          } else {
+            throw new Error(result.error || 'Write failed');
+          }
+        }
+      } catch (error) {
+        operation.retryCount++;
+        if (operation.retryCount < 3) {
+          failedOperations.push(operation);
+        } else {
+          failed++;
+          logger.error(`[StorageService] Failed operation ${operation.id} after 3 retries:`, error);
+        }
+      }
+    }
+
+    // Re-queue failed operations for retry
+    this.operationQueue.push(...failedOperations);
+
+    logger.info(`[StorageService] Queue processing complete: ${processed} processed, ${failed} failed, ${this.operationQueue.length} remaining`);
+    return { processed, failed, remaining: this.operationQueue.length };
+  }
+
+  /**
+   * Get current queue status
+   */
+  getQueueStatus(): { length: number; oldestOperation: Date | null } {
+    return {
+      length: this.operationQueue.length,
+      oldestOperation: this.operationQueue.length > 0 ? this.operationQueue[0].createdAt : null,
+    };
   }
 
   /**
@@ -362,7 +530,7 @@ class StorageService {
       return provider.getServeUrl(relativePath);
     }
 
-    // Default to Docker path
+    // Default to SSD path (new standard)
     return `/images/${relativePath}`;
   }
 
@@ -393,7 +561,8 @@ class StorageService {
   }
 
   /**
-   * Get the Docker provider (for transfer operations)
+   * Get the Docker provider (LEGACY - for reading files during migration only)
+   * @deprecated Docker storage is deprecated. Use SSD provider for new writes.
    */
   getDockerProvider(): DockerProvider | null {
     return this.dockerProvider;

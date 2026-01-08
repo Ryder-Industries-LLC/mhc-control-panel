@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-07 (v1.28.0)
+**Last Updated**: 2026-01-08 (v1.29.0)
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 

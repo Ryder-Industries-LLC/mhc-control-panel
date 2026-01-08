@@ -1,8 +1,9 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import { logger } from './config/logger.js';
-import { ImageStorageService } from './services/image-storage.service.js';
+import { storageService } from './services/storage/storage.service.js';
 
 // Import routes
 import lookupRoutes from './routes/lookup.js';
@@ -28,9 +29,9 @@ import storageRoutes from './routes/storage.js';
 export function createApp() {
   const app = express();
 
-  // Initialize image storage
-  ImageStorageService.init().catch((error) => {
-    logger.error('Failed to initialize image storage', { error });
+  // Initialize storage service
+  storageService.init().catch((error) => {
+    logger.error('Failed to initialize storage service', { error });
   });
 
   // Middleware
@@ -38,15 +39,48 @@ export function createApp() {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
 
-  // Serve static images from Docker volume
-  const imagesPath = path.join(process.cwd(), 'data', 'images');
-  app.use('/images', express.static(imagesPath));
-  logger.info('Serving static images from Docker volume', { path: imagesPath });
-
-  // Serve static images from SSD mount (if available)
+  // Storage paths
   const ssdImagesPath = '/mnt/ssd/mhc-images';
-  app.use('/ssd-images', express.static(ssdImagesPath));
-  logger.info('Serving static images from SSD mount', { path: ssdImagesPath });
+  const dockerImagesPath = path.join(process.cwd(), 'data', 'images');
+
+  // Primary image route - tries SSD first, then Docker for legacy files
+  // This allows migration to happen transparently
+  app.use('/images', (req, res, next) => {
+    const relativePath = req.path;
+    const ssdFullPath = path.join(ssdImagesPath, relativePath);
+    const dockerFullPath = path.join(dockerImagesPath, relativePath);
+    const profilesDockerPath = path.join(dockerImagesPath, 'profiles', relativePath);
+
+    // Try SSD first (new primary storage)
+    if (fs.existsSync(ssdFullPath)) {
+      return express.static(ssdImagesPath)(req, res, next);
+    }
+
+    // Try Docker volume (legacy storage during migration)
+    if (fs.existsSync(dockerFullPath)) {
+      return express.static(dockerImagesPath)(req, res, next);
+    }
+
+    // Try profiles subdirectory in Docker
+    if (fs.existsSync(profilesDockerPath)) {
+      req.url = '/profiles' + req.url;
+      return express.static(dockerImagesPath)(req, res, next);
+    }
+
+    // File not found in any location
+    res.status(404).json({ error: 'Image not found' });
+  });
+
+  logger.info('Serving images with SSD-first fallback', {
+    ssd: ssdImagesPath,
+    docker: dockerImagesPath,
+  });
+
+  // Legacy /ssd-images route - redirect to /images for backward compatibility
+  app.use('/ssd-images', (req, res) => {
+    res.redirect(301, `/images${req.path}`);
+  });
+  logger.info('Legacy /ssd-images redirects to /images');
 
   // Request logging
   app.use((req: Request, _res: Response, next: NextFunction) => {

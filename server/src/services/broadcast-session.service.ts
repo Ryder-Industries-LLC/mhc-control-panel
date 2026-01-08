@@ -1,7 +1,9 @@
 import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
 import type { OnlineRoom } from '../api/chaturbate/affiliate-client.js';
-import { ImageStorageService } from './image-storage.service.js';
+import { storageService } from './storage/storage.service.js';
+import axios from 'axios';
+import crypto from 'crypto';
 
 export interface BroadcastSession {
   id: number;
@@ -23,6 +25,84 @@ export interface BroadcastSession {
 }
 
 export class BroadcastSessionService {
+  // Chaturbate placeholder image patterns and size
+  private static readonly PLACEHOLDER_PATTERNS = ['no_image', 'noimage', 'placeholder', 'default_avatar'];
+  private static readonly PLACEHOLDER_SIZE = 5045;
+  private static readonly PLACEHOLDER_SIZE_TOLERANCE = 100;
+
+  /**
+   * Check if a URL points to a known placeholder image
+   */
+  private static isPlaceholderUrl(imageUrl: string): boolean {
+    const lowerUrl = imageUrl.toLowerCase();
+    return this.PLACEHOLDER_PATTERNS.some(pattern => lowerUrl.includes(pattern));
+  }
+
+  /**
+   * Check if image data is a placeholder based on file size
+   */
+  private static isPlaceholderBySize(data: Buffer): boolean {
+    return Math.abs(data.length - this.PLACEHOLDER_SIZE) <= this.PLACEHOLDER_SIZE_TOLERANCE;
+  }
+
+  /**
+   * Download an image and save using the new storage service
+   */
+  private static async downloadAndSaveImage(
+    imageUrl: string,
+    username: string,
+    type: 'thumbnail' | 'full'
+  ): Promise<string | null> {
+    try {
+      if (this.isPlaceholderUrl(imageUrl)) {
+        logger.debug('Skipping placeholder image URL', { username, imageUrl });
+        return null;
+      }
+
+      const response = await axios.get(imageUrl, {
+        responseType: 'arraybuffer',
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
+      });
+
+      if (this.isPlaceholderBySize(response.data)) {
+        logger.debug('Skipping placeholder image (detected by size)', { username, size: response.data.length });
+        return null;
+      }
+
+      // Generate unique filename
+      const timestamp = Date.now();
+      const hash = crypto.createHash('md5').update(imageUrl).digest('hex').substring(0, 8);
+      const filename = `${timestamp}_${hash}.jpg`;
+
+      // Use new storage service with username-based paths
+      const result = await storageService.writeWithUsername(
+        username,
+        'affiliate_api', // Source type for affiliate polling thumbnails
+        filename,
+        Buffer.from(response.data),
+        'image/jpeg'
+      );
+
+      if (result.success) {
+        logger.debug('Affiliate image saved', { username, type, path: result.relativePath });
+        return result.relativePath;
+      } else {
+        logger.warn('Failed to save affiliate image', { username, type, error: result.error });
+        return null;
+      }
+    } catch (error: any) {
+      // Extract meaningful error info from axios errors
+      const errorInfo = error?.response?.status
+        ? `HTTP ${error.response.status}`
+        : error?.code || error?.message || 'Unknown error';
+      logger.error('Failed to download affiliate image', { error: errorInfo, username, imageUrl });
+      return null;
+    }
+  }
+
   /**
    * Record a broadcast session snapshot from Affiliate API
    *
@@ -48,12 +128,12 @@ export class BroadcastSessionService {
     const existingResult = await query(existingSessionSql, [personId, sessionStart]);
     const existingSession = existingResult.rows[0];
 
-    // Download and save images locally (skips placeholder images)
-    const imagePaths = await ImageStorageService.downloadBoth(
-      roomData.image_url,
-      roomData.image_url_360x270,
-      roomData.username
-    );
+    // Download and save images using new storage service (skips placeholder images)
+    const [thumbnailPath, fullPath] = await Promise.all([
+      this.downloadAndSaveImage(roomData.image_url, roomData.username, 'thumbnail'),
+      this.downloadAndSaveImage(roomData.image_url_360x270, roomData.username, 'full'),
+    ]);
+    const imagePaths = { thumbnail: thumbnailPath, full: fullPath };
 
     // If we got a valid new image, use it; otherwise keep as null (don't use placeholder URLs)
     const shouldClearOldImage = imagePaths.full !== null;

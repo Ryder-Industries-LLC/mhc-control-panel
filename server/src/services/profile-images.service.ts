@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
+import { storageService } from './storage/storage.service.js';
 
 export type MediaType = 'image' | 'video';
 export type MediaSource = 'manual_upload' | 'screensnap' | 'external' | 'imported' | 'profile';
@@ -43,6 +44,8 @@ export interface CreateProfileImageInput {
   durationSeconds?: number;
   photosetId?: string;
   title?: string;
+  username?: string; // For new username-based path structure
+  storageProvider?: 'docker' | 'ssd' | 's3';
 }
 
 export interface UpdateProfileImageInput {
@@ -147,9 +150,10 @@ export class ProfileImagesService {
       INSERT INTO profile_images (
         person_id, file_path, original_filename, source, description,
         captured_at, file_size, mime_type, width, height,
-        media_type, duration_seconds, photoset_id, title
+        media_type, duration_seconds, photoset_id, title,
+        username, storage_provider
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       RETURNING *
     `;
 
@@ -168,6 +172,8 @@ export class ProfileImagesService {
       data.durationSeconds || null,
       data.photosetId || null,
       data.title || null,
+      data.username || null,
+      data.storageProvider || 'ssd', // Default to SSD for new images
     ];
 
     try {
@@ -177,6 +183,8 @@ export class ProfileImagesService {
         imageId: result.rows[0].id,
         source: data.source || 'manual_upload',
         mediaType: data.mediaType || 'image',
+        username: data.username,
+        storageProvider: data.storageProvider || 'ssd',
       });
       return this.mapRowToImage(result.rows[0]);
     } catch (error) {
@@ -310,6 +318,7 @@ export class ProfileImagesService {
 
   /**
    * Save an uploaded file and create database record
+   * Uses new storage service with username-based paths
    */
   static async saveUploadedFile(
     file: { buffer: Buffer; originalname: string; mimetype: string; size: number },
@@ -318,16 +327,56 @@ export class ProfileImagesService {
       source?: 'manual_upload' | 'screensnap' | 'external' | 'imported';
       description?: string;
       capturedAt?: Date;
+      username?: string; // Required for new storage paths
     }
   ): Promise<ProfileImage> {
     try {
-      // Ensure directory exists
-      await this.ensurePersonDir(personId);
-
       // Generate unique filename
       const ext = path.extname(file.originalname) || this.getExtensionFromMimeType(file.mimetype);
       const hash = crypto.randomUUID();
       const filename = `${hash}${ext}`;
+
+      // If username provided, use new storage service with username-based paths
+      if (options?.username) {
+        const result = await storageService.writeWithUsername(
+          options.username,
+          options?.source || 'manual_upload',
+          filename,
+          file.buffer,
+          file.mimetype
+        );
+
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to save file to storage');
+        }
+
+        // Create database record with username and storage provider
+        const image = await this.create({
+          personId,
+          filePath: result.relativePath,
+          originalFilename: file.originalname,
+          source: options?.source || 'manual_upload',
+          description: options?.description,
+          capturedAt: options?.capturedAt,
+          fileSize: result.size,
+          mimeType: file.mimetype,
+          username: options.username,
+          storageProvider: 'ssd',
+        });
+
+        logger.info('Uploaded file saved (new storage)', {
+          personId,
+          username: options.username,
+          imageId: image.id,
+          path: result.relativePath,
+          size: result.size,
+        });
+
+        return image;
+      }
+
+      // Fallback: Legacy path for files without username (existing code path)
+      await this.ensurePersonDir(personId);
       const relativePath = path.join(personId, filename);
       const fullPath = path.join(this.STORAGE_DIR, relativePath);
 
@@ -346,7 +395,7 @@ export class ProfileImagesService {
         mimeType: file.mimetype,
       });
 
-      logger.info('Uploaded file saved', {
+      logger.info('Uploaded file saved (legacy path)', {
         personId,
         imageId: image.id,
         filename,

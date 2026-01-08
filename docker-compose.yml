@@ -1,5 +1,11 @@
 services:
   # PostgreSQL Database
+  # NOTE: Database data is stored on external SSD for persistence
+  # To migrate from Docker volume to SSD bind mount:
+  # 1. docker compose down
+  # 2. mkdir -p /Volumes/Imago/MHC-Control_Panel/db
+  # 3. docker run --rm -v mhc-control-panel_postgres_data:/source -v /Volumes/Imago/MHC-Control_Panel/db:/target alpine cp -a /source/. /target/
+  # 4. docker compose up -d
   db:
     image: postgres:15-alpine
     container_name: mhc-db
@@ -11,7 +17,8 @@ services:
     ports:
       - '5433:5432'
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # SSD bind mount for database persistence (migrated from postgres_data volume)
+      - /Volumes/Imago/MHC-Control_Panel/db:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U mhc_user -d mhc_control_panel']
       interval: 10s
@@ -105,9 +112,14 @@ services:
       - web
 
 volumes:
-  postgres_data:
-    driver: local
+  # NOTE: postgres_data volume is deprecated - DB now on SSD bind mount
+  # Keeping volume definition for reference during migration
+  # Can be removed after confirming SSD bind mount works
+  # postgres_data:
+  #   driver: local
   browser_data:
     driver: local
   image_data:
+    # NOTE: image_data is being deprecated - images now stored on SSD
+    # at /Volumes/Imago/MHC-Control_Panel/media
     driver: local

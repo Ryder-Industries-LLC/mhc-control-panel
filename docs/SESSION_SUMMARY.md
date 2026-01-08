@@ -1,122 +1,124 @@
-# Session Summary - v1.26.0
+# Session Summary - v1.29.0
 
-**Date**: 2026-01-06
+**Date**: 2026-01-08
 
 ## What Was Accomplished
 
-### 1. Follow History Tracking System
+### Storage Architecture Redesign
 
-Implemented comprehensive follow/unfollow tracking from all data sources.
+Complete overhaul of the image storage system to support username-based organization with symlinks for easy browsing.
+
+#### New Path Structure
+
+```
+/Volumes/Imago/MHC-Control_Panel/
+├── db/                              # PostgreSQL data (moved from Docker volume)
+└── media/                           # All images
+    ├── people/
+    │   └── {username}/
+    │       ├── auto/                # affiliate_api thumbnails
+    │       ├── uploads/             # manual_upload, external, imported
+    │       ├── snaps/               # screensnap (live screenshots)
+    │       ├── profile/             # profile scrape images
+    │       └── all/                 # symlinks to all files above
+    └── all/                         # global symlinks: {username}_{filename}
+```
 
 #### Database Changes
 
-**New Table: `follow_history`**
-- Tracks all follow/unfollow events with source attribution
-- Columns: `id`, `person_id`, `direction`, `action`, `source`, `event_id`, `created_at`
-- Direction: `following` (who I follow) or `follower` (who follows me)
-- Action: `follow` or `unfollow`
-- Source: `events_api`, `profile_scrape`, `list_scrape`, `manual_import`
+**New Migration: `067_storage_username_paths.sql`**
+- Added `username` column to `profile_images` for path generation
+- Added `legacy_file_path` column to track original paths during migration
+- Created index on username for efficient lookups
 
-**Migration Files:**
-- `058_follow_history.sql` - Creates follow_history table
-- `059_backfill_follow_history.sql` - Backfills from existing event_logs
+**PostgreSQL Moved to SSD**
+- Database bind mount changed from Docker volume to SSD
+- Path: `/Volumes/Imago/MHC-Control_Panel/db`
 
-#### Service Layer
+#### Storage Service Updates
 
-**New Service: `FollowHistoryService`**
-- `record()` - Record a follow/unfollow event
-- `getByPerson()` - Get history for a specific person
-- `getAll()` - Get paginated history with filters
-- `getLatestAction()` - Get most recent action for a person
-- `getStats()` - Get summary statistics
+**storage.service.ts**
+- Removed Docker fallback - SSD-only writes
+- Added operation queue for when SSD unavailable
+- New `writeWithUsername()` method with automatic symlink creation
+- Queue processor runs every 5 minutes
 
-#### Integration Points
+**ssd-provider.ts**
+- New username-based path methods: `generateUsernamePath()`, `writeWithUsername()`
+- Symlink creation: `createUserAllSymlink()`, `createGlobalAllSymlink()`
+- Source-to-folder mapping (affiliate_api→auto, screensnap→snaps, etc.)
 
-**Events Client (`events-client.ts`):**
-- `handleFollow()` now updates `profiles.follower = true` and records history
-- `handleUnfollow()` now updates `profiles.follower = false` and records history
+#### Image Writer Updates
 
-**Profile Scraper (`chaturbate-scraper.service.ts`):**
-- Detects follow/unfollow buttons during profile scrape
-- Returns `detectedFollowStatus: 'following' | 'not_following' | 'unknown'`
+All services updated to use new storage:
+- `broadcast-session.service.ts` - Affiliate API thumbnails
+- `live-screenshot.job.ts` - Live stream screenshots
+- `chaturbate-scraper.service.ts` - Profile scrape images
+- `profile-images.service.ts` - Manual uploads
 
-**Profile Service (`profile.service.ts`):**
-- `processDetectedFollowStatus()` compares detected status with stored status
-- Updates profiles.following if different and records in history
+#### Migration Job
 
-**Follower Scraper (`follower-scraper.service.ts`):**
-- Records history when detecting new follows from list scrapes
-- Records history when detecting unfollows from list comparison
+**New Job: `storage-migration.job.ts`**
+- Migrates files from UUID paths to username paths
+- Copies files (doesn't move) with SHA256 verification
+- Creates symlinks in both `/all/` folders
+- API endpoints for control and monitoring
 
-#### API Endpoints
+**Results:**
+- 50,828 images migrated successfully
+- 2,191 user folders created
+- 50,889 global symlinks created
+- 0 failures
 
-**New Routes in `followers.ts`:**
-- `GET /api/followers/history` - Paginated history with filters
-- `GET /api/followers/history/:personId` - History for specific person
-- `GET /api/followers/history-stats` - Summary statistics
+#### Frontend Changes
 
-### 2. Follow History Page
+**Profile.tsx**
+- Simplified `getProfileImageUrl()` to always use `/images/`
+- Removed complex storage_provider logic
 
-New page at `/follow-history` with full-featured UI.
-
-#### Features
-- Two collapsible sections: "Following" and "Followers"
-- Sortable columns (Username, Action, Source, Timestamp)
-- Filters: Username search, action dropdown, source dropdown, date range
-- Date format: "MMM dd YYYY HH:MM" in local time
-- Click username to navigate to profile
-- Clear Filters button when filters are active
-
-#### File Created
-- `client/src/pages/FollowHistory.tsx`
-
-### 3. Other Features in This Release
-
-- **Live Screenshot Capture**: Configurable screenshot capture during broadcasts
-- **Profile Star Rating**: 5-star rating system with StarRating component
-- **Deleted Photosets Tracking**: Track removed photosets
-- **Twitter Link Cleanup**: Remove Chaturbate's own Twitter links
+**app.ts**
+- Unified `/images/` route with SSD-first, Docker fallback
+- Removed `/ssd-images/` route
 
 ## Files Modified/Created
 
 ### Server
-- `server/src/db/migrations/054_cleanup_chaturbate_twitter_links.sql` (NEW)
-- `server/src/db/migrations/055_add_profile_rating.sql` (NEW)
-- `server/src/db/migrations/056_add_deleted_photosets_tracking.sql` (NEW)
-- `server/src/db/migrations/057_add_live_screenshot_settings.sql` (NEW)
-- `server/src/db/migrations/058_follow_history.sql` (NEW)
-- `server/src/db/migrations/059_backfill_follow_history.sql` (NEW)
-- `server/src/services/follow-history.service.ts` (NEW)
-- `server/src/jobs/live-screenshot.job.ts` (NEW)
-- `server/src/api/chaturbate/events-client.ts` (MODIFIED)
-- `server/src/services/chaturbate-scraper.service.ts` (MODIFIED)
-- `server/src/services/profile.service.ts` (MODIFIED)
-- `server/src/services/follower-scraper.service.ts` (MODIFIED)
-- `server/src/routes/followers.ts` (MODIFIED)
+- `server/src/db/migrations/067_storage_username_paths.sql` (NEW)
+- `server/src/jobs/storage-migration.job.ts` (NEW)
+- `server/src/routes/storage.ts` (MODIFIED - migration endpoints)
+- `server/src/services/storage/storage.service.ts` (MODIFIED - queue, writeWithUsername)
+- `server/src/services/storage/ssd-provider.ts` (MODIFIED - username paths, symlinks)
+- `server/src/services/broadcast-session.service.ts` (MODIFIED - new storage)
+- `server/src/jobs/live-screenshot.job.ts` (MODIFIED - new storage)
+- `server/src/services/chaturbate-scraper.service.ts` (MODIFIED - new storage)
+- `server/src/services/profile-images.service.ts` (MODIFIED - username support)
+- `server/src/app.ts` (MODIFIED - unified /images route)
 
 ### Client
-- `client/src/pages/FollowHistory.tsx` (NEW)
-- `client/src/components/StarRating.tsx` (NEW)
-- `client/src/App.tsx` (MODIFIED - added route and nav link)
-- Various component updates for rating and UI improvements
+- `client/src/pages/Profile.tsx` (MODIFIED - simplified URL logic)
+
+### Configuration
+- `docker-compose.yml` (MODIFIED - SSD bind mount for database)
 
 ## Current State
 
 - All code changes compile successfully
-- Server and client builds pass
 - Docker containers rebuilt and running
-- All changes committed and tagged as v1.26.0
+- Database running on SSD
+- 50,828 images migrated to new path structure
+- All new images saving to username-based paths
 
 ## Key Decisions Made
 
-1. **Dedicated follow_history table** - Separate from interactions for cleaner querying and history tracking
-2. **Source attribution** - Track where each follow/unfollow event originated
-3. **Backfill from event_logs** - Populate history with historical data
-4. **Client-side filtering** - Filters applied in React for responsiveness
+1. **SSD-only storage** - Removed Docker fallback to simplify architecture
+2. **Queue for unavailability** - Operations queued when SSD disconnected rather than failing
+3. **Copy then verify** - Files copied with SHA256 verification before DB update
+4. **Real filesystem symlinks** - `/all/` folders use actual symlinks for Finder browsing
+5. **Username lowercase** - All usernames normalized to lowercase in paths
 
 ## Next Steps
 
-1. Monitor follow history accuracy during live broadcasts
-2. Verify profile scrape button detection works correctly
-3. Test list scrape history recording
-4. Consider adding export functionality for follow history
+1. Consider adding S3 provider for production deployment
+2. Monitor operation queue for any recurring SSD availability issues
+3. Run cleanup job to remove legacy UUID-based files after confirming migration success
+4. Remove `image-storage.service.ts` legacy code (only used for placeholder cleanup)
