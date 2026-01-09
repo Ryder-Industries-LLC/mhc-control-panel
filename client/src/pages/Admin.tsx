@@ -306,6 +306,8 @@ const Admin: React.FC = () => {
       s3Bucket: string;
       s3Region: string;
       s3Prefix: string;
+      s3AccessKeyId: string;
+      s3SecretAccessKey: string;
       cacheEnabled: boolean;
       cacheMaxSizeMb: number;
     };
@@ -3281,8 +3283,13 @@ const Admin: React.FC = () => {
                           )}
                         </div>
                         <div className="text-sm text-mhc-text-muted space-y-1">
-                          <div>{storageStatus.ssd.fileCount.toLocaleString()} files</div>
-                          <div className="text-xs space-y-0.5">
+                          <div className="flex justify-between items-center">
+                            <span>{storageStatus.ssd.fileCount.toLocaleString()} files</span>
+                            {storageStatus.ssd.diskSpace && (
+                              <span className="text-xs">{formatBytes(storageStatus.ssd.diskSpace.used)}</span>
+                            )}
+                          </div>
+                          <div className="text-xs space-y-0.5 mt-3">
                             <div className="truncate" title={storageStatus.ssd.hostPath}>
                               <span className="text-mhc-text-muted/60">Host:</span> {storageStatus.ssd.hostPath}
                             </div>
@@ -3292,12 +3299,12 @@ const Admin: React.FC = () => {
                           </div>
                           {/* Disk Space */}
                           {storageStatus.ssd.diskSpace && (
-                            <div className="mt-2 pt-2 border-t border-white/10">
-                              <div className="flex justify-between text-xs">
-                                <span>Disk Space:</span>
+                            <div className="mt-3 pt-3 border-t border-white/10">
+                              <div className="flex justify-between text-xs mb-1">
+                                <span>Capacity:</span>
                                 <span>{formatBytes(storageStatus.ssd.diskSpace.used)} / {formatBytes(storageStatus.ssd.diskSpace.total)}</span>
                               </div>
-                              <div className="w-full bg-white/10 rounded-full h-1.5 mt-1">
+                              <div className="w-full bg-white/10 rounded-full h-1.5">
                                 <div
                                   className={`h-1.5 rounded-full ${
                                     storageStatus.ssd.diskSpace.usedPercent > 90
@@ -3306,11 +3313,11 @@ const Admin: React.FC = () => {
                                         ? 'bg-amber-500'
                                         : 'bg-emerald-500'
                                   }`}
-                                  style={{ width: `${storageStatus.ssd.diskSpace.usedPercent}%` }}
+                                  style={{ width: `${Math.max(storageStatus.ssd.diskSpace.usedPercent > 0 ? 2 : 0, storageStatus.ssd.diskSpace.usedPercent)}%` }}
                                 ></div>
                               </div>
                               <div className="text-xs mt-1 text-right">
-                                {formatBytes(storageStatus.ssd.diskSpace.free)} free ({100 - storageStatus.ssd.diskSpace.usedPercent}%)
+                                {formatBytes(storageStatus.ssd.diskSpace.free)} free ({(100 - storageStatus.ssd.diskSpace.usedPercent).toFixed(1)}%)
                               </div>
                             </div>
                           )}
@@ -3493,57 +3500,90 @@ const Admin: React.FC = () => {
                           Enable S3 Storage
                         </label>
                         {storageConfig.external.enabled && (
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <label className="block text-mhc-text-muted text-xs mb-1">Bucket Name</label>
-                              <input
-                                type="text"
-                                value={storageConfig.external.s3Bucket}
-                                onChange={(e) => setStorageConfig({
-                                  ...storageConfig,
-                                  external: {...storageConfig.external, s3Bucket: e.target.value}
-                                })}
-                                placeholder="my-bucket"
-                                className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
-                              />
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-mhc-text-muted text-xs mb-1">Bucket Name</label>
+                                <input
+                                  type="text"
+                                  value={storageConfig.external.s3Bucket}
+                                  onChange={(e) => setStorageConfig({
+                                    ...storageConfig,
+                                    external: {...storageConfig.external, s3Bucket: e.target.value}
+                                  })}
+                                  placeholder="mhc-media-prod"
+                                  className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-mhc-text-muted text-xs mb-1">Region</label>
+                                <input
+                                  type="text"
+                                  value={storageConfig.external.s3Region}
+                                  onChange={(e) => setStorageConfig({
+                                    ...storageConfig,
+                                    external: {...storageConfig.external, s3Region: e.target.value}
+                                  })}
+                                  placeholder="us-east-2"
+                                  className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
+                                />
+                              </div>
                             </div>
-                            <div>
-                              <label className="block text-mhc-text-muted text-xs mb-1">Region</label>
-                              <input
-                                type="text"
-                                value={storageConfig.external.s3Region}
-                                onChange={(e) => setStorageConfig({
-                                  ...storageConfig,
-                                  external: {...storageConfig.external, s3Region: e.target.value}
-                                })}
-                                placeholder="us-east-1"
-                                className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
-                              />
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-mhc-text-muted text-xs mb-1">Access Key ID</label>
+                                <input
+                                  type="text"
+                                  value={storageConfig.external.s3AccessKeyId}
+                                  onChange={(e) => setStorageConfig({
+                                    ...storageConfig,
+                                    external: {...storageConfig.external, s3AccessKeyId: e.target.value}
+                                  })}
+                                  placeholder="AKIA..."
+                                  className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm font-mono"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-mhc-text-muted text-xs mb-1">Secret Access Key</label>
+                                <input
+                                  type="password"
+                                  value={storageConfig.external.s3SecretAccessKey}
+                                  onChange={(e) => setStorageConfig({
+                                    ...storageConfig,
+                                    external: {...storageConfig.external, s3SecretAccessKey: e.target.value}
+                                  })}
+                                  placeholder="••••••••••••••••"
+                                  className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm font-mono"
+                                />
+                              </div>
                             </div>
-                            <div>
-                              <label className="block text-mhc-text-muted text-xs mb-1">Key Prefix</label>
-                              <input
-                                type="text"
-                                value={storageConfig.external.s3Prefix}
-                                onChange={(e) => setStorageConfig({
-                                  ...storageConfig,
-                                  external: {...storageConfig.external, s3Prefix: e.target.value}
-                                })}
-                                placeholder="profiles/"
-                                className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-mhc-text-muted text-xs mb-1">Cache Max Size (MB)</label>
-                              <input
-                                type="number"
-                                value={storageConfig.external.cacheMaxSizeMb}
-                                onChange={(e) => setStorageConfig({
-                                  ...storageConfig,
-                                  external: {...storageConfig.external, cacheMaxSizeMb: parseInt(e.target.value) || 5000}
-                                })}
-                                className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
-                              />
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-mhc-text-muted text-xs mb-1">Key Prefix</label>
+                                <input
+                                  type="text"
+                                  value={storageConfig.external.s3Prefix}
+                                  onChange={(e) => setStorageConfig({
+                                    ...storageConfig,
+                                    external: {...storageConfig.external, s3Prefix: e.target.value}
+                                  })}
+                                  placeholder="mhc/media/"
+                                  className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
+                                />
+                                <p className="text-xs text-mhc-text-muted mt-1">Path prefix in the S3 bucket (e.g., mhc/media/)</p>
+                              </div>
+                              <div>
+                                <label className="block text-mhc-text-muted text-xs mb-1">Cache Max Size (MB)</label>
+                                <input
+                                  type="number"
+                                  value={storageConfig.external.cacheMaxSizeMb}
+                                  onChange={(e) => setStorageConfig({
+                                    ...storageConfig,
+                                    external: {...storageConfig.external, cacheMaxSizeMb: parseInt(e.target.value) || 5000}
+                                  })}
+                                  className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
+                                />
+                              </div>
                             </div>
                           </div>
                         )}

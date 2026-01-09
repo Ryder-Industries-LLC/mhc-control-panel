@@ -108,7 +108,9 @@ class StorageService {
           enabled: settings['storage.external.enabled'] ?? false,
           s3Bucket: settings['storage.external.s3_bucket'] || '',
           s3Region: settings['storage.external.s3_region'] || 'us-east-1',
-          s3Prefix: settings['storage.external.s3_prefix'] || 'profiles/',
+          s3Prefix: settings['storage.external.s3_prefix'] || 'mhc/media/',
+          s3AccessKeyId: settings['storage.external.s3_access_key_id'] || '',
+          s3SecretAccessKey: settings['storage.external.s3_secret_access_key'] || '',
           cacheEnabled: settings['storage.external.cache_enabled'] ?? true,
           cacheMaxSizeMb: settings['storage.external.cache_max_size_mb'] || 5000,
         },
@@ -136,6 +138,8 @@ class StorageService {
         bucket: this.config.external.s3Bucket,
         region: this.config.external.s3Region,
         prefix: this.config.external.s3Prefix,
+        accessKeyId: this.config.external.s3AccessKeyId || undefined,
+        secretAccessKey: this.config.external.s3SecretAccessKey || undefined,
       });
     }
 
@@ -190,6 +194,12 @@ class StorageService {
       }
       if (newConfig.external.s3Prefix !== undefined) {
         updates.push({ key: 'storage.external.s3_prefix', value: JSON.stringify(newConfig.external.s3Prefix) });
+      }
+      if (newConfig.external.s3AccessKeyId !== undefined) {
+        updates.push({ key: 'storage.external.s3_access_key_id', value: JSON.stringify(newConfig.external.s3AccessKeyId) });
+      }
+      if (newConfig.external.s3SecretAccessKey !== undefined) {
+        updates.push({ key: 'storage.external.s3_secret_access_key', value: JSON.stringify(newConfig.external.s3SecretAccessKey) });
       }
       if (newConfig.external.cacheEnabled !== undefined) {
         updates.push({ key: 'storage.external.cache_enabled', value: JSON.stringify(newConfig.external.cacheEnabled) });
@@ -313,21 +323,32 @@ class StorageService {
 
     // Get SSD disk space and health info
     const ssdAvailable = this.ssdProvider ? await this.ssdProvider.isAvailable() : false;
-    let diskSpace = this.ssdProvider ? await this.ssdProvider.getDiskSpace() : null;
+    let diskSpace: DiskSpaceInfo | null = null;
 
-    // Use configured SSD total bytes since Docker can't accurately detect external drive size
-    // fs.statfs inside Docker returns the Docker virtual disk size, not the actual SSD
-    if (diskSpace && this.config.local.ssdTotalBytes > 0) {
+    // Calculate used space from database (file_size column in profile_images)
+    // fs.statfs inside Docker returns incorrect values for mounted external volumes
+    if (this.config.local.ssdTotalBytes > 0) {
       const configuredTotal = this.config.local.ssdTotalBytes;
-      const used = diskSpace.used;
-      const free = configuredTotal - used;
+
+      // Query actual used bytes from database for SSD-stored files
+      const usedResult = await pool.query(`
+        SELECT COALESCE(SUM(file_size), 0) as used_bytes
+        FROM profile_images
+        WHERE storage_provider = 'ssd' AND file_size IS NOT NULL
+      `);
+      const used = parseInt(usedResult.rows[0]?.used_bytes) || 0;
+      const free = Math.max(0, configuredTotal - used);
       const usedPercent = configuredTotal > 0 ? Math.round((used / configuredTotal) * 100) : 0;
+
       diskSpace = {
         total: configuredTotal,
         used,
-        free: Math.max(0, free),
+        free,
         usedPercent,
       };
+    } else {
+      // Fallback to fs.statfs if no configured total (not recommended in Docker)
+      diskSpace = this.ssdProvider ? await this.ssdProvider.getDiskSpace() : null;
     }
 
     // Convert last write path to host path for display

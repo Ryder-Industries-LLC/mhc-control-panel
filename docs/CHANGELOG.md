@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.31.0] - 2026-01-09
+
+### Added
+
+- **Amazon S3 Storage Integration**: Full S3 support for media storage with UI configuration
+  - Access Key ID and Secret Access Key fields in Admin → Settings → External Storage (S3)
+  - Credentials stored securely in database and passed to S3 provider
+  - Updated placeholders: bucket `mhc-media-prod`, region `us-east-2`
+  - New default prefix `mhc/media/` for all media files (mirrors SSD structure)
+  - New migration: `069_s3_credentials_settings.sql`
+
+### Fixed
+
+- **SSD Disk Space Calculation**: Fixed incorrect disk space display showing 63 TB used
+  - Now calculates used space from database (`SUM(file_size)` from profile_images)
+  - `fs.statfs` inside Docker returns garbage values for mounted external volumes
+  - Progress bar now shows minimum 2% width when usage is >0% for visibility
+  - Percentage display now shows one decimal place for precision
+
+### Changed
+
+- **Storage Status UI Improvements**:
+  - File count and total size now on same row (size right-aligned)
+  - Added visual separation (spacing) before Host/Container paths
+  - Changed "Disk Space" label to "Capacity"
+  - Progress bar minimum width ensures small usage is visible
+
+### Technical
+
+- Updated: `storage.service.ts` - S3 credentials support, database-based disk usage calculation
+- Updated: `s3-provider.ts` - Receives credentials from config instead of env vars only
+- Updated: `types.ts` - Added `s3AccessKeyId` and `s3SecretAccessKey` to StorageConfig
+- Updated: `Admin.tsx` - S3 credentials fields, improved SSD status display
+- New: `069_s3_credentials_settings.sql` - S3 credentials and SSD settings
+
+---
+
 ## [1.30.0] - 2026-01-09
 
 ### Added

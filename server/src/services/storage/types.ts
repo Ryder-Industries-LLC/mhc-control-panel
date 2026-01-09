@@ -27,6 +27,8 @@ export interface StorageConfig {
     s3Bucket: string;
     s3Region: string;
     s3Prefix: string;
+    s3AccessKeyId: string;
+    s3SecretAccessKey: string;
     cacheEnabled: boolean;
     cacheMaxSizeMb: number;
   };
@@ -202,7 +204,9 @@ export const DEFAULT_STORAGE_CONFIG: StorageConfig = {
     enabled: false,
     s3Bucket: '',
     s3Region: 'us-east-1',
-    s3Prefix: 'profiles/',
+    s3Prefix: 'mhc/media/',
+    s3AccessKeyId: '',
+    s3SecretAccessKey: '',
     cacheEnabled: true,
     cacheMaxSizeMb: 5000,
   },
