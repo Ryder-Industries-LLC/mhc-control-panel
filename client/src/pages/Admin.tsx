@@ -3289,7 +3289,7 @@ const Admin: React.FC = () => {
                               <span className="text-xs">{formatBytes(storageStatus.ssd.diskSpace.used)}</span>
                             )}
                           </div>
-                          <div className="text-xs space-y-0.5 mt-3">
+                          <div className="text-xs space-y-0.5 mt-4 pt-3 border-t border-white/5">
                             <div className="truncate" title={storageStatus.ssd.hostPath}>
                               <span className="text-mhc-text-muted/60">Host:</span> {storageStatus.ssd.hostPath}
                             </div>
@@ -3298,7 +3298,12 @@ const Admin: React.FC = () => {
                             </div>
                           </div>
                           {/* Disk Space */}
-                          {storageStatus.ssd.diskSpace && (
+                          {storageStatus.ssd.diskSpace && (() => {
+                            const usedPercent = storageStatus.ssd.diskSpace.total > 0
+                              ? (storageStatus.ssd.diskSpace.used / storageStatus.ssd.diskSpace.total) * 100
+                              : 0;
+                            const freePercent = 100 - usedPercent;
+                            return (
                             <div className="mt-3 pt-3 border-t border-white/10">
                               <div className="flex justify-between text-xs mb-1">
                                 <span>Capacity:</span>
@@ -3307,20 +3312,21 @@ const Admin: React.FC = () => {
                               <div className="w-full bg-white/10 rounded-full h-1.5">
                                 <div
                                   className={`h-1.5 rounded-full ${
-                                    storageStatus.ssd.diskSpace.usedPercent > 90
+                                    usedPercent > 90
                                       ? 'bg-red-500'
-                                      : storageStatus.ssd.diskSpace.usedPercent > 75
+                                      : usedPercent > 75
                                         ? 'bg-amber-500'
                                         : 'bg-emerald-500'
                                   }`}
-                                  style={{ width: `${Math.max(storageStatus.ssd.diskSpace.usedPercent > 0 ? 2 : 0, storageStatus.ssd.diskSpace.usedPercent)}%` }}
+                                  style={{ width: `${Math.max(usedPercent > 0 ? 2 : 0, usedPercent)}%` }}
                                 ></div>
                               </div>
                               <div className="text-xs mt-1 text-right">
-                                {formatBytes(storageStatus.ssd.diskSpace.free)} free ({(100 - storageStatus.ssd.diskSpace.usedPercent).toFixed(1)}%)
+                                {formatBytes(storageStatus.ssd.diskSpace.free)} free ({freePercent.toFixed(1)}%)
                               </div>
                             </div>
-                          )}
+                            );
+                          })()}
                           {/* Error State */}
                           {!storageStatus.ssd.available && storageStatus.ssd.lastError && (
                             <div className="mt-2 p-2 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-300">
