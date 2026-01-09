@@ -21,6 +21,13 @@ import { BaseStorageProvider } from './base-provider.js';
 import { StorageProviderType, StorageWriteResult, StorageReadResult, StorageFileStats, SymlinkCapableProvider } from './types.js';
 import { logger } from '../../config/logger.js';
 
+export interface DiskSpaceInfo {
+  total: number;       // bytes
+  used: number;        // bytes
+  free: number;        // bytes
+  usedPercent: number; // 0-100
+}
+
 // Source types mapped to folder names
 export type MediaSource = 'affiliate_api' | 'manual_upload' | 'screensnap' | 'profile' | 'external' | 'imported';
 
@@ -42,6 +49,11 @@ export class SSDProvider extends BaseStorageProvider implements SymlinkCapablePr
   private lastAvailableCheck: number = 0;
   private lastAvailableResult: boolean = false;
   private static readonly AVAILABILITY_CACHE_MS = 5000; // Cache availability for 5 seconds
+
+  // Health tracking
+  private _lastHealthCheckTime: Date | null = null;
+  private _lastError: string | null = null;
+  private _unavailableSince: Date | null = null;
 
   constructor(basePath: string = '/mnt/ssd/mhc-images') {
     super();
@@ -65,6 +77,8 @@ export class SSDProvider extends BaseStorageProvider implements SymlinkCapablePr
       return this.lastAvailableResult;
     }
 
+    this._lastHealthCheckTime = new Date();
+
     try {
       // Check basic access
       await fs.access(this.basePath, fs.constants.R_OK | fs.constants.W_OK);
@@ -72,6 +86,10 @@ export class SSDProvider extends BaseStorageProvider implements SymlinkCapablePr
       // Verify it's actually a directory (not a stale mount point)
       const stats = await fs.stat(this.basePath);
       if (!stats.isDirectory()) {
+        this._lastError = 'Mount point is not a directory';
+        if (!this._unavailableSince) {
+          this._unavailableSince = new Date();
+        }
         this.lastAvailableResult = false;
         this.lastAvailableCheck = now;
         return false;
@@ -82,16 +100,23 @@ export class SSDProvider extends BaseStorageProvider implements SymlinkCapablePr
       await fs.writeFile(testFile, 'test');
       await fs.unlink(testFile);
 
+      // Clear error state on success
+      this._lastError = null;
+      this._unavailableSince = null;
       this.lastAvailableResult = true;
       this.lastAvailableCheck = now;
 
       return true;
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this._lastError = errorMessage;
+
       // Log only when availability changes
       if (this.lastAvailableResult === true) {
+        this._unavailableSince = new Date();
         logger.warn('[SSDProvider] SSD became unavailable', {
           path: this.basePath,
-          error: error instanceof Error ? error.message : 'Unknown error'
+          error: errorMessage
         });
       }
 
@@ -559,5 +584,54 @@ export class SSDProvider extends BaseStorageProvider implements SymlinkCapablePr
     }
 
     return files;
+  }
+
+  // ==========================================
+  // Health and status tracking methods
+  // ==========================================
+
+  /**
+   * Get disk space information for the SSD mount
+   * Returns null if unable to get disk space (e.g., mount unavailable)
+   */
+  async getDiskSpace(): Promise<DiskSpaceInfo | null> {
+    try {
+      const stats = await fs.statfs(this.basePath);
+      const total = stats.blocks * stats.bsize;
+      const free = stats.bfree * stats.bsize;
+      const used = total - free;
+      const usedPercent = total > 0 ? Math.round((used / total) * 100) : 0;
+
+      return {
+        total,
+        used,
+        free,
+        usedPercent,
+      };
+    } catch (error) {
+      logger.debug('[SSDProvider] Failed to get disk space:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get the last health check timestamp
+   */
+  get lastHealthCheckTime(): Date | null {
+    return this._lastHealthCheckTime;
+  }
+
+  /**
+   * Get the last error message (null if no error)
+   */
+  get lastError(): string | null {
+    return this._lastError;
+  }
+
+  /**
+   * Get the timestamp when SSD became unavailable (null if available)
+   */
+  get unavailableSince(): Date | null {
+    return this._unavailableSince;
   }
 }

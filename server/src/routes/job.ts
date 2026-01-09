@@ -5,6 +5,7 @@ import { profileScrapeJob } from '../jobs/profile-scrape.job.js';
 import { cbhoursPollingJob } from '../jobs/cbhours-polling.job.js';
 import { liveScreenshotJob } from '../jobs/live-screenshot.job.js';
 import { mediaTransferJob } from '../jobs/media-transfer.job.js';
+import { statsCollectionJob } from '../jobs/stats-collection.job.js';
 import { ImageStorageService } from '../services/image-storage.service.js';
 import { pool } from '../db/client.js';
 import { logger } from '../config/logger.js';
@@ -695,6 +696,104 @@ router.post('/media-transfer/run-now', async (_req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Run media-transfer job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================================
+// Stats Collection Job Routes
+// ============================================================================
+
+/**
+ * GET /api/job/stats-collection/status
+ * Get stats collection job status
+ */
+router.get('/stats-collection/status', async (_req: Request, res: Response) => {
+  try {
+    await statsCollectionJob.syncStateFromDB();
+    const status = statsCollectionJob.getStatus();
+    res.json(status);
+  } catch (error) {
+    logger.error('Get stats-collection job status error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/stats-collection/config
+ * Update stats collection job configuration
+ */
+router.post('/stats-collection/config', async (req: Request, res: Response) => {
+  try {
+    const { intervalMinutes, enabled } = req.body;
+    await statsCollectionJob.updateConfig({
+      ...(intervalMinutes !== undefined && { intervalMinutes }),
+      ...(enabled !== undefined && { enabled }),
+    });
+    res.json({ success: true, status: statsCollectionJob.getStatus() });
+  } catch (error) {
+    logger.error('Update stats-collection job config error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/stats-collection/start
+ * Start the stats collection job
+ */
+router.post('/stats-collection/start', async (_req: Request, res: Response) => {
+  try {
+    await statsCollectionJob.start();
+    res.json({ success: true, status: statsCollectionJob.getStatus() });
+  } catch (error) {
+    logger.error('Start stats-collection job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/stats-collection/stop
+ * Stop the stats collection job
+ */
+router.post('/stats-collection/stop', async (_req: Request, res: Response) => {
+  try {
+    await statsCollectionJob.stop();
+    res.json({ success: true, status: statsCollectionJob.getStatus() });
+  } catch (error) {
+    logger.error('Stop stats-collection job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/stats-collection/run-now
+ * Manually trigger a stats collection
+ */
+router.post('/stats-collection/run-now', async (_req: Request, res: Response) => {
+  try {
+    const result = await statsCollectionJob.runNow();
+    res.json({
+      success: result.success,
+      message: result.message,
+      durationMs: result.durationMs,
+      status: statsCollectionJob.getStatus(),
+    });
+  } catch (error) {
+    logger.error('Run stats-collection job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/stats-collection/reset-stats
+ * Reset stats collection job statistics
+ */
+router.post('/stats-collection/reset-stats', async (_req: Request, res: Response) => {
+  try {
+    await statsCollectionJob.resetStats();
+    res.json({ success: true, status: statsCollectionJob.getStatus() });
+  } catch (error) {
+    logger.error('Reset stats-collection job stats error', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -6,7 +6,7 @@
 
 **Owner:** Hudson Cage
 
-**Current Status:** Production v1.25.0 (January 2026)
+**Current Status:** Production v1.30.0 (January 2026)
 
 ---
 

@@ -6,6 +6,7 @@ import { profileScrapeJob } from '../jobs/profile-scrape.job.js';
 import { cbhoursPollingJob } from '../jobs/cbhours-polling.job.js';
 import { statbateRefreshJob } from '../jobs/statbate-refresh.job.js';
 import { FollowerHistoryService } from '../services/follower-history.service.js';
+import { StatsCollectionService } from '../services/stats-collection.service.js';
 import { logger } from '../config/logger.js';
 
 const router = Router();
@@ -373,6 +374,113 @@ router.get('/follower-trends/recent-changes', async (req: Request, res: Response
   } catch (error) {
     logger.error('Error fetching recent changes', { error });
     res.status(500).json({ error: 'Failed to fetch recent changes' });
+  }
+});
+
+// ============================================================================
+// Stats History Endpoints
+// ============================================================================
+
+/**
+ * GET /api/system/stats-history
+ * Get paginated stats history with optional date filtering
+ * Query params:
+ *   - start: ISO date string (optional)
+ *   - end: ISO date string (optional)
+ *   - limit: number (default 100)
+ *   - offset: number (default 0)
+ */
+router.get('/stats-history', async (req: Request, res: Response) => {
+  try {
+    const { start, end, limit = '100', offset = '0' } = req.query;
+
+    const result = await StatsCollectionService.getHistory({
+      start: start ? new Date(start as string) : undefined,
+      end: end ? new Date(end as string) : undefined,
+      limit: parseInt(limit as string, 10),
+      offset: parseInt(offset as string, 10),
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    logger.error('Error fetching stats history', { error });
+    res.status(500).json({ success: false, error: 'Failed to fetch stats history' });
+  }
+});
+
+/**
+ * GET /api/system/stats-history/latest
+ * Get the most recent stats snapshot
+ */
+router.get('/stats-history/latest', async (_req: Request, res: Response) => {
+  try {
+    const latest = await StatsCollectionService.getLatest();
+    res.json({ success: true, data: latest });
+  } catch (error) {
+    logger.error('Error fetching latest stats', { error });
+    res.status(500).json({ success: false, error: 'Failed to fetch latest stats' });
+  }
+});
+
+/**
+ * GET /api/system/stats-history/growth-projection
+ * Calculate growth projection for a specific stat
+ * Query params:
+ *   - statPath: string (e.g., 'media.total_image_size_bytes')
+ *   - periodDays: number (days of history to use, default 30)
+ *   - projectToDays: number (days into future to project, default 30)
+ */
+router.get('/stats-history/growth-projection', async (req: Request, res: Response) => {
+  try {
+    const { statPath, periodDays = '30', projectToDays = '30' } = req.query;
+
+    if (!statPath) {
+      res.status(400).json({ error: 'statPath query parameter is required' });
+      return;
+    }
+
+    const projection = await StatsCollectionService.calculateGrowthProjection({
+      statPath: statPath as string,
+      periodDays: parseInt(periodDays as string, 10),
+      projectToDays: parseInt(projectToDays as string, 10),
+    });
+
+    res.json({ success: true, data: projection });
+  } catch (error) {
+    logger.error('Error calculating growth projection', { error });
+    res.status(500).json({ success: false, error: 'Failed to calculate growth projection' });
+  }
+});
+
+/**
+ * GET /api/system/stats-history/time-series
+ * Get time-series data for a specific stat (for charting)
+ * Query params:
+ *   - statPath: string (e.g., 'media.total_image_size_bytes')
+ *   - start: ISO date string (optional)
+ *   - end: ISO date string (optional)
+ *   - aggregation: 'hourly' | 'daily' (default 'hourly')
+ */
+router.get('/stats-history/time-series', async (req: Request, res: Response) => {
+  try {
+    const { statPath, start, end, aggregation = 'hourly' } = req.query;
+
+    if (!statPath) {
+      res.status(400).json({ error: 'statPath query parameter is required' });
+      return;
+    }
+
+    const data = await StatsCollectionService.getTimeSeries({
+      statPath: statPath as string,
+      start: start ? new Date(start as string) : undefined,
+      end: end ? new Date(end as string) : undefined,
+      aggregation: aggregation as 'hourly' | 'daily',
+    });
+
+    res.json({ success: true, data });
+  } catch (error) {
+    logger.error('Error fetching time series', { error });
+    res.status(500).json({ success: false, error: 'Failed to fetch time series data' });
   }
 });
 

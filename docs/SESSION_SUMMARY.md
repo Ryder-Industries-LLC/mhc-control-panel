@@ -1,124 +1,122 @@
-# Session Summary - v1.29.0
+# Session Summary - v1.30.0
 
-**Date**: 2026-01-08
+**Date**: 2026-01-09
 
 ## What Was Accomplished
 
-### Storage Architecture Redesign
+### Stats Collection System
 
-Complete overhaul of the image storage system to support username-based organization with symlinks for easy browsing.
+Implemented a comprehensive system for tracking historical system statistics over time.
 
-#### New Path Structure
+#### New Database Table
 
-```
-/Volumes/Imago/MHC-Control_Panel/
-├── db/                              # PostgreSQL data (moved from Docker volume)
-└── media/                           # All images
-    ├── people/
-    │   └── {username}/
-    │       ├── auto/                # affiliate_api thumbnails
-    │       ├── uploads/             # manual_upload, external, imported
-    │       ├── snaps/               # screensnap (live screenshots)
-    │       ├── profile/             # profile scrape images
-    │       └── all/                 # symlinks to all files above
-    └── all/                         # global symlinks: {username}_{filename}
-```
+**Migration: `068_create_system_stats_history.sql`**
+- `system_stats_history` table stores periodic snapshots
+- JSONB `stats` column for flexible schema evolution
+- Indexes for efficient time-range queries and JSONB searches
 
-#### Database Changes
+#### Backend Components
 
-**New Migration: `067_storage_username_paths.sql`**
-- Added `username` column to `profile_images` for path generation
-- Added `legacy_file_path` column to track original paths during migration
-- Created index on username for efficient lookups
+**Stats Collection Job (`stats-collection.job.ts`)**
+- Configurable collection interval (default: 60 minutes)
+- Job persistence for container restarts
+- Manual "Run Now" trigger
+- Statistics tracking (runs, errors, duration)
 
-**PostgreSQL Moved to SSD**
-- Database bind mount changed from Docker volume to SSD
-- Path: `/Volumes/Imago/MHC-Control_Panel/db`
+**Stats Collection Service (`stats-collection.service.ts`)**
+- Collects comprehensive system stats:
+  - User segments (total people, live now, followers, subs, doms, ratings)
+  - Database (size, person counts by role)
+  - Media (images, videos, sizes, users with media)
+  - Activity (snapshots 1h/24h)
+  - Queue status (priority levels, failed jobs)
+- Growth projection with linear regression
+- Time-series data for charting
 
-#### Storage Service Updates
+**New API Endpoints**
+- `GET /api/system/stats-history` - Paginated history with date filtering
+- `GET /api/system/stats-history/latest` - Most recent snapshot
+- `GET /api/system/stats-history/growth-projection` - Trend forecasting
+- `GET /api/system/stats-history/time-series` - Chart data
+- `POST /api/job/stats-collection/start|stop|run-now|config`
 
-**storage.service.ts**
-- Removed Docker fallback - SSD-only writes
-- Added operation queue for when SSD unavailable
-- New `writeWithUsername()` method with automatic symlink creation
-- Queue processor runs every 5 minutes
+#### Frontend Components
 
-**ssd-provider.ts**
-- New username-based path methods: `generateUsernamePath()`, `writeWithUsername()`
-- Symlink creation: `createUserAllSymlink()`, `createGlobalAllSymlink()`
-- Source-to-folder mapping (affiliate_api→auto, screensnap→snaps, etc.)
+**DateFilterBar Component**
+- Preset filters: 24h, 7d, 14d, Last Month, This Month, This Quarter, Last Quarter
+- Custom date range picker
 
-#### Image Writer Updates
+**StatsHistoryTable Component**
+- Sortable columns (date, people, images, DB size)
+- Expandable rows with detailed stats breakdown
+- Net change summary across selected date range
+- Color-coded changes (green positive, red negative)
 
-All services updated to use new storage:
-- `broadcast-session.service.ts` - Affiliate API thumbnails
-- `live-screenshot.job.ts` - Live stream screenshots
-- `chaturbate-scraper.service.ts` - Profile scrape images
-- `profile-images.service.ts` - Manual uploads
+**StorageGrowthChart Component**
+- Recharts-based line graph
+- Historical data (solid line) vs projected (dashed)
+- Average growth per day display
+- Responsive and themed for dark mode
 
-#### Migration Job
+### Storage Service Enhancements
 
-**New Job: `storage-migration.job.ts`**
-- Migrates files from UUID paths to username paths
-- Copies files (doesn't move) with SHA256 verification
-- Creates symlinks in both `/all/` folders
-- API endpoints for control and monitoring
+**Enhanced Status Reporting**
+- Disk space info (total, used, free, percentage)
+- Configured SSD total bytes for accurate reporting (Docker can't detect external drive size)
+- Host path display for easier debugging
+- Last write tracking (destination, path, timestamp, errors)
+- SSD health check timestamps and unavailable duration
 
-**Results:**
-- 50,828 images migrated successfully
-- 2,191 user folders created
-- 50,889 global symlinks created
-- 0 failures
+**New Config Options**
+- `ssdHostPath` - Host machine path for display
+- `ssdTotalBytes` - Configured drive size (4TB default)
 
-#### Frontend Changes
+### Documentation Update
 
-**Profile.tsx**
-- Simplified `getProfileImageUrl()` to always use `/images/`
-- Removed complex storage_provider logic
-
-**app.ts**
-- Unified `/images/` route with SSD-first, Docker fallback
-- Removed `/ssd-images/` route
+- Added `Local Path` field to CLAUDE.md header
 
 ## Files Modified/Created
 
 ### Server
-- `server/src/db/migrations/067_storage_username_paths.sql` (NEW)
-- `server/src/jobs/storage-migration.job.ts` (NEW)
-- `server/src/routes/storage.ts` (MODIFIED - migration endpoints)
-- `server/src/services/storage/storage.service.ts` (MODIFIED - queue, writeWithUsername)
-- `server/src/services/storage/ssd-provider.ts` (MODIFIED - username paths, symlinks)
-- `server/src/services/broadcast-session.service.ts` (MODIFIED - new storage)
-- `server/src/jobs/live-screenshot.job.ts` (MODIFIED - new storage)
-- `server/src/services/chaturbate-scraper.service.ts` (MODIFIED - new storage)
-- `server/src/services/profile-images.service.ts` (MODIFIED - username support)
-- `server/src/app.ts` (MODIFIED - unified /images route)
+- `server/src/db/migrations/068_create_system_stats_history.sql` (NEW)
+- `server/src/jobs/stats-collection.job.ts` (NEW)
+- `server/src/services/stats-collection.service.ts` (NEW)
+- `server/src/routes/system.ts` (MODIFIED - stats history endpoints)
+- `server/src/routes/job.ts` (MODIFIED - stats collection job routes)
+- `server/src/services/job-restore.service.ts` (MODIFIED - restore stats job)
+- `server/src/services/storage/storage.service.ts` (MODIFIED - enhanced status)
+- `server/src/services/storage/ssd-provider.ts` (MODIFIED - disk space)
+- `server/src/services/storage/types.ts` (MODIFIED - new config fields)
+- `server/src/services/storage/index.ts` (MODIFIED - exports)
 
 ### Client
-- `client/src/pages/Profile.tsx` (MODIFIED - simplified URL logic)
+- `client/src/components/DateFilterBar.tsx` (NEW)
+- `client/src/components/StatsHistoryTable.tsx` (NEW)
+- `client/src/components/StorageGrowthChart.tsx` (NEW)
+- `client/src/pages/Admin.tsx` (MODIFIED - stats collection UI)
+- `client/package.json` (MODIFIED - added recharts dependency)
 
-### Configuration
-- `docker-compose.yml` (MODIFIED - SSD bind mount for database)
+### Documentation
+- `CLAUDE.md` (MODIFIED - added Local Path)
 
 ## Current State
 
 - All code changes compile successfully
-- Docker containers rebuilt and running
-- Database running on SSD
-- 50,828 images migrated to new path structure
-- All new images saving to username-based paths
+- Stats collection job ready to run
+- Admin UI updated with stats history viewer
+- Storage status shows enhanced SSD info
 
 ## Key Decisions Made
 
-1. **SSD-only storage** - Removed Docker fallback to simplify architecture
-2. **Queue for unavailability** - Operations queued when SSD disconnected rather than failing
-3. **Copy then verify** - Files copied with SHA256 verification before DB update
-4. **Real filesystem symlinks** - `/all/` folders use actual symlinks for Finder browsing
-5. **Username lowercase** - All usernames normalized to lowercase in paths
+1. **JSONB for stats storage** - Allows schema evolution without migrations
+2. **Hourly collection** - Balance between granularity and storage
+3. **Linear regression for projections** - Simple but effective trend analysis
+4. **Recharts for visualization** - Lightweight, React-native charting
+5. **Configured SSD size** - Work around Docker's inability to detect external drive size
 
 ## Next Steps
 
-1. Consider adding S3 provider for production deployment
-2. Monitor operation queue for any recurring SSD availability issues
-3. Run cleanup job to remove legacy UUID-based files after confirming migration success
-4. Remove `image-storage.service.ts` legacy code (only used for placeholder cleanup)
+1. Start the stats collection job and let it run for a few days
+2. Review growth projections once sufficient data is collected
+3. Consider adding alerts for unusual growth patterns
+4. Add more stat paths to the projection system as needed

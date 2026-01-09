@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.30.0] - 2026-01-09
+
+### Added
+
+- **Stats Collection System**: New background job for historical system statistics tracking
+  - New `system_stats_history` table stores periodic snapshots of all system stats
+  - Configurable collection interval (default: every hour)
+  - Collects: user segments, database size, media stats, queue status, activity metrics
+  - Growth projection API with linear regression for trend forecasting
+  - Time-series API for charting historical data
+  - New migration: `068_create_system_stats_history.sql`
+- **Stats History UI Components**:
+  - `DateFilterBar` - Preset date filters (24h, 7d, 14d, month, quarter, custom)
+  - `StatsHistoryTable` - Sortable table with expandable row details and net change summary
+  - `StorageGrowthChart` - Recharts line graph with growth projections
+- **Stats Collection Controls in Admin**: Start/stop job, configure interval, run manual collection
+- **Storage Status Enhancements**:
+  - Disk space reporting (total, used, free, percentage)
+  - Last write tracking (destination, timestamp, path, errors)
+  - SSD health check timestamps and error history
+  - Host path display for container-to-host path mapping
+
+### Changed
+
+- **Admin Settings Tab**: Added Stats Collection section with job controls and history viewer
+- **Storage Service**: Enhanced `getStatus()` with detailed SSD health and disk space info
+- **Storage Config**: Added `ssdHostPath` and `ssdTotalBytes` settings for accurate disk reporting
+- **CLAUDE.md**: Added Local Path field for project location reference
+
+### Technical
+
+- New job: `stats-collection.job.ts` - Manages periodic stats collection
+- New service: `stats-collection.service.ts` - Stats queries, snapshots, projections
+- New routes: `/api/system/stats-history/*` for stats history API
+- New routes: `/api/job/stats-collection/*` for job control
+- Updated: `storage.service.ts` - Last write tracking, enhanced status reporting
+- Updated: `ssd-provider.ts` - Disk space info, health check timestamps
+
+---
+
 ## [1.29.0] - 2026-01-08
 
 ### Added

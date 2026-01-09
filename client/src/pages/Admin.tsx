@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import CollapsibleSection from '../components/CollapsibleSection';
 import { useTheme, ThemeName } from '../context/ThemeContext';
 import { api } from '../api/client';
+import DateFilterBar, { DatePreset } from '../components/DateFilterBar';
+import StatsHistoryTable from '../components/StatsHistoryTable';
+import StorageGrowthChart from '../components/StorageGrowthChart';
 
 const themeLabels: Record<ThemeName, string> = {
   midnight: 'Midnight',
@@ -98,6 +101,26 @@ interface StatbateJobStatus {
   isProcessing: boolean;
   config: StatbateConfig;
   stats: StatbateStats;
+}
+
+interface StatsCollectionConfig {
+  intervalMinutes: number;
+  enabled: boolean;
+}
+
+interface StatsCollectionStats {
+  lastRun: string | null;
+  totalRuns: number;
+  totalSnapshots: number;
+  lastCollectionDurationMs: number;
+  lastError: string | null;
+}
+
+interface StatsCollectionJobStatus {
+  isRunning: boolean;
+  isProcessing: boolean;
+  config: StatsCollectionConfig;
+  stats: StatsCollectionStats;
 }
 
 interface JobStatus {
@@ -287,11 +310,34 @@ const Admin: React.FC = () => {
       cacheMaxSizeMb: number;
     };
   }
+  interface DiskSpaceInfo {
+    total: number;
+    used: number;
+    free: number;
+    usedPercent: number;
+  }
+  interface LastWriteInfo {
+    destination: string | null;
+    timestamp: string | null;
+    path: string | null;
+    error: string | null;
+  }
   interface StorageStatus {
     currentWriteBackend: string | null;
     docker: { available: boolean; path: string; fileCount: number };
-    ssd: { available: boolean; path: string; fileCount: number };
+    ssd: {
+      available: boolean;
+      path: string;
+      hostPath: string;
+      fileCount: number;
+      lastHealthCheck: string | null;
+      lastError: string | null;
+      unavailableSince: string | null;
+      diskSpace: DiskSpaceInfo | null;
+    };
     s3: { available: boolean; bucket: string; fileCount: number };
+    queue: { length: number; oldestOperation: string | null };
+    lastWrite: LastWriteInfo;
   }
   const [storageConfig, setStorageConfig] = useState<StorageConfig | null>(null);
   const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
@@ -299,6 +345,13 @@ const Admin: React.FC = () => {
   const [storageSaving, setStorageSaving] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [storageSuccess, setStorageSuccess] = useState<string | null>(null);
+
+  // Stats collection job state
+  const [statsCollectionStatus, setStatsCollectionStatus] = useState<StatsCollectionJobStatus | null>(null);
+  const [statsCollectionLoading, setStatsCollectionLoading] = useState(false);
+  const [statsCollectionSaving, setStatsCollectionSaving] = useState(false);
+  const [statsCollectionError, setStatsCollectionError] = useState<string | null>(null);
+  const [statsCollectionSuccess, setStatsCollectionSuccess] = useState<string | null>(null);
 
   // Bulk upload state
   interface ParsedFile {
@@ -348,7 +401,7 @@ const Admin: React.FC = () => {
     }
   }, [activeTab]);
 
-  // Load broadcast settings, image settings, video settings, note settings, and storage settings when Settings tab is active
+  // Load broadcast settings, image settings, video settings, note settings, storage settings, and stats collection settings when Settings tab is active
   useEffect(() => {
     if (activeTab === 'settings') {
       fetchBroadcastSettings();
@@ -356,6 +409,7 @@ const Admin: React.FC = () => {
       fetchVideoSettings();
       fetchNoteLineLimitSetting();
       fetchStorageSettings();
+      fetchStatsCollectionStatus();
     }
   }, [activeTab]);
 
@@ -442,6 +496,105 @@ const Admin: React.FC = () => {
       console.error('Error saving storage settings:', err);
     } finally {
       setStorageSaving(false);
+    }
+  };
+
+  const fetchStatsCollectionStatus = async () => {
+    setStatsCollectionLoading(true);
+    setStatsCollectionError(null);
+    try {
+      const response = await fetch('/api/job/stats-collection/status');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setStatsCollectionStatus(data.data);
+        } else {
+          setStatsCollectionError('Failed to load stats collection status');
+        }
+      } else {
+        setStatsCollectionError('Failed to load stats collection status');
+      }
+    } catch (err) {
+      setStatsCollectionError('Failed to load stats collection status');
+      console.error('Error fetching stats collection status:', err);
+    } finally {
+      setStatsCollectionLoading(false);
+    }
+  };
+
+  const saveStatsCollectionConfig = async (config: Partial<StatsCollectionConfig>) => {
+    setStatsCollectionSaving(true);
+    setStatsCollectionError(null);
+    setStatsCollectionSuccess(null);
+    try {
+      const response = await fetch('/api/job/stats-collection/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          setStatsCollectionStatus(data.data);
+          setStatsCollectionSuccess('Stats collection settings saved successfully');
+          setTimeout(() => setStatsCollectionSuccess(null), 3000);
+        } else {
+          setStatsCollectionError('Failed to save stats collection settings');
+        }
+      } else {
+        setStatsCollectionError('Failed to save stats collection settings');
+      }
+    } catch (err) {
+      setStatsCollectionError('Failed to save stats collection settings');
+      console.error('Error saving stats collection settings:', err);
+    } finally {
+      setStatsCollectionSaving(false);
+    }
+  };
+
+  const startStatsCollection = async () => {
+    try {
+      const response = await fetch('/api/job/stats-collection/start', { method: 'POST' });
+      if (response.ok) {
+        await fetchStatsCollectionStatus();
+        setStatsCollectionSuccess('Stats collection started');
+        setTimeout(() => setStatsCollectionSuccess(null), 3000);
+      } else {
+        setStatsCollectionError('Failed to start stats collection');
+      }
+    } catch (err) {
+      setStatsCollectionError('Failed to start stats collection');
+    }
+  };
+
+  const stopStatsCollection = async () => {
+    try {
+      const response = await fetch('/api/job/stats-collection/stop', { method: 'POST' });
+      if (response.ok) {
+        await fetchStatsCollectionStatus();
+        setStatsCollectionSuccess('Stats collection stopped');
+        setTimeout(() => setStatsCollectionSuccess(null), 3000);
+      } else {
+        setStatsCollectionError('Failed to stop stats collection');
+      }
+    } catch (err) {
+      setStatsCollectionError('Failed to stop stats collection');
+    }
+  };
+
+  const runStatsCollectionNow = async () => {
+    try {
+      const response = await fetch('/api/job/stats-collection/run-now', { method: 'POST' });
+      const data = await response.json();
+      if (data.success) {
+        await fetchStatsCollectionStatus();
+        setStatsCollectionSuccess(data.message || 'Stats collection completed');
+        setTimeout(() => setStatsCollectionSuccess(null), 5000);
+      } else {
+        setStatsCollectionError(data.message || 'Failed to run stats collection');
+      }
+    } catch (err) {
+      setStatsCollectionError('Failed to run stats collection');
     }
   };
 
@@ -1994,6 +2147,166 @@ const Admin: React.FC = () => {
     </div>
   );
 
+  // Stats History Section Component
+  const StatsHistorySection: React.FC = () => {
+    const [historyRecords, setHistoryRecords] = useState<any[]>([]);
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyError, setHistoryError] = useState<string | null>(null);
+    const [dateFilter, setDateFilter] = useState<{ start: Date | null; end: Date | null; preset: DatePreset }>({
+      start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      end: new Date(),
+      preset: '7d',
+    });
+    const [growthData, setGrowthData] = useState<{
+      timeSeries: Array<{ timestamp: string; value: number }>;
+      projection: {
+        currentValue: number;
+        averageGrowthPerDay: number;
+        projectedValue: number;
+        dataPoints: number;
+      } | null;
+    }>({ timeSeries: [], projection: null });
+    const [growthLoading, setGrowthLoading] = useState(false);
+
+    const fetchHistory = async (start: Date | null, end: Date | null) => {
+      setHistoryLoading(true);
+      setHistoryError(null);
+      try {
+        const params = new URLSearchParams();
+        if (start) params.append('start', start.toISOString());
+        if (end) params.append('end', end.toISOString());
+        params.append('limit', '100');
+
+        const response = await fetch(`/api/system/stats-history?${params}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setHistoryRecords(data.data.records);
+          } else {
+            setHistoryError('Failed to load stats history');
+          }
+        } else {
+          setHistoryError('Failed to load stats history');
+        }
+      } catch (err) {
+        setHistoryError('Failed to load stats history');
+        console.error('Error fetching stats history:', err);
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+
+    const fetchGrowthData = async (start: Date | null, end: Date | null) => {
+      setGrowthLoading(true);
+      try {
+        // Fetch time series data
+        const timeSeriesParams = new URLSearchParams();
+        timeSeriesParams.append('statPath', 'media.total_image_size_bytes');
+        if (start) timeSeriesParams.append('start', start.toISOString());
+        if (end) timeSeriesParams.append('end', end.toISOString());
+        timeSeriesParams.append('aggregation', 'hourly');
+
+        const timeSeriesResponse = await fetch(`/api/system/stats-history/time-series?${timeSeriesParams}`);
+        let timeSeries: Array<{ timestamp: string; value: number }> = [];
+        if (timeSeriesResponse.ok) {
+          const data = await timeSeriesResponse.json();
+          if (data.success) {
+            timeSeries = data.data;
+          }
+        }
+
+        // Fetch growth projection
+        const projectionParams = new URLSearchParams();
+        projectionParams.append('statPath', 'media.total_image_size_bytes');
+        projectionParams.append('periodDays', '30');
+        projectionParams.append('projectToDays', '30');
+
+        const projectionResponse = await fetch(`/api/system/stats-history/growth-projection?${projectionParams}`);
+        let projection = null;
+        if (projectionResponse.ok) {
+          const data = await projectionResponse.json();
+          if (data.success) {
+            projection = data.data;
+          }
+        }
+
+        setGrowthData({ timeSeries, projection });
+      } catch (err) {
+        console.error('Error fetching growth data:', err);
+      } finally {
+        setGrowthLoading(false);
+      }
+    };
+
+    useEffect(() => {
+      fetchHistory(dateFilter.start, dateFilter.end);
+      fetchGrowthData(dateFilter.start, dateFilter.end);
+    }, []);
+
+    const handleFilterChange = (start: Date | null, end: Date | null, preset: DatePreset) => {
+      setDateFilter({ start, end, preset });
+      fetchHistory(start, end);
+      fetchGrowthData(start, end);
+    };
+
+    return (
+      <div className="space-y-6">
+        {/* Date Filter */}
+        <div className="flex items-center justify-between">
+          <DateFilterBar
+            onFilterChange={handleFilterChange}
+            defaultPreset="7d"
+          />
+          <button
+            onClick={() => fetchHistory(dateFilter.start, dateFilter.end)}
+            className="px-3 py-1.5 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors text-sm"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {historyError && (
+          <div className="p-3 px-4 rounded-md bg-red-500/15 border-l-4 border-red-500 text-red-300">
+            {historyError}
+          </div>
+        )}
+
+        {/* Growth Chart */}
+        {!growthLoading && growthData.timeSeries.length > 0 && (
+          <StorageGrowthChart
+            data={growthData.timeSeries}
+            title="Image Storage Growth"
+            valueLabel="Size"
+            averageGrowthPerDay={growthData.projection?.averageGrowthPerDay}
+            projectedValue={growthData.projection?.projectedValue}
+          />
+        )}
+
+        {growthLoading && (
+          <div className="h-[300px] flex items-center justify-center text-mhc-text-muted bg-white/5 rounded-lg">
+            Loading growth chart...
+          </div>
+        )}
+
+        {/* History Table */}
+        <div className="bg-white/5 rounded-lg p-4">
+          <h4 className="text-mhc-text font-medium mb-4">Historical Snapshots</h4>
+          <div className="max-h-[500px] overflow-y-auto">
+            <StatsHistoryTable
+              records={historyRecords}
+              loading={historyLoading}
+            />
+          </div>
+          {historyRecords.length > 0 && (
+            <div className="mt-3 text-xs text-mhc-text-muted text-center">
+              Showing {historyRecords.length} records
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderSystemStatsTab = () => (
     <>
       {systemStats && (
@@ -2188,6 +2501,15 @@ const Admin: React.FC = () => {
                 <div className="text-sm opacity-90 uppercase tracking-wide">Failed (24h)</div>
               </div>
             </div>
+          </CollapsibleSection>
+
+          {/* Stats History - Collapsible, collapsed by default */}
+          <CollapsibleSection
+            title="Stats History"
+            defaultCollapsed={true}
+            className="mb-5"
+          >
+            <StatsHistorySection />
           </CollapsibleSection>
         </>
       )}
@@ -2939,7 +3261,7 @@ const Admin: React.FC = () => {
                           ? 'border-emerald-500/50 bg-emerald-500/15'
                           : storageStatus.ssd.available
                             ? 'border-amber-500/30 bg-amber-500/5'
-                            : 'border-white/10 bg-white/5'
+                            : 'border-red-500/30 bg-red-500/5'
                       }`}>
                         <div className="flex items-center gap-2 mb-2">
                           <span className={`w-2 h-2 rounded-full ${
@@ -2947,18 +3269,63 @@ const Admin: React.FC = () => {
                               ? 'bg-emerald-500'
                               : storageStatus.ssd.available
                                 ? 'bg-amber-500'
-                                : 'bg-gray-500'
+                                : 'bg-red-500'
                           }`}></span>
                           <span className="font-medium text-mhc-text">SSD Mount</span>
                           {storageStatus.currentWriteBackend === 'ssd' ? (
                             <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-medium">Primary</span>
-                          ) : storageStatus.ssd.available && (
+                          ) : storageStatus.ssd.available ? (
                             <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded font-medium">Backup</span>
+                          ) : (
+                            <span className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-medium">Unavailable</span>
                           )}
                         </div>
-                        <div className="text-sm text-mhc-text-muted">
+                        <div className="text-sm text-mhc-text-muted space-y-1">
                           <div>{storageStatus.ssd.fileCount.toLocaleString()} files</div>
-                          <div className="text-xs truncate">{storageStatus.ssd.path}</div>
+                          <div className="text-xs space-y-0.5">
+                            <div className="truncate" title={storageStatus.ssd.hostPath}>
+                              <span className="text-mhc-text-muted/60">Host:</span> {storageStatus.ssd.hostPath}
+                            </div>
+                            <div className="truncate" title={storageStatus.ssd.path}>
+                              <span className="text-mhc-text-muted/60">Container:</span> {storageStatus.ssd.path}
+                            </div>
+                          </div>
+                          {/* Disk Space */}
+                          {storageStatus.ssd.diskSpace && (
+                            <div className="mt-2 pt-2 border-t border-white/10">
+                              <div className="flex justify-between text-xs">
+                                <span>Disk Space:</span>
+                                <span>{formatBytes(storageStatus.ssd.diskSpace.used)} / {formatBytes(storageStatus.ssd.diskSpace.total)}</span>
+                              </div>
+                              <div className="w-full bg-white/10 rounded-full h-1.5 mt-1">
+                                <div
+                                  className={`h-1.5 rounded-full ${
+                                    storageStatus.ssd.diskSpace.usedPercent > 90
+                                      ? 'bg-red-500'
+                                      : storageStatus.ssd.diskSpace.usedPercent > 75
+                                        ? 'bg-amber-500'
+                                        : 'bg-emerald-500'
+                                  }`}
+                                  style={{ width: `${storageStatus.ssd.diskSpace.usedPercent}%` }}
+                                ></div>
+                              </div>
+                              <div className="text-xs mt-1 text-right">
+                                {formatBytes(storageStatus.ssd.diskSpace.free)} free ({100 - storageStatus.ssd.diskSpace.usedPercent}%)
+                              </div>
+                            </div>
+                          )}
+                          {/* Error State */}
+                          {!storageStatus.ssd.available && storageStatus.ssd.lastError && (
+                            <div className="mt-2 p-2 bg-red-500/10 border border-red-500/30 rounded text-xs text-red-300">
+                              <div className="font-medium">Error:</div>
+                              <div className="truncate">{storageStatus.ssd.lastError}</div>
+                              {storageStatus.ssd.unavailableSince && (
+                                <div className="mt-1 text-red-400">
+                                  Unavailable since: {formatDate(storageStatus.ssd.unavailableSince)}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <div className={`p-4 rounded-lg border ${
@@ -2987,6 +3354,95 @@ const Admin: React.FC = () => {
                           <div>{storageStatus.s3.fileCount.toLocaleString()} files</div>
                           <div className="text-xs truncate">{storageStatus.s3.bucket || 'Not configured'}</div>
                         </div>
+                      </div>
+                    </div>
+
+                    {/* Current Write Status */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Last Write Info */}
+                      <div className="p-4 bg-white/5 border border-white/10 rounded-lg">
+                        <h4 className="text-mhc-text font-medium mb-2 text-sm">Last Write Operation</h4>
+                        {storageStatus.lastWrite.timestamp ? (
+                          <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted">Destination:</span>
+                              <span className={storageStatus.lastWrite.destination ? 'text-emerald-400' : 'text-red-400'}>
+                                {storageStatus.lastWrite.destination ? storageStatus.lastWrite.destination.toUpperCase() : 'Failed'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted">Time:</span>
+                              <span className="text-mhc-text">{formatDate(storageStatus.lastWrite.timestamp)}</span>
+                            </div>
+                            {storageStatus.lastWrite.path && (
+                              <div>
+                                <span className="text-mhc-text-muted">Path:</span>
+                                <div className="text-mhc-text text-xs mt-1 p-2 bg-black/20 rounded font-mono break-all">{storageStatus.lastWrite.path}</div>
+                              </div>
+                            )}
+                            {storageStatus.lastWrite.error && (
+                              <div className="text-red-400 text-xs mt-2">
+                                Error: {storageStatus.lastWrite.error}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="text-mhc-text-muted text-sm">No writes recorded</div>
+                        )}
+                      </div>
+
+                      {/* Queue Status */}
+                      <div className={`p-4 border rounded-lg ${
+                        storageStatus.queue && storageStatus.queue.length > 0
+                          ? 'bg-amber-500/10 border-amber-500/30'
+                          : 'bg-white/5 border-white/10'
+                      }`}>
+                        <h4 className={`font-medium mb-2 text-sm ${
+                          storageStatus.queue && storageStatus.queue.length > 0 ? 'text-amber-400' : 'text-mhc-text'
+                        }`}>Write Queue</h4>
+                        {storageStatus.queue && storageStatus.queue.length > 0 ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-amber-300/80 text-sm">Pending operations</span>
+                              <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded font-medium">
+                                {storageStatus.queue.length} queued
+                              </span>
+                            </div>
+                            <p className="text-xs text-amber-300/70">
+                              Operations queued because SSD was unavailable.
+                            </p>
+                            {storageStatus.queue.oldestOperation && (
+                              <p className="text-xs text-amber-400/70">
+                                Oldest: {formatDate(storageStatus.queue.oldestOperation)}
+                              </p>
+                            )}
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const response = await fetch('/api/storage/queue/process', { method: 'POST' });
+                                  const data = await response.json();
+                                  if (data.success) {
+                                    setStorageSuccess(`Queue processed: ${data.data.processed} completed, ${data.data.remaining} remaining`);
+                                    fetchStorageSettings();
+                                    setTimeout(() => setStorageSuccess(null), 5000);
+                                  } else {
+                                    setStorageError(data.error || 'Failed to process queue');
+                                  }
+                                } catch (err) {
+                                  setStorageError('Failed to process queue');
+                                }
+                              }}
+                              className="px-3 py-1.5 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors text-sm"
+                            >
+                              Process Now
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-sm text-mhc-text-muted">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <span>No pending operations</span>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -3251,6 +3707,170 @@ const Admin: React.FC = () => {
                     </div>
                   )}
                 </div>
+              </CollapsibleSection>
+            </div>
+
+            {/* Stats Collection Section */}
+            <div className="mb-4">
+              <CollapsibleSection title="Stats Collection" defaultCollapsed={true} className="bg-mhc-surface">
+                {statsCollectionError && (
+                  <div className="p-3 px-4 rounded-md mb-4 bg-red-500/15 border-l-4 border-red-500 text-red-300">
+                    {statsCollectionError}
+                  </div>
+                )}
+                {statsCollectionSuccess && (
+                  <div className="p-3 px-4 rounded-md mb-4 bg-green-500/15 border-l-4 border-green-500 text-green-300">
+                    {statsCollectionSuccess}
+                  </div>
+                )}
+                {statsCollectionLoading ? (
+                  <div className="text-mhc-text-muted">Loading stats collection settings...</div>
+                ) : statsCollectionStatus ? (
+                  <div className="space-y-6">
+                    {/* Status Display */}
+                    <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <span className={`w-3 h-3 rounded-full ${
+                          statsCollectionStatus.isProcessing
+                            ? 'bg-blue-500 animate-pulse'
+                            : statsCollectionStatus.isRunning
+                              ? 'bg-emerald-500'
+                              : 'bg-gray-500'
+                        }`}></span>
+                        <div>
+                          <div className="font-medium text-mhc-text">
+                            {statsCollectionStatus.isProcessing
+                              ? 'Collecting Stats...'
+                              : statsCollectionStatus.isRunning
+                                ? 'Running'
+                                : 'Stopped'}
+                          </div>
+                          {statsCollectionStatus.stats.lastRun && (
+                            <div className="text-xs text-mhc-text-muted">
+                              Last run: {new Date(statsCollectionStatus.stats.lastRun).toLocaleString()}
+                              {statsCollectionStatus.stats.lastCollectionDurationMs > 0 && (
+                                <span className="ml-2">({statsCollectionStatus.stats.lastCollectionDurationMs}ms)</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={runStatsCollectionNow}
+                          disabled={statsCollectionStatus.isProcessing}
+                          className="px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Run Now
+                        </button>
+                        {statsCollectionStatus.isRunning ? (
+                          <button
+                            onClick={stopStatsCollection}
+                            className="px-3 py-1.5 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm"
+                          >
+                            Stop
+                          </button>
+                        ) : (
+                          <button
+                            onClick={startStatsCollection}
+                            disabled={!statsCollectionStatus.config.enabled}
+                            className="px-3 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Start
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Stats Summary */}
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="p-3 bg-white/5 rounded-lg text-center">
+                        <div className="text-2xl font-bold text-mhc-text">{statsCollectionStatus.stats.totalSnapshots}</div>
+                        <div className="text-xs text-mhc-text-muted">Total Snapshots</div>
+                      </div>
+                      <div className="p-3 bg-white/5 rounded-lg text-center">
+                        <div className="text-2xl font-bold text-mhc-text">{statsCollectionStatus.stats.totalRuns}</div>
+                        <div className="text-xs text-mhc-text-muted">Total Runs</div>
+                      </div>
+                      <div className="p-3 bg-white/5 rounded-lg text-center">
+                        <div className="text-2xl font-bold text-mhc-text">{statsCollectionStatus.config.intervalMinutes}</div>
+                        <div className="text-xs text-mhc-text-muted">Minutes Interval</div>
+                      </div>
+                    </div>
+
+                    {statsCollectionStatus.stats.lastError && (
+                      <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                        <div className="text-sm text-red-400">Last Error: {statsCollectionStatus.stats.lastError}</div>
+                      </div>
+                    )}
+
+                    {/* Configuration */}
+                    <div className="pt-4 border-t border-white/10">
+                      <h4 className="text-mhc-text font-medium mb-4">Configuration</h4>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className="text-mhc-text">Enable Stats Collection</label>
+                            <p className="text-xs text-mhc-text-muted">Automatically collect system stats on a schedule</p>
+                          </div>
+                          <button
+                            onClick={() => saveStatsCollectionConfig({ enabled: !statsCollectionStatus.config.enabled })}
+                            disabled={statsCollectionSaving}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                              statsCollectionStatus.config.enabled ? 'bg-emerald-600' : 'bg-gray-600'
+                            } disabled:opacity-50`}
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                statsCollectionStatus.config.enabled ? 'translate-x-6' : 'translate-x-1'
+                              }`}
+                            />
+                          </button>
+                        </div>
+
+                        <div>
+                          <label className="block text-mhc-text mb-2">Collection Interval (minutes)</label>
+                          <p className="text-xs text-mhc-text-muted mb-2">How often to collect and store system stats</p>
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="number"
+                              min="5"
+                              max="1440"
+                              value={statsCollectionStatus.config.intervalMinutes}
+                              onChange={(e) => {
+                                const value = parseInt(e.target.value) || 60;
+                                setStatsCollectionStatus({
+                                  ...statsCollectionStatus,
+                                  config: { ...statsCollectionStatus.config, intervalMinutes: value }
+                                });
+                              }}
+                              className="w-24 px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none"
+                            />
+                            <button
+                              onClick={() => saveStatsCollectionConfig({ intervalMinutes: statsCollectionStatus.config.intervalMinutes })}
+                              disabled={statsCollectionSaving}
+                              className="px-4 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                            >
+                              {statsCollectionSaving ? 'Saving...' : 'Save'}
+                            </button>
+                          </div>
+                          <p className="text-xs text-mhc-text-muted mt-2">
+                            Recommended: 60 minutes. Lower values create more data but use more storage.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 border-t border-white/10">
+                      <p className="text-xs text-mhc-text-muted">
+                        Stats collection captures user segments, database size, media counts, and activity metrics for historical trend analysis.
+                        View collected data in the <Link to="/admin?tab=system-stats" className="text-mhc-primary hover:underline">System Stats</Link> tab.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-mhc-text-muted">No stats collection data available</div>
+                )}
               </CollapsibleSection>
             </div>
 

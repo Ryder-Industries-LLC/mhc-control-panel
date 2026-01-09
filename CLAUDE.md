@@ -1,8 +1,9 @@
 # CLAUDE.md - Project Context for Claude Code
 
 **Project:** MHC Control Panel
-**Version:** 1.28.0
-**Last Updated:** 2026-01-07
+**Version:** 1.29.0
+**Last Updated:** 2026-01-09
+**Local Path:** `/Volumes/Imago/Development/MHC/mhc-control-panel`
 
 ---
 

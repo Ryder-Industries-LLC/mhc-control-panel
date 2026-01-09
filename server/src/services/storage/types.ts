@@ -18,6 +18,8 @@ export interface StorageConfig {
     ssdEnabled: boolean;
     dockerEnabled: boolean;
     ssdPath: string;
+    ssdHostPath: string; // Display path for UI (host filesystem path)
+    ssdTotalBytes: number; // Manual config for SSD total size (Docker can't detect it reliably)
     dockerPath: string;
   };
   external: {
@@ -192,6 +194,8 @@ export const DEFAULT_STORAGE_CONFIG: StorageConfig = {
     ssdEnabled: true,
     dockerEnabled: true,
     ssdPath: '/mnt/ssd/mhc-images',
+    ssdHostPath: '/Volumes/Imago/MHC-Control_Panel/media', // Display path for UI
+    ssdTotalBytes: 4000000000000, // 4TB T9 SSD - Docker can't detect actual size
     dockerPath: '/app/data/images',
   },
   external: {

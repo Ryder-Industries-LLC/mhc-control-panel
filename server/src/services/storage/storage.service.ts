@@ -12,10 +12,20 @@
 import { pool } from '../../db/client.js';
 import { StorageProvider, StorageConfig, StorageProviderType, StorageWriteResult, StorageReadResult, StorageFileStats, DEFAULT_STORAGE_CONFIG, isSymlinkCapable } from './types.js';
 import { DockerProvider } from './docker-provider.js';
-import { SSDProvider, MediaSource } from './ssd-provider.js';
+import { SSDProvider, MediaSource, DiskSpaceInfo } from './ssd-provider.js';
 import { S3Provider } from './s3-provider.js';
 import { BaseStorageProvider } from './base-provider.js';
 import { logger } from '../../config/logger.js';
+
+/**
+ * Last write tracking info
+ */
+export interface LastWriteInfo {
+  destination: StorageProviderType | null;
+  timestamp: Date | null;
+  path: string | null;
+  error: string | null;
+}
 
 /**
  * Queued operation for when SSD is unavailable
@@ -40,6 +50,14 @@ class StorageService {
   private initialized = false;
   private operationQueue: QueuedOperation[] = [];
   private queueProcessorRunning = false;
+
+  // Last write tracking
+  private lastWriteInfo: LastWriteInfo = {
+    destination: null,
+    timestamp: null,
+    path: null,
+    error: null,
+  };
 
   /**
    * Initialize the storage service by loading config and creating providers
@@ -82,6 +100,8 @@ class StorageService {
           ssdEnabled: settings['storage.local.ssd_enabled'] ?? true,
           dockerEnabled: settings['storage.local.docker_enabled'] ?? true,
           ssdPath: settings['storage.local.ssd_path'] || '/mnt/ssd/mhc-images',
+          ssdHostPath: settings['storage.local.ssd_host_path'] || '/Volumes/Imago/MHC-Control_Panel/media',
+          ssdTotalBytes: settings['storage.local.ssd_total_bytes'] ?? 4000000000000, // 4TB default
           dockerPath: settings['storage.local.docker_path'] || '/app/data/images',
         },
         external: {
@@ -261,9 +281,19 @@ class StorageService {
   async getStatus(): Promise<{
     currentWriteBackend: StorageProviderType | null;
     docker: { available: boolean; path: string; fileCount?: number; deprecated: boolean };
-    ssd: { available: boolean; path: string; fileCount?: number };
+    ssd: {
+      available: boolean;
+      path: string;
+      hostPath: string;
+      fileCount?: number;
+      lastHealthCheck: string | null;
+      lastError: string | null;
+      unavailableSince: string | null;
+      diskSpace: DiskSpaceInfo | null;
+    };
     s3: { available: boolean; bucket: string; fileCount?: number };
     queue: { length: number; oldestOperation: Date | null };
+    lastWrite: LastWriteInfo;
   }> {
     await this.ensureInitialized();
 
@@ -281,6 +311,35 @@ class StorageService {
       counts[row.storage_provider] = parseInt(row.count);
     }
 
+    // Get SSD disk space and health info
+    const ssdAvailable = this.ssdProvider ? await this.ssdProvider.isAvailable() : false;
+    let diskSpace = this.ssdProvider ? await this.ssdProvider.getDiskSpace() : null;
+
+    // Use configured SSD total bytes since Docker can't accurately detect external drive size
+    // fs.statfs inside Docker returns the Docker virtual disk size, not the actual SSD
+    if (diskSpace && this.config.local.ssdTotalBytes > 0) {
+      const configuredTotal = this.config.local.ssdTotalBytes;
+      const used = diskSpace.used;
+      const free = configuredTotal - used;
+      const usedPercent = configuredTotal > 0 ? Math.round((used / configuredTotal) * 100) : 0;
+      diskSpace = {
+        total: configuredTotal,
+        used,
+        free: Math.max(0, free),
+        usedPercent,
+      };
+    }
+
+    // Convert last write path to host path for display
+    let lastWriteHostPath = this.lastWriteInfo.path;
+    if (lastWriteHostPath && this.lastWriteInfo.destination === 'ssd') {
+      // Convert container path to host path for display
+      lastWriteHostPath = lastWriteHostPath.replace(
+        this.config.local.ssdPath,
+        this.config.local.ssdHostPath
+      );
+    }
+
     return {
       currentWriteBackend: writeProvider?.type || null,
       docker: {
@@ -290,9 +349,14 @@ class StorageService {
         deprecated: true, // Docker storage is deprecated - read-only for migration
       },
       ssd: {
-        available: this.ssdProvider ? await this.ssdProvider.isAvailable() : false,
+        available: ssdAvailable,
         path: this.config.local.ssdPath,
+        hostPath: this.config.local.ssdHostPath,
         fileCount: counts['ssd'] || 0,
+        lastHealthCheck: this.ssdProvider?.lastHealthCheckTime?.toISOString() || null,
+        lastError: this.ssdProvider?.lastError || null,
+        unavailableSince: this.ssdProvider?.unavailableSince?.toISOString() || null,
+        diskSpace,
       },
       s3: {
         available: this.s3Provider ? await this.s3Provider.isAvailable() : false,
@@ -300,6 +364,12 @@ class StorageService {
         fileCount: counts['s3'] || 0,
       },
       queue: this.getQueueStatus(),
+      lastWrite: {
+        destination: this.lastWriteInfo.destination,
+        timestamp: this.lastWriteInfo.timestamp,
+        path: lastWriteHostPath,
+        error: this.lastWriteInfo.error,
+      },
     };
   }
 
@@ -338,12 +408,14 @@ class StorageService {
   ): Promise<StorageWriteResult & { userSymlink?: string; globalSymlink?: string }> {
     await this.ensureInitialized();
 
+    const relativePath = `people/${username}/${this.sourceToFolder(source)}/${filename}`;
+
     // Check if SSD is available
     if (!this.ssdProvider || !await this.ssdProvider.isAvailable()) {
       // Queue the operation for later
       const operationId = this.queueOperation({
         type: 'write',
-        relativePath: `people/${username}/${this.sourceToFolder(source)}/${filename}`,
+        relativePath,
         buffer: data,
         mimeType,
         username,
@@ -352,9 +424,17 @@ class StorageService {
 
       logger.warn(`[StorageService] SSD unavailable, queued write operation: ${operationId}`);
 
+      // Track failed write attempt
+      this.lastWriteInfo = {
+        destination: null,
+        timestamp: new Date(),
+        path: relativePath,
+        error: 'SSD unavailable - operation queued',
+      };
+
       return {
         success: false,
-        relativePath: `people/${username}/${this.sourceToFolder(source)}/${filename}`,
+        relativePath,
         absolutePath: '',
         size: 0,
         sha256: '',
@@ -365,7 +445,17 @@ class StorageService {
     }
 
     // Use SSD provider's username-based write
-    return this.ssdProvider.writeWithUsername(username, source, filename, data, mimeType);
+    const result = await this.ssdProvider.writeWithUsername(username, source, filename, data, mimeType);
+
+    // Track successful/failed write
+    this.lastWriteInfo = {
+      destination: result.success ? 'ssd' : null,
+      timestamp: new Date(),
+      path: relativePath,
+      error: result.success ? null : (result.error || 'Unknown error'),
+    };
+
+    return result;
   }
 
   /**
