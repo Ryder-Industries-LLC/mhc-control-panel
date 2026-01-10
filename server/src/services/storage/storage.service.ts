@@ -13,7 +13,7 @@ import { pool } from '../../db/client.js';
 import { StorageProvider, StorageConfig, StorageProviderType, StorageWriteResult, StorageReadResult, StorageFileStats, DEFAULT_STORAGE_CONFIG, isSymlinkCapable } from './types.js';
 import { DockerProvider } from './docker-provider.js';
 import { SSDProvider, MediaSource, DiskSpaceInfo } from './ssd-provider.js';
-import { S3Provider } from './s3-provider.js';
+import { S3Provider, S3BucketStats } from './s3-provider.js';
 import { BaseStorageProvider } from './base-provider.js';
 import { logger } from '../../config/logger.js';
 
@@ -93,8 +93,17 @@ class StorageService {
         settings[row.key] = row.value;
       }
 
+      // Migrate from legacy globalMode to primaryStorage/fallbackStorage
+      const legacyGlobalMode = settings['storage.global_mode'] || 'local';
+      const primaryStorage = settings['storage.primary_storage'] ||
+        (legacyGlobalMode === 'remote' ? 's3' : 'ssd');
+      const fallbackStorage = settings['storage.fallback_storage'] ||
+        (legacyGlobalMode === 'remote' ? 'ssd' : 'docker');
+
       this.config = {
-        globalMode: settings['storage.global_mode'] || 'local',
+        globalMode: legacyGlobalMode, // Legacy
+        primaryStorage: primaryStorage as StorageProviderType,
+        fallbackStorage: fallbackStorage as StorageProviderType | 'none',
         local: {
           mode: settings['storage.local.mode'] || 'auto',
           ssdEnabled: settings['storage.local.ssd_enabled'] ?? true,
@@ -162,6 +171,14 @@ class StorageService {
 
     if (newConfig.globalMode !== undefined) {
       updates.push({ key: 'storage.global_mode', value: JSON.stringify(newConfig.globalMode) });
+    }
+
+    if (newConfig.primaryStorage !== undefined) {
+      updates.push({ key: 'storage.primary_storage', value: JSON.stringify(newConfig.primaryStorage) });
+    }
+
+    if (newConfig.fallbackStorage !== undefined) {
+      updates.push({ key: 'storage.fallback_storage', value: JSON.stringify(newConfig.fallbackStorage) });
     }
 
     if (newConfig.local) {
@@ -241,27 +258,47 @@ class StorageService {
   }
 
   /**
-   * Get the current write provider based on configuration
-   * NOTE: Docker fallback has been removed. Returns null if SSD unavailable (operations will be queued)
+   * Get a provider by type
+   */
+  private getProviderByType(type: StorageProviderType): StorageProvider | null {
+    switch (type) {
+      case 'docker':
+        return this.dockerProvider;
+      case 'ssd':
+        return this.ssdProvider;
+      case 's3':
+        return this.s3Provider;
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Get the current write provider based on primary/fallback configuration
+   * Returns null if neither primary nor fallback is available (operations will be queued)
    */
   async getWriteProvider(): Promise<StorageProvider | null> {
     await this.ensureInitialized();
 
-    // Remote mode -> S3
-    if (this.config.globalMode === 'remote' && this.config.external.enabled) {
-      if (this.s3Provider && await this.s3Provider.isAvailable()) {
-        return this.s3Provider;
+    // Try primary storage first
+    const primaryProvider = this.getProviderByType(this.config.primaryStorage);
+    if (primaryProvider && await primaryProvider.isAvailable()) {
+      return primaryProvider;
+    }
+    logger.warn(`[StorageService] Primary storage (${this.config.primaryStorage}) not available`);
+
+    // Try fallback storage
+    if (this.config.fallbackStorage !== 'none') {
+      const fallbackProvider = this.getProviderByType(this.config.fallbackStorage as StorageProviderType);
+      if (fallbackProvider && await fallbackProvider.isAvailable()) {
+        logger.info(`[StorageService] Using fallback storage: ${this.config.fallbackStorage}`);
+        return fallbackProvider;
       }
-      logger.warn('[StorageService] S3 not available, will queue operation');
+      logger.warn(`[StorageService] Fallback storage (${this.config.fallbackStorage}) not available`);
     }
 
-    // Local mode - SSD only (no Docker fallback)
-    if (this.ssdProvider && await this.ssdProvider.isAvailable()) {
-      return this.ssdProvider;
-    }
-
-    // SSD not available - caller should queue the operation
-    logger.warn('[StorageService] SSD not available - operation will be queued');
+    // Neither primary nor fallback available - caller should queue the operation
+    logger.warn('[StorageService] No storage available - operation will be queued');
     return null;
   }
 
@@ -301,7 +338,13 @@ class StorageService {
       unavailableSince: string | null;
       diskSpace: DiskSpaceInfo | null;
     };
-    s3: { available: boolean; bucket: string; fileCount?: number };
+    s3: {
+      available: boolean;
+      bucket: string;
+      prefix: string;
+      fileCount?: number;
+      bucketStats: S3BucketStats | null;
+    };
     queue: { length: number; oldestOperation: Date | null };
     lastWrite: LastWriteInfo;
   }> {
@@ -382,7 +425,9 @@ class StorageService {
       s3: {
         available: this.s3Provider ? await this.s3Provider.isAvailable() : false,
         bucket: this.config.external.s3Bucket,
+        prefix: this.config.external.s3Prefix,
         fileCount: counts['s3'] || 0,
+        bucketStats: this.s3Provider ? await this.s3Provider.getBucketStats() : null,
       },
       queue: this.getQueueStatus(),
       lastWrite: {
@@ -417,8 +462,8 @@ class StorageService {
 
   /**
    * Write a file using the new username-based path structure
-   * Automatically creates symlinks in /all/ folders
-   * Queues operation if SSD is unavailable
+   * Respects primaryStorage/fallbackStorage configuration
+   * Queues operation if no storage is available
    */
   async writeWithUsername(
     username: string,
@@ -431,9 +476,11 @@ class StorageService {
 
     const relativePath = `people/${username}/${this.sourceToFolder(source)}/${filename}`;
 
-    // Check if SSD is available
-    if (!this.ssdProvider || !await this.ssdProvider.isAvailable()) {
-      // Queue the operation for later
+    // Get the write provider based on primary/fallback config
+    const writeProvider = await this.getWriteProvider();
+
+    if (!writeProvider) {
+      // No storage available - queue the operation for later
       const operationId = this.queueOperation({
         type: 'write',
         relativePath,
@@ -443,14 +490,14 @@ class StorageService {
         source,
       });
 
-      logger.warn(`[StorageService] SSD unavailable, queued write operation: ${operationId}`);
+      logger.warn(`[StorageService] No storage available, queued write operation: ${operationId}`);
 
       // Track failed write attempt
       this.lastWriteInfo = {
         destination: null,
         timestamp: new Date(),
         path: relativePath,
-        error: 'SSD unavailable - operation queued',
+        error: 'No storage available - operation queued',
       };
 
       return {
@@ -459,18 +506,26 @@ class StorageService {
         absolutePath: '',
         size: 0,
         sha256: '',
-        error: `SSD unavailable - operation queued (ID: ${operationId})`,
+        error: `No storage available - operation queued (ID: ${operationId})`,
         queued: true,
         queueId: operationId,
       } as StorageWriteResult & { queued?: boolean; queueId?: string };
     }
 
-    // Use SSD provider's username-based write
-    const result = await this.ssdProvider.writeWithUsername(username, source, filename, data, mimeType);
+    // Use the appropriate provider based on type
+    let result: StorageWriteResult & { userSymlink?: string; globalSymlink?: string };
+
+    if (writeProvider.type === 'ssd' && this.ssdProvider) {
+      // SSD provider has special username-based write with symlinks
+      result = await this.ssdProvider.writeWithUsername(username, source, filename, data, mimeType);
+    } else {
+      // For S3 and Docker, use standard write
+      result = await writeProvider.write(relativePath, data, mimeType);
+    }
 
     // Track successful/failed write
     this.lastWriteInfo = {
-      destination: result.success ? 'ssd' : null,
+      destination: result.success ? writeProvider.type : null,
       timestamp: new Date(),
       path: relativePath,
       error: result.success ? null : (result.error || 'Unknown error'),

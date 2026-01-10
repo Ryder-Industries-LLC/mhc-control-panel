@@ -5,14 +5,16 @@
  */
 
 export type StorageProviderType = 'docker' | 'ssd' | 's3';
-export type StorageGlobalMode = 'local' | 'remote';
+export type StorageGlobalMode = 'local' | 'remote'; // Legacy - kept for migration
 export type StorageLocalMode = 'auto' | 'ssd' | 'docker';
 
 /**
  * Storage configuration loaded from app_settings
  */
 export interface StorageConfig {
-  globalMode: StorageGlobalMode;
+  globalMode: StorageGlobalMode; // Legacy field
+  primaryStorage: StorageProviderType;
+  fallbackStorage: StorageProviderType | 'none';
   local: {
     mode: StorageLocalMode;
     ssdEnabled: boolean;
@@ -190,7 +192,9 @@ export function isSymlinkCapable(provider: StorageProvider): provider is Symlink
  * Default storage configuration
  */
 export const DEFAULT_STORAGE_CONFIG: StorageConfig = {
-  globalMode: 'local',
+  globalMode: 'local', // Legacy
+  primaryStorage: 'ssd',
+  fallbackStorage: 'docker',
   local: {
     mode: 'auto',
     ssdEnabled: true,

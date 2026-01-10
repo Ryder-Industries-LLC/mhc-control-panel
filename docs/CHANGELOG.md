@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.32.0] - 2026-01-10
+
+### Added
+
+- **S3 Bucket Statistics**: Live bucket stats displayed in Admin Storage section
+  - Object count and total size fetched from AWS S3 via ListObjectsV2
+  - New `getBucketStats()` method in S3Provider iterates through bucket objects
+  - S3 card now shows bucket name, prefix, object count, and total size
+  - Stats updated on each Storage section load
+
+### Fixed
+
+- **S3 Primary Storage Write Bug**: Fixed critical bug where images were always written to SSD regardless of primaryStorage setting
+  - `writeWithUsername()` was hardcoded to use SSD provider
+  - Now properly respects `primaryStorage` and `fallbackStorage` configuration
+  - Writes now correctly go to S3 when S3 is configured as primary
+
+### Changed
+
+- **Storage Cards Reordered**: Admin Storage section now shows cards in order: AWS S3 → Docker → SSD
+  - S3 card is now first to reflect its role as primary storage
+  - S3 card styled like SSD card with bucket/prefix info and space details
+- **Storage Service Architecture**: Unified write path logic
+  - `writeWithUsername()` now uses `getWriteProvider()` for consistent provider selection
+  - Provider type determines appropriate write method (SSD uses symlinks, S3/Docker use standard write)
+
+### Technical
+
+- Updated: `s3-provider.ts` - Added `S3BucketStats` interface and `getBucketStats()` method
+- Updated: `storage.service.ts` - Fixed `writeWithUsername()` to respect storage config, added S3 stats to status
+- Updated: `types.ts` - Extended S3 status type with `prefix` and `bucketStats`
+- Updated: `Admin.tsx` - Reordered storage cards, enhanced S3 card with bucket stats display
+
+---
+
 ## [1.31.0] - 2026-01-09
 
 ### Added

@@ -4,7 +4,7 @@
  * Stores files in AWS S3 bucket with pre-signed URL support for serving.
  */
 
-import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { BaseStorageProvider } from './base-provider.js';
 import { StorageProviderType, StorageWriteResult, StorageReadResult, StorageFileStats } from './types.js';
@@ -16,6 +16,12 @@ export interface S3ProviderConfig {
   prefix: string;
   accessKeyId?: string;
   secretAccessKey?: string;
+}
+
+export interface S3BucketStats {
+  objectCount: number;
+  totalSizeBytes: number;
+  lastUpdated: Date;
 }
 
 export class S3Provider extends BaseStorageProvider {
@@ -319,5 +325,50 @@ export class S3Provider extends BaseStorageProvider {
    */
   getPrefix(): string {
     return this.prefix;
+  }
+
+  /**
+   * Get bucket statistics (object count and total size)
+   * Uses ListObjectsV2 to iterate through all objects with the configured prefix
+   */
+  async getBucketStats(): Promise<S3BucketStats | null> {
+    if (!this.client) {
+      return null;
+    }
+
+    try {
+      let objectCount = 0;
+      let totalSizeBytes = 0;
+      let continuationToken: string | undefined;
+
+      do {
+        const command = new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: this.prefix,
+          ContinuationToken: continuationToken,
+          MaxKeys: 1000,
+        });
+
+        const response = await this.client.send(command);
+
+        if (response.Contents) {
+          objectCount += response.Contents.length;
+          for (const obj of response.Contents) {
+            totalSizeBytes += obj.Size || 0;
+          }
+        }
+
+        continuationToken = response.NextContinuationToken;
+      } while (continuationToken);
+
+      return {
+        objectCount,
+        totalSizeBytes,
+        lastUpdated: new Date(),
+      };
+    } catch (error) {
+      logger.error(`[S3Provider] Failed to get bucket stats: ${error}`);
+      return null;
+    }
   }
 }

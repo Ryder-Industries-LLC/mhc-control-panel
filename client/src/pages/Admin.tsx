@@ -292,8 +292,11 @@ const Admin: React.FC = () => {
   const [noteLineLimitSuccess, setNoteLineLimitSuccess] = useState<string | null>(null);
 
   // Storage settings state
+  type StorageProviderType = 'docker' | 'ssd' | 's3';
   interface StorageConfig {
-    globalMode: 'local' | 'remote';
+    globalMode: 'local' | 'remote'; // Legacy
+    primaryStorage: StorageProviderType;
+    fallbackStorage: StorageProviderType | 'none';
     local: {
       mode: 'auto' | 'ssd' | 'docker';
       ssdEnabled: boolean;
@@ -337,7 +340,13 @@ const Admin: React.FC = () => {
       unavailableSince: string | null;
       diskSpace: DiskSpaceInfo | null;
     };
-    s3: { available: boolean; bucket: string; fileCount: number };
+    s3: {
+      available: boolean;
+      bucket: string;
+      prefix: string;
+      fileCount: number;
+      bucketStats: { objectCount: number; totalSizeBytes: number; lastUpdated: string } | null;
+    };
     queue: { length: number; oldestOperation: string | null };
     lastWrite: LastWriteInfo;
   }
@@ -3231,6 +3240,59 @@ const Admin: React.FC = () => {
                   <div className="space-y-6">
                     {/* Status Display */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                      {/* AWS S3 Card - Primary */}
+                      <div className={`p-4 rounded-lg border ${
+                        storageStatus.currentWriteBackend === 's3'
+                          ? 'border-emerald-500/50 bg-emerald-500/15'
+                          : storageStatus.s3.available
+                            ? 'border-amber-500/30 bg-amber-500/5'
+                            : 'border-white/10 bg-white/5'
+                      }`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className={`w-2 h-2 rounded-full ${
+                            storageStatus.currentWriteBackend === 's3'
+                              ? 'bg-emerald-500'
+                              : storageStatus.s3.available
+                                ? 'bg-amber-500'
+                                : 'bg-gray-500'
+                          }`}></span>
+                          <span className="font-medium text-mhc-text">AWS S3</span>
+                          {storageStatus.currentWriteBackend === 's3' ? (
+                            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-medium">Primary</span>
+                          ) : storageStatus.s3.available && (
+                            <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded font-medium">Backup</span>
+                          )}
+                        </div>
+                        <div className="text-sm text-mhc-text-muted space-y-1">
+                          <div className="flex justify-between items-center">
+                            <span>{storageStatus.s3.bucketStats?.objectCount?.toLocaleString() || storageStatus.s3.fileCount.toLocaleString()} files</span>
+                            {storageStatus.s3.bucketStats && (
+                              <span className="text-xs">{formatBytes(storageStatus.s3.bucketStats.totalSizeBytes)}</span>
+                            )}
+                          </div>
+                          <div className="text-xs space-y-0.5 mt-4 pt-3 border-t border-white/5">
+                            <div className="truncate" title={storageStatus.s3.bucket}>
+                              <span className="text-mhc-text-muted/60">Bucket:</span> {storageStatus.s3.bucket || 'Not configured'}
+                            </div>
+                            <div className="truncate" title={storageStatus.s3.prefix}>
+                              <span className="text-mhc-text-muted/60">Prefix:</span> {storageStatus.s3.prefix || '/'}
+                            </div>
+                          </div>
+                          {/* S3 Space Info */}
+                          {storageStatus.s3.bucketStats && (
+                            <div className="mt-3 pt-3 border-t border-white/10">
+                              <div className="flex justify-between text-xs mb-1">
+                                <span>Used:</span>
+                                <span>{formatBytes(storageStatus.s3.bucketStats.totalSizeBytes)}</span>
+                              </div>
+                              <div className="text-xs text-mhc-text-muted/60">
+                                {storageStatus.s3.bucketStats.objectCount.toLocaleString()} objects in bucket
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {/* Docker Volume Card */}
                       <div className={`p-4 rounded-lg border ${
                         storageStatus.currentWriteBackend === 'docker'
                           ? 'border-emerald-500/50 bg-emerald-500/15'
@@ -3258,6 +3320,7 @@ const Admin: React.FC = () => {
                           <div className="text-xs truncate">{storageStatus.docker.path}</div>
                         </div>
                       </div>
+                      {/* SSD Mount Card */}
                       <div className={`p-4 rounded-lg border ${
                         storageStatus.currentWriteBackend === 'ssd'
                           ? 'border-emerald-500/50 bg-emerald-500/15'
@@ -3339,33 +3402,6 @@ const Admin: React.FC = () => {
                               )}
                             </div>
                           )}
-                        </div>
-                      </div>
-                      <div className={`p-4 rounded-lg border ${
-                        storageStatus.currentWriteBackend === 's3'
-                          ? 'border-emerald-500/50 bg-emerald-500/15'
-                          : storageStatus.s3.available
-                            ? 'border-amber-500/30 bg-amber-500/5'
-                            : 'border-white/10 bg-white/5'
-                      }`}>
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className={`w-2 h-2 rounded-full ${
-                            storageStatus.currentWriteBackend === 's3'
-                              ? 'bg-emerald-500'
-                              : storageStatus.s3.available
-                                ? 'bg-amber-500'
-                                : 'bg-gray-500'
-                          }`}></span>
-                          <span className="font-medium text-mhc-text">AWS S3</span>
-                          {storageStatus.currentWriteBackend === 's3' ? (
-                            <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded font-medium">Primary</span>
-                          ) : storageStatus.s3.available && (
-                            <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded font-medium">Backup</span>
-                          )}
-                        </div>
-                        <div className="text-sm text-mhc-text-muted">
-                          <div>{storageStatus.s3.fileCount.toLocaleString()} files</div>
-                          <div className="text-xs truncate">{storageStatus.s3.bucket || 'Not configured'}</div>
                         </div>
                       </div>
                     </div>
@@ -3459,39 +3495,58 @@ const Admin: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Global Mode */}
-                    <div>
-                      <label className="block text-mhc-text mb-2 font-medium">Global Mode</label>
-                      <p className="text-mhc-text-muted text-sm mb-2">
-                        Choose where new files are stored by default.
-                      </p>
-                      <div className="flex gap-4">
-                        <label className="flex items-center gap-2 text-mhc-text cursor-pointer">
-                          <input
-                            type="radio"
-                            name="globalMode"
-                            checked={storageConfig.globalMode === 'local'}
-                            onChange={() => setStorageConfig({...storageConfig, globalMode: 'local'})}
-                            className="text-mhc-primary"
-                          />
-                          Local (Docker/SSD)
-                        </label>
-                        <label className="flex items-center gap-2 text-mhc-text cursor-pointer">
-                          <input
-                            type="radio"
-                            name="globalMode"
-                            checked={storageConfig.globalMode === 'remote'}
-                            onChange={() => setStorageConfig({...storageConfig, globalMode: 'remote'})}
-                            className="text-mhc-primary"
-                          />
-                          Remote (S3)
-                        </label>
+                    {/* Storage Selection */}
+                    <CollapsibleSection title="Storage Selection" defaultCollapsed={true} className="border border-white/10 rounded-lg">
+                      <div className="space-y-4">
+                        <p className="text-mhc-text-muted text-sm">
+                          Choose primary and fallback storage providers. If primary is unavailable, system will use fallback. If both are unavailable, operations are queued.
+                        </p>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-mhc-text-muted text-xs mb-1">Primary Storage</label>
+                            <select
+                              value={storageConfig.primaryStorage}
+                              onChange={(e) => {
+                                const newPrimary = e.target.value as StorageProviderType;
+                                setStorageConfig({
+                                  ...storageConfig,
+                                  primaryStorage: newPrimary,
+                                  // If fallback would match primary, clear it
+                                  fallbackStorage: storageConfig.fallbackStorage === newPrimary ? 'none' : storageConfig.fallbackStorage
+                                });
+                              }}
+                              className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
+                            >
+                              <option value="docker">Docker</option>
+                              <option value="ssd">Local (SSD)</option>
+                              <option value="s3">Remote (S3)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-mhc-text-muted text-xs mb-1">Fallback Storage</label>
+                            <select
+                              value={storageConfig.fallbackStorage}
+                              onChange={(e) => setStorageConfig({
+                                ...storageConfig,
+                                fallbackStorage: e.target.value as StorageProviderType | 'none'
+                              })}
+                              className="w-full px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text focus:border-mhc-primary focus:outline-none text-sm"
+                            >
+                              <option value="none">None (Queue if unavailable)</option>
+                              {storageConfig.primaryStorage !== 'docker' && <option value="docker">Docker</option>}
+                              {storageConfig.primaryStorage !== 'ssd' && <option value="ssd">Local (SSD)</option>}
+                              {storageConfig.primaryStorage !== 's3' && <option value="s3">Remote (S3)</option>}
+                            </select>
+                          </div>
+                        </div>
+                        <div className="text-xs text-mhc-text-muted">
+                          <strong>Current:</strong> Primary = {storageConfig.primaryStorage === 's3' ? 'S3' : storageConfig.primaryStorage.toUpperCase()}, Fallback = {storageConfig.fallbackStorage === 'none' ? 'None' : storageConfig.fallbackStorage === 's3' ? 'S3' : storageConfig.fallbackStorage.toUpperCase()}
+                        </div>
                       </div>
-                    </div>
+                    </CollapsibleSection>
 
                     {/* External S3 Settings */}
-                    <div className="border border-white/10 rounded-lg p-4">
-                      <h4 className="text-mhc-text font-medium mb-4">External Storage (S3)</h4>
+                    <CollapsibleSection title="External Storage (S3)" defaultCollapsed={true} className="border border-white/10 rounded-lg">
                       <div className="space-y-4">
                         <label className="flex items-center gap-2 text-mhc-text text-sm cursor-pointer">
                           <input
@@ -3594,7 +3649,7 @@ const Admin: React.FC = () => {
                           </div>
                         )}
                       </div>
-                    </div>
+                    </CollapsibleSection>
 
                     <div className="pt-4 border-t border-white/10">
                       <button
@@ -3604,42 +3659,6 @@ const Admin: React.FC = () => {
                       >
                         {storageSaving ? 'Saving...' : 'Save Storage Settings'}
                       </button>
-                    </div>
-
-                    {/* Media Transfer Section */}
-                    <div className="border border-white/10 rounded-lg p-4 mt-6">
-                      <h4 className="text-mhc-text font-medium mb-4">Media Transfer</h4>
-                      <p className="text-mhc-text-muted text-sm mb-4">
-                        Transfer media files between storage providers. Files are safely copied, verified with SHA256, then deleted from source.
-                      </p>
-                      <div className="flex items-center gap-4">
-                        <button
-                          onClick={async () => {
-                            try {
-                              const response = await fetch('/api/job/media-transfer/run-now', { method: 'POST' });
-                              const data = await response.json();
-                              if (data.success) {
-                                setStorageSuccess(data.message || 'Transfer started');
-                                setTimeout(() => setStorageSuccess(null), 5000);
-                              } else {
-                                setStorageError(data.message || 'Transfer failed');
-                              }
-                            } catch (err) {
-                              setStorageError('Failed to start transfer');
-                            }
-                          }}
-                          className="px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors text-sm"
-                        >
-                          Run Transfer Now
-                        </button>
-                        <span className="text-mhc-text-muted text-sm">
-                          Transfers files from Docker to the configured destination (SSD or S3)
-                        </span>
-                      </div>
-                      <p className="text-xs text-mhc-text-muted mt-3">
-                        Note: For SSD storage on Docker Desktop for Mac, the SSD path must be added as a bind mount in docker-compose.yml.
-                        Due to Docker Desktop limitations, external volumes (/Volumes/*) cannot be mounted directly.
-                      </p>
                     </div>
                   </div>
                 ) : (
