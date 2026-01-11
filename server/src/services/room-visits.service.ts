@@ -22,7 +22,8 @@ export interface RoomVisitStats {
 export class RoomVisitsService {
   /**
    * Record a room visit for a user
-   * Includes deduplication: won't record if user visited within last 5 minutes
+   * Deduplication: Only one visit per person per broadcast session.
+   * If no session is active, falls back to 5-minute time window.
    */
   static async recordVisit(
     personId: string,
@@ -31,19 +32,32 @@ export class RoomVisitsService {
     isBroadcasting: boolean = true,
     sessionId?: string | null
   ): Promise<RoomVisit | null> {
-    // Check for recent visit (within 5 minutes) to deduplicate
-    const recentCheckSql = `
-      SELECT id FROM room_visits
-      WHERE person_id = $1
-        AND visited_at > ($2::timestamptz - INTERVAL '5 minutes')
-      LIMIT 1
-    `;
-
     try {
-      const recentResult = await query(recentCheckSql, [personId, visitedAt]);
-      if (recentResult.rows.length > 0) {
-        logger.debug('Skipping duplicate room visit', { personId, visitedAt });
-        return null;
+      // Deduplicate by session if we have a session ID
+      if (sessionId) {
+        const sessionCheckSql = `
+          SELECT id FROM room_visits
+          WHERE person_id = $1 AND session_id = $2
+          LIMIT 1
+        `;
+        const sessionResult = await query(sessionCheckSql, [personId, sessionId]);
+        if (sessionResult.rows.length > 0) {
+          logger.debug('Skipping duplicate room visit (same session)', { personId, sessionId });
+          return null;
+        }
+      } else {
+        // Fallback to time-based deduplication when not broadcasting
+        const recentCheckSql = `
+          SELECT id FROM room_visits
+          WHERE person_id = $1
+            AND visited_at > ($2::timestamptz - INTERVAL '5 minutes')
+          LIMIT 1
+        `;
+        const recentResult = await query(recentCheckSql, [personId, visitedAt]);
+        if (recentResult.rows.length > 0) {
+          logger.debug('Skipping duplicate room visit (within 5 min)', { personId, visitedAt });
+          return null;
+        }
       }
 
       // Insert the visit
@@ -269,5 +283,255 @@ export class RoomVisitsService {
       session_id: row.session_id,
       created_at: row.created_at,
     };
+  }
+
+  // ============================================
+  // MY VISITS - When broadcaster visits others
+  // ============================================
+
+  /**
+   * Record a visit to another user's room (my visit to them)
+   */
+  static async recordMyVisit(
+    personId: string,
+    visitedAt: Date = new Date(),
+    notes?: string
+  ): Promise<{ id: string; person_id: string; visited_at: Date; notes: string | null } | null> {
+    try {
+      // Insert the visit
+      const insertSql = `
+        INSERT INTO my_visits (person_id, visited_at, notes)
+        VALUES ($1, $2, $3)
+        RETURNING *
+      `;
+      const insertResult = await query(insertSql, [personId, visitedAt, notes || null]);
+
+      // Update the person's my_visit count
+      const updatePersonSql = `
+        UPDATE persons
+        SET my_visit_count = my_visit_count + 1,
+            last_my_visit_at = GREATEST(COALESCE(last_my_visit_at, $2), $2)
+        WHERE id = $1
+      `;
+      await query(updatePersonSql, [personId, visitedAt]);
+
+      logger.info('My visit recorded', { personId, visitedAt });
+      return {
+        id: insertResult.rows[0].id,
+        person_id: insertResult.rows[0].person_id,
+        visited_at: insertResult.rows[0].visited_at,
+        notes: insertResult.rows[0].notes,
+      };
+    } catch (error) {
+      logger.error('Error recording my visit', { error, personId });
+      throw error;
+    }
+  }
+
+  /**
+   * Get my visit stats for a person (how many times I visited them)
+   */
+  static async getMyVisitStats(personId: string): Promise<{
+    total_visits: number;
+    first_visit: Date | null;
+    last_visit: Date | null;
+  }> {
+    const sql = `
+      SELECT
+        COUNT(*) as total_visits,
+        MIN(visited_at) as first_visit,
+        MAX(visited_at) as last_visit
+      FROM my_visits
+      WHERE person_id = $1
+    `;
+
+    try {
+      const result = await query(sql, [personId]);
+      const row = result.rows[0];
+
+      return {
+        total_visits: parseInt(row.total_visits, 10),
+        first_visit: row.first_visit,
+        last_visit: row.last_visit,
+      };
+    } catch (error) {
+      logger.error('Error getting my visit stats', { error, personId });
+      throw error;
+    }
+  }
+
+  /**
+   * Get my visit history for a person
+   */
+  static async getMyVisitsByPersonId(
+    personId: string,
+    limit = 50,
+    offset = 0
+  ): Promise<{ visits: Array<{ id: string; visited_at: Date; notes: string | null }>; total: number }> {
+    const countSql = `SELECT COUNT(*) FROM my_visits WHERE person_id = $1`;
+    const visitsSql = `
+      SELECT id, visited_at, notes FROM my_visits
+      WHERE person_id = $1
+      ORDER BY visited_at DESC
+      LIMIT $2 OFFSET $3
+    `;
+
+    try {
+      const [countResult, visitsResult] = await Promise.all([
+        query(countSql, [personId]),
+        query(visitsSql, [personId, limit, offset]),
+      ]);
+
+      return {
+        visits: visitsResult.rows.map((row) => ({
+          id: row.id as string,
+          visited_at: row.visited_at as Date,
+          notes: row.notes as string | null,
+        })),
+        total: parseInt(countResult.rows[0].count, 10),
+      };
+    } catch (error) {
+      logger.error('Error getting my visits', { error, personId });
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a my visit record
+   */
+  static async deleteMyVisit(visitId: string): Promise<boolean> {
+    try {
+      // Get the visit to update person count
+      const visitResult = await query('SELECT person_id FROM my_visits WHERE id = $1', [visitId]);
+      if (visitResult.rows.length === 0) {
+        return false;
+      }
+
+      const personId = visitResult.rows[0].person_id;
+
+      // Delete the visit
+      await query('DELETE FROM my_visits WHERE id = $1', [visitId]);
+
+      // Decrement the person's visit count
+      await query(
+        'UPDATE persons SET my_visit_count = GREATEST(0, my_visit_count - 1) WHERE id = $1',
+        [personId]
+      );
+
+      logger.info('My visit deleted', { visitId, personId });
+      return true;
+    } catch (error) {
+      logger.error('Error deleting my visit', { error, visitId });
+      throw error;
+    }
+  }
+
+  /**
+   * Backfill my_visits from event_logs
+   * Counts one visit per broadcaster per day based on interactions in OTHER rooms
+   *
+   * Logic: A "my visit" occurs when raw_event.broadcaster != our username
+   * This means the event happened in someone else's room (we visited them)
+   *
+   * For PMs specifically:
+   * - If fromUser=us, toUser=other, broadcaster=other -> we're in their room
+   * - If fromUser=other, toUser=us, broadcaster=other -> we're in their room
+   *
+   * For chat messages:
+   * - If broadcaster != us -> we're chatting in their room
+   */
+  static async backfillMyVisitsFromEventLogs(broadcasterUsername: string): Promise<{
+    processed: number;
+    recorded: number;
+    skipped: number;
+  }> {
+    // Find all unique broadcaster rooms visited per day
+    // The raw_event->>'broadcaster' tells us WHICH ROOM the event occurred in
+    // If broadcaster != our username, we were visiting that broadcaster's room
+    const sql = `
+      SELECT
+        raw_event->>'broadcaster' as visited_broadcaster,
+        DATE(e.created_at) as visit_date,
+        MIN(e.created_at) as first_interaction
+      FROM event_logs e
+      WHERE raw_event->>'broadcaster' IS NOT NULL
+        AND raw_event->>'broadcaster' <> ''
+        AND LOWER(raw_event->>'broadcaster') <> LOWER($1)
+        AND e.method IN ('chatMessage', 'privateMessage', 'tip', 'userEnter')
+      GROUP BY raw_event->>'broadcaster', DATE(e.created_at)
+      ORDER BY visit_date, visited_broadcaster
+    `;
+
+    try {
+      const result = await query(sql, [broadcasterUsername.toLowerCase()]);
+      let processed = 0;
+      let recorded = 0;
+      let skipped = 0;
+
+      for (const row of result.rows) {
+        processed++;
+
+        // Skip if broadcaster is empty or null
+        if (!row.visited_broadcaster || row.visited_broadcaster.trim() === '') {
+          skipped++;
+          continue;
+        }
+
+        // Get or create the person for the visited broadcaster
+        let personResult = await query(
+          'SELECT id FROM persons WHERE LOWER(username) = LOWER($1)',
+          [row.visited_broadcaster]
+        );
+
+        if (personResult.rows.length === 0) {
+          // Create the person if they don't exist
+          const insertPerson = await query(
+            `INSERT INTO persons (username, platform, role)
+             VALUES ($1, 'chaturbate', 'MODEL')
+             ON CONFLICT (username, platform) DO UPDATE SET username = EXCLUDED.username
+             RETURNING id`,
+            [row.visited_broadcaster]
+          );
+          if (insertPerson.rows.length > 0) {
+            personResult = insertPerson;
+          } else {
+            // Try to fetch again in case of race condition
+            personResult = await query(
+              'SELECT id FROM persons WHERE LOWER(username) = LOWER($1)',
+              [row.visited_broadcaster]
+            );
+          }
+        }
+
+        const personId = personResult.rows[0]?.id;
+
+        if (!personId) {
+          skipped++;
+          continue;
+        }
+
+        // Check if we already have a visit for this person on this date
+        const existingVisit = await query(
+          `SELECT id FROM my_visits
+           WHERE person_id = $1 AND DATE(visited_at) = $2`,
+          [personId, row.visit_date]
+        );
+
+        if (existingVisit.rows.length > 0) {
+          skipped++;
+          continue;
+        }
+
+        // Record the visit
+        await this.recordMyVisit(personId, new Date(row.first_interaction));
+        recorded++;
+      }
+
+      logger.info('My visits backfill complete', { processed, recorded, skipped, broadcasterUsername });
+      return { processed, recorded, skipped };
+    } catch (error) {
+      logger.error('Error backfilling my visits', { error, broadcasterUsername });
+      throw error;
+    }
   }
 }

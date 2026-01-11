@@ -207,13 +207,20 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [profileNames, setProfileNames] = useState<ProfileNames | null>(null);
   const [profileNamesLoading, setProfileNamesLoading] = useState(false);
 
-  // Room visits state
+  // Room visits state (they visited me)
   const [roomVisitStats, setRoomVisitStats] = useState<{
     total_visits: number;
     first_visit: string | null;
     last_visit: string | null;
     visits_this_week: number;
     visits_this_month: number;
+  } | null>(null);
+
+  // My visits state (I visited them)
+  const [myVisitStats, setMyVisitStats] = useState<{
+    total_visits: number;
+    first_visit: string | null;
+    last_visit: string | null;
   } | null>(null);
 
   // Load image upload limits on mount
@@ -373,7 +380,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
       };
       fetchProfileNames();
 
-      // Fetch room visit stats
+      // Fetch room visit stats (they visited me)
       const fetchRoomVisitStats = async () => {
         try {
           const response = await fetch(`/api/profile/${profileData.person.username}/visits/stats`);
@@ -386,6 +393,20 @@ const Profile: React.FC<ProfilePageProps> = () => {
         }
       };
       fetchRoomVisitStats();
+
+      // Fetch my visit stats (I visited them)
+      const fetchMyVisitStats = async () => {
+        try {
+          const response = await fetch(`/api/profile/${profileData.person.username}/my-visits/stats`);
+          if (response.ok) {
+            const data = await response.json();
+            setMyVisitStats(data);
+          }
+        } catch (err) {
+          console.error('Error fetching my visit stats:', err);
+        }
+      };
+      fetchMyVisitStats();
     }
   }, [profileData?.person?.username]);
 
@@ -1375,7 +1396,12 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   )}
                   {roomVisitStats && roomVisitStats.total_visits > 0 && (
                     <span title={`Visited your room ${roomVisitStats.total_visits} times${roomVisitStats.last_visit ? `. Last visit: ${new Date(roomVisitStats.last_visit).toLocaleDateString()}` : ''}`}>
-                      👋 {roomVisitStats.total_visits.toLocaleString()} visits
+                      👋 {roomVisitStats.total_visits.toLocaleString()} visits from them
+                    </span>
+                  )}
+                  {myVisitStats && myVisitStats.total_visits > 0 && (
+                    <span title={`You visited their room ${myVisitStats.total_visits} times${myVisitStats.last_visit ? `. Last visit: ${new Date(myVisitStats.last_visit).toLocaleDateString()}` : ''}`}>
+                      🚀 {myVisitStats.total_visits.toLocaleString()} visits by you
                     </span>
                   )}
                 </div>

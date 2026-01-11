@@ -28,12 +28,14 @@ const EventLog: React.FC = () => {
     { value: 'follow', label: 'Follow' },
     { value: 'unfollow', label: 'Unfollow' },
     { value: 'fanclubJoin', label: 'Fanclub Join' },
+    { value: 'directMessage', label: 'Direct Message' },
     { value: 'privateMessage', label: 'Private Message' },
     { value: 'roomSubjectChange', label: 'Room Subject Change' },
     { value: 'broadcastStart', label: 'Broadcast Start' },
     { value: 'broadcastStop', label: 'Broadcast Stop' },
     { value: 'userEnter', label: 'User Enter' },
     { value: 'userLeave', label: 'User Leave' },
+    { value: 'chatMessage', label: 'Chat Message' },
   ];
 
   useEffect(() => {
@@ -71,8 +73,12 @@ const EventLog: React.FC = () => {
         return `${base} bg-purple-500/20 text-purple-400 border border-purple-500/30`;
       case 'fanclubJoin':
         return `${base} bg-pink-500/20 text-pink-400 border border-pink-500/30`;
+      case 'directMessage':
+        return `${base} bg-indigo-500/20 text-indigo-400 border border-indigo-500/30`;
       case 'privateMessage':
         return `${base} bg-blue-500/20 text-blue-400 border border-blue-500/30`;
+      case 'chatMessage':
+        return `${base} bg-teal-500/20 text-teal-400 border border-teal-500/30`;
       case 'broadcastStart':
       case 'broadcastStop':
         return `${base} bg-cyan-500/20 text-cyan-400 border border-cyan-500/30`;
@@ -172,7 +178,7 @@ const EventLog: React.FC = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-center">
           <div className="text-2xl font-bold text-mhc-primary">{events.length.toLocaleString()}</div>
           <div className="text-white/60 text-sm">Events Loaded</div>
@@ -190,10 +196,16 @@ const EventLog: React.FC = () => {
           <div className="text-white/60 text-sm">Follows</div>
         </div>
         <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-center">
+          <div className="text-2xl font-bold text-indigo-400">
+            {events.filter(e => e.method === 'directMessage').length.toLocaleString()}
+          </div>
+          <div className="text-white/60 text-sm">DMs</div>
+        </div>
+        <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-center">
           <div className="text-2xl font-bold text-blue-400">
             {events.filter(e => e.method === 'privateMessage').length.toLocaleString()}
           </div>
-          <div className="text-white/60 text-sm">Messages</div>
+          <div className="text-white/60 text-sm">PMs</div>
         </div>
       </div>
 
@@ -251,12 +263,33 @@ const EventLog: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Expanded raw JSON */}
+                {/* Expanded view with both raw and processed data */}
                 {(showRawJson || expandedEvent === event.id) && expandedEvent === event.id && (
-                  <div className="mt-4 p-4 bg-black/30 rounded-lg overflow-x-auto">
-                    <pre className="text-xs text-white/70 font-mono">
-                      {JSON.stringify(event.rawEvent, null, 2)}
-                    </pre>
+                  <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Our Processed Data */}
+                    <div className="p-4 bg-mhc-primary/10 border border-mhc-primary/30 rounded-lg overflow-x-auto">
+                      <div className="text-xs font-semibold text-mhc-primary mb-2 uppercase tracking-wide">
+                        Our Processed Data
+                      </div>
+                      <pre className="text-xs text-white/70 font-mono">
+{JSON.stringify({
+  id: event.id,
+  method: event.method,
+  broadcaster: event.broadcaster,
+  username: event.username,
+  timestamp: event.timestamp,
+}, null, 2)}
+                      </pre>
+                    </div>
+                    {/* Raw Chaturbate API Data */}
+                    <div className="p-4 bg-black/30 rounded-lg overflow-x-auto">
+                      <div className="text-xs font-semibold text-white/50 mb-2 uppercase tracking-wide">
+                        Raw Chaturbate API Data
+                      </div>
+                      <pre className="text-xs text-white/70 font-mono">
+                        {JSON.stringify(event.rawEvent, null, 2)}
+                      </pre>
+                    </div>
                   </div>
                 )}
               </div>

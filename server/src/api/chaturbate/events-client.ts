@@ -12,6 +12,8 @@ import { query } from '../../db/client.js';
 
 // Event type definitions based on CHATURBATE_EVENTS_API.md
 export interface ChaturbateEvent {
+  // Chaturbate's native event ID (e.g., "1768167770126-0") - undocumented but present
+  id?: string;
   method:
     | 'broadcastStart'
     | 'broadcastStop'
@@ -175,33 +177,39 @@ export class ChaturbateEventsClient {
    */
   private async logEvent(event: ChaturbateEvent) {
     try {
-      // Use top-level broadcaster from API, fall back to our username
-      const broadcaster = event.broadcaster || this.username;
-      const username = event.object.user?.username || broadcaster;
+      // Determine the actual method - privateMessage with empty broadcaster = directMessage
+      // Use string type since 'directMessage' is our classification, not from Chaturbate
+      let method: string = event.method;
+      if (event.method === 'privateMessage' && (!event.broadcaster || event.broadcaster === '')) {
+        method = 'directMessage';
+      }
+
+      // Always preserve the actual broadcaster value from the event
+      // Empty broadcaster means the event occurred outside of any room (e.g., DMs)
+      const broadcaster = event.broadcaster || '';
+      const username = event.object.user?.username || this.username;
+
+      // Extract Chaturbate's native event ID (undocumented but present in all events)
+      const cbEventId = event.id || null;
 
       logger.info('Logging event to database', {
-        method: event.method,
+        method,
+        rawMethod: event.method,
         broadcaster,
         username,
+        cbEventId,
       });
 
-      // Use INSERT with conflict detection to prevent duplicates
-      // Duplicates are same method + username within the same minute
-      // Store the COMPLETE raw event (including top-level fields like broadcaster)
+      // Insert event with deduplication via unique index on (method, username, second)
+      // ON CONFLICT DO NOTHING prevents duplicates from rapid-fire Events API retries
       await query(
-        `INSERT INTO event_logs (method, broadcaster, username, raw_event)
-         SELECT $1, $2, $3, $4
-         WHERE NOT EXISTS (
-           SELECT 1 FROM event_logs
-           WHERE method = $1
-             AND username = $3
-             AND created_at >= DATE_TRUNC('minute', NOW())
-             AND created_at < DATE_TRUNC('minute', NOW()) + INTERVAL '1 minute'
-         )`,
-        [event.method, broadcaster, username, JSON.stringify(event)]
+        `INSERT INTO event_logs (method, broadcaster, username, raw_event, cb_event_id)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (method, username, DATE_TRUNC('second', created_at)) DO NOTHING`,
+        [method, broadcaster, username, JSON.stringify(event), cbEventId]
       );
 
-      logger.info('Event logged successfully', { method: event.method });
+      logger.info('Event logged successfully', { method, cbEventId });
     } catch (error) {
       logger.error('Failed to log event', {
         error: error instanceof Error ? error.message : String(error),
@@ -313,7 +321,7 @@ export class ChaturbateEventsClient {
       streamSessionId: this.currentSessionId,
       metadata: {
         ...event.object.user,
-        broadcaster: this.username,
+        broadcaster: event.broadcaster || '',
       },
     }, 1); // 1 minute window for deduplication
   }
@@ -328,10 +336,16 @@ export class ChaturbateEventsClient {
 
     const person = await PersonService.findOrCreate({ username, role: 'VIEWER' });
 
+    // Determine if this is a Direct Message (DM) vs Private Message (PM)
+    // DM = empty broadcaster field (message sent outside of any broadcast room)
+    // PM = has broadcaster field (message sent while in someone's room)
+    const isDM = !event.broadcaster || event.broadcaster === '';
+    const messageType = isDM ? 'DIRECT_MESSAGE' : 'PRIVATE_MESSAGE';
+
     // Use deduplication to prevent duplicate messages from event retries
     await InteractionService.createIfNotDuplicate({
       personId: person.id,
-      type: 'PRIVATE_MESSAGE',
+      type: messageType,
       content: message,
       source: 'cb_events',
       streamSessionId: this.currentSessionId,
@@ -339,8 +353,9 @@ export class ChaturbateEventsClient {
         ...event.object.user,
         fromUser,
         toUser,
-        // Use broadcaster from event payload - indicates whose room PM occurred in
-        broadcaster: event.broadcaster || this.username,
+        // For DMs, broadcaster is empty; for PMs, it indicates whose room the PM occurred in
+        broadcaster: event.broadcaster || '',
+        isDM,
       },
     }, 1); // 1 minute window for deduplication
   }
@@ -365,7 +380,7 @@ export class ChaturbateEventsClient {
         tokens,
         isAnon: event.object.tip?.isAnon,
         ...event.object.user,
-        broadcaster: this.username,
+        broadcaster: event.broadcaster || '',
       },
     }, 1); // 1 minute window for deduplication
   }
@@ -385,7 +400,7 @@ export class ChaturbateEventsClient {
       streamSessionId: this.currentSessionId,
       metadata: {
         ...event.object.user,
-        broadcaster: this.username,
+        broadcaster: event.broadcaster || '',
       },
     }, 1); // 1 minute window for deduplication
 
@@ -441,7 +456,7 @@ export class ChaturbateEventsClient {
       streamSessionId: this.currentSessionId,
       metadata: {
         ...event.object.user,
-        broadcaster: this.username,
+        broadcaster: event.broadcaster || '',
       },
     }, 1); // 1 minute window for deduplication
 
@@ -495,7 +510,7 @@ export class ChaturbateEventsClient {
       streamSessionId: this.currentSessionId,
       metadata: {
         ...event.object.user,
-        broadcaster: this.username,
+        broadcaster: event.broadcaster || '',
       },
     }, 1); // 1 minute window for deduplication
 
@@ -537,7 +552,7 @@ export class ChaturbateEventsClient {
       streamSessionId: this.currentSessionId,
       metadata: {
         ...event.object.user,
-        broadcaster: this.username,
+        broadcaster: event.broadcaster || '',
       },
     }, 1); // 1 minute window for deduplication
 
@@ -564,7 +579,7 @@ export class ChaturbateEventsClient {
       streamSessionId: this.currentSessionId,
       metadata: {
         ...event.object.user,
-        broadcaster: this.username,
+        broadcaster: event.broadcaster || '',
       },
     }, 1); // 1 minute window for deduplication
   }
@@ -584,7 +599,7 @@ export class ChaturbateEventsClient {
       streamSessionId: this.currentSessionId,
       metadata: {
         ...event.object,
-        broadcaster: this.username,
+        broadcaster: event.broadcaster || '',
       },
     }, 1); // 1 minute window for deduplication
   }

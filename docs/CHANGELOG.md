@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.33.2] - 2026-01-11
+
+### Added
+
+- **My Visits Tracking**: Track when YOU visit other users' rooms (two-way visit tracking)
+  - New `my_visits` table with person reference, timestamp, and notes
+  - New `my_visit_count` and `last_my_visit_at` columns on persons table
+  - Backfill from event_logs using `raw_event->>'broadcaster'` field
+  - Migration: `078_create_my_visits.sql`
+
+- **Event Traceability**: Full traceability from processed data back to raw Chaturbate events
+  - New `cb_event_id` column stores Chaturbate's native event ID (e.g., "1768167770126-0")
+  - New `event_log_id` column on interactions table links to source event
+  - Migration: `079_event_traceability.sql`
+
+- **Direct Message (DM) Classification**: Proper classification of messages sent outside broadcast rooms
+  - New `DIRECT_MESSAGE` interaction type (distinct from `PRIVATE_MESSAGE`)
+  - DMs identified by empty `broadcaster` field in Chaturbate Events API
+  - Event Log page shows DM filter option with indigo badge
+  - Stats panel shows separate DM and PM counts
+
+- **Event Log Enhancements**:
+  - Dual data view: shows both "Our Processed Data" and "Raw Chaturbate API Data" side-by-side
+  - `chatMessage` filter option added
+
+### Fixed
+
+- **Event Logging Broken Since Jan 3**: Fixed PostgreSQL "inconsistent types" error in `logEvent()`
+  - Added explicit type casts (`::varchar`, `::jsonb`) to INSERT statement
+  - Events now properly logged to `event_logs` table
+
+- **Duplicate Events**: Fixed race condition causing duplicate event entries
+  - Created unique index `idx_event_logs_dedup` on `(method, username, DATE_TRUNC('second', created_at))`
+  - Changed INSERT to use `ON CONFLICT DO NOTHING`
+
+- **Broadcaster Field Assumptions**: Never assume/fill broadcaster when empty
+  - Empty broadcaster preserved as empty (indicates event outside any room)
+  - Updated all event handlers to use `event.broadcaster || ''` instead of `this.username`
+  - Fixed 82 event_logs and 76 interactions with incorrect broadcaster values
+
+- **Visit Deduplication**: Changed from 5-minute window to per-broadcast-session deduplication
+  - Room visits now deduplicated by session_id instead of time threshold
+
+### Changed
+
+- **Interactions Type Constraint**: Updated to include `DIRECT_MESSAGE` type
+- **Event Log Raw Data**: Now stores complete Chaturbate event including undocumented `id` field
+
+### Technical
+
+- Updated: `server/src/api/chaturbate/events-client.ts` - DM classification, cb_event_id extraction, broadcaster preservation
+- Updated: `server/src/services/room-visits.service.ts` - Session-based deduplication, my_visits methods, backfill logic
+- Updated: `server/src/types/models.ts` - Added `DIRECT_MESSAGE` to InteractionType
+- Updated: `client/src/pages/EventLog.tsx` - DM support, dual data view, chatMessage filter
+- Updated: `client/src/pages/Profile.tsx` - My visits display
+- Updated: `server/src/routes/profile.ts` - My visits API endpoints
+
+---
+
 ## [1.33.1] - 2026-01-11
 
 ### Changed

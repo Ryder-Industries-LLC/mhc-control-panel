@@ -15,6 +15,8 @@ export interface Person {
   is_excluded: boolean;
   room_visit_count: number;
   last_room_visit_at: Date | null;
+  my_visit_count: number;
+  last_my_visit_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -44,6 +46,7 @@ export interface Snapshot {
 export type InteractionType =
   | 'CHAT_MESSAGE'
   | 'PRIVATE_MESSAGE'
+  | 'DIRECT_MESSAGE'  // PM with empty broadcaster = sent outside of any room
   | 'TIP_EVENT'
   | 'PROFILE_PASTE'
   | 'CHAT_IMPORT'

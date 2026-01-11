@@ -1,129 +1,162 @@
-# Session Summary - v1.33.1
+# Session Summary - v1.33.2
 
 **Date**: 2026-01-11
 
 ## What Was Accomplished
 
-### Profile UI Polish (v1.33.1)
+### Visit Tracking Improvements
 
-- **Add Note Button**: Changed from light text link to styled button with `bg-mhc-primary` background
-- **Profile Overview**: Removed dividing lines between attributes, rating, and Add Note sections
-- **Profile Details Placement**: Moved section to appear directly after profile overview card (removed duplicate from snapshot tab)
+#### Session-Based Visit Deduplication
+Changed room visit deduplication from 5-minute time window to per-broadcast-session:
+- Visits now deduplicated by `session_id` instead of time threshold
+- More accurate visit counting per actual broadcast session
 
-### Profile Scraper Enhancements
+#### Two-Way Visit Tracking ("My Visits")
+Added tracking for when YOU visit other users' rooms:
+- New `my_visits` table with person reference, timestamp, and notes
+- New `my_visit_count` and `last_my_visit_at` columns on persons table
+- Backfill from `event_logs` using `raw_event->>'broadcaster'` field
+- When broadcaster in event is NOT your username, you were visiting their room
+- Migration: `078_create_my_visits.sql`
+- Backfilled 167 records from 144 unique users
 
-#### Photoset Image Fix
+### Event Traceability & DM Classification
 
-Fixed duplicate image issue where only the first image of each photoset was being captured.
+#### Chaturbate Event ID Tracking
+Discovered Chaturbate sends an undocumented `id` field in all events:
+- Format: `"1768167770126-0"` (timestamp in ms + sequence number)
+- New `cb_event_id` column in `event_logs` stores this value
+- Useful for debugging and Chaturbate support
 
-- **Problem**: Scraper was looking for thumbnail navigation elements that don't exist
-- **Solution**: Changed to arrow-based navigation using `data-testid="right-arrow"`
-- **Result**: Now captures all images in photosets (e.g., 30 images across 5 photosets instead of just 5)
+#### Event-to-Interaction Linkage
+Added `event_log_id` column to `interactions` table:
+- Links processed interactions back to raw event source
+- Enables full traceability of data origin
 
-#### New Profile Fields
+#### Direct Message Classification
+Proper classification of messages sent outside broadcast rooms:
+- **DM (Direct Message)**: Empty `broadcaster` field - sent outside any room
+- **PM (Private Message)**: Has `broadcaster` field - sent while in someone's room
+- New `DIRECT_MESSAGE` interaction type
+- Event Log page shows DM filter with indigo badge
+- Reclassified 393 historical interactions and 82 event_logs
 
-Added scraping for additional Chaturbate bio tab fields:
-- Birthday (`bio-tab-birth-date-value`)
-- Interested In (`bio-tab-interested-in-value`)
-- Body Type (`bio-tab-body-type-value`)
-- Body Decorations (`bio-tab-body-decorations-value`)
-- Smoke/Drink (`bio-tab-smoke-drink-value`)
+### Bug Fixes
 
-#### Display Name Fix
+#### Event Logging Broken Since Jan 3
+Fixed PostgreSQL error preventing events from being logged:
+- **Error**: "inconsistent types deduced for parameter $1"
+- **Cause**: Complex INSERT...SELECT...WHERE NOT EXISTS with mixed parameter usage
+- **Fix**: Simplified to INSERT...VALUES with explicit type casts and ON CONFLICT DO NOTHING
 
-Fixed Real Name extraction - now uses correct `bio-tab-real-name-value` data-testid instead of `.bio-title` class.
+#### Duplicate Events
+Fixed race condition causing duplicate event entries:
+- Created unique index on `(method, username, DATE_TRUNC('second', created_at))`
+- Changed INSERT to use `ON CONFLICT DO NOTHING`
+- Deleted 6 existing duplicates
 
-#### Social Media Link Fixes
+#### Broadcaster Field Never Assumed
+Fixed bad assumption where empty broadcaster was filled with owner username:
+- Empty broadcaster means event occurred outside any room (e.g., DMs)
+- Updated all event handlers to preserve actual value: `event.broadcaster || ''`
+- Fixed 82 event_logs and 76 interactions with incorrectly filled broadcaster
 
-- Properly decode URLs from `/external_link/?url=...` format
-- Filter out Chaturbate's own accounts (cbupdatenews, chaturbate.com links)
-- Remove trailing slashes from URLs
-- Cleared 18,839 profiles with bad social_links data
+### Event Log UI Enhancements
 
-### Source URL Tracking
+#### Dual Data View
+Expanded event view now shows side-by-side comparison:
+- **Our Processed Data**: id, method, broadcaster, username, timestamp (from our columns)
+- **Raw Chaturbate API Data**: Complete original event from Chaturbate
 
-Added `source_url` column to `profile_images` table for deduplication:
-- New migration `077_add_source_url_column.sql`
-- `hasSourceUrl()` method checks if image already downloaded
-- Prevents duplicate downloads when rescraping profiles
-
-### Profile Details UI Redesign
-
-Complete overhaul of the Profile Details section:
-- 2-column card layout with themed sections (Basic Info, Location, Physical, Status)
-- "Last refresh: X ago" indicator in section header
-- Bio displayed in full-width card
-
-### Modal System
-
-- Created reusable `Modal.tsx` component
-- Converted "Add Note" from collapsible section to popup modal (trigger under Rating)
-- Converted "Upload Media" from nested section to popup modal (trigger in Media header)
-
-### Database Fixes
-
-- `birthday_public`: Changed from `varchar(10)` to `TEXT` (dates like "Nov. 29, 1997")
-- `spoken_languages`: Fixed array format (was passing string instead of array)
-- `rid`/`did`: Changed from `integer` to `bigint` (Chaturbate IDs exceeded int32 max)
+#### Filter Improvements
+- Added `directMessage` filter option
+- Added `chatMessage` filter option
+- Stats panel shows separate DM and PM counts (5-column grid)
 
 ## Files Modified
 
 ### Server
 
-- `server/src/services/chaturbate-scraper.service.ts`
-  - New bio field extraction with data-testid selectors
-  - Arrow-based photoset navigation
-  - Social link URL decoding and filtering
-  - Added bodyDecorations, smokeDrink, birthdayPublic to ScrapedProfileData interface
+- `server/src/api/chaturbate/events-client.ts`
+  - Added `id` field to ChaturbateEvent interface
+  - DM classification in `logEvent()` and `handlePrivateMessage()`
+  - Extracts and stores `cb_event_id`
+  - All handlers use `event.broadcaster || ''` instead of `this.username`
 
-- `server/src/services/profile.service.ts`
-  - Added birthday_public, smoke_drink, body_decorations to mergeScrapedProfile SQL
-  - Fixed spoken_languages to pass array instead of joined string
-  - Added updateProfileSmoke call for smoke_drink auto-population
+- `server/src/services/room-visits.service.ts`
+  - Session-based deduplication in `recordVisit()`
+  - New methods: `recordMyVisit()`, `getMyVisitStats()`, `getMyVisitsByPersonId()`, `deleteMyVisit()`
+  - `backfillMyVisitsFromEventLogs()` using raw_event broadcaster field
 
-- `server/src/services/profile-images.service.ts`
-  - Added source_url to ProfileImage interface
-  - Added sourceUrl to CreateProfileImageInput
-  - New hasSourceUrl() method for duplicate checking
+- `server/src/types/models.ts`
+  - Added `DIRECT_MESSAGE` to InteractionType
+  - Added `my_visit_count` and `last_my_visit_at` to Person interface
 
-- `server/src/db/migrations/077_add_source_url_column.sql`
-  - New migration adding source_url column with index
+- `server/src/routes/profile.ts`
+  - New endpoints: GET/POST/DELETE for my-visits
+
+- `server/src/db/migrations/078_create_my_visits.sql` (NEW)
+- `server/src/db/migrations/079_event_traceability.sql` (NEW)
 
 ### Client
 
-- `client/src/components/Modal.tsx` (NEW)
-  - Reusable modal component with Escape key handling
-  - Backdrop click to close
-  - Size variants (sm, md, lg)
+- `client/src/pages/EventLog.tsx`
+  - Added `directMessage` and `chatMessage` filter options
+  - Indigo badge for DMs, teal for chat messages
+  - Dual data view in expanded events
+  - 5-column stats grid with separate DM/PM counts
 
 - `client/src/pages/Profile.tsx`
-  - Redesigned Profile Details section with 2-column cards
-  - Added formatDate import for relative time display
-  - Added showAddNoteModal and showUploadMediaModal state
-  - Add Note modal with trigger under Rating
-  - Upload Media modal with trigger in Media section header
+  - My visits display integration
 
-## Database Changes (Runtime)
+## Database Changes
 
+### New Tables
 ```sql
--- Fix birthday column size
-ALTER TABLE profiles ALTER COLUMN birthday_public TYPE TEXT;
-
--- Fix rid/did integer overflow
-ALTER TABLE persons ALTER COLUMN rid TYPE bigint;
-ALTER TABLE persons ALTER COLUMN did TYPE bigint;
-
--- Clear bad social_links and queue for rescrape
-UPDATE profiles SET social_links = '[]'::jsonb
-WHERE social_links::text LIKE '%external_link%'
-   OR social_links::text LIKE '%cbupdatenews%';
-
-UPDATE profiles SET browser_scraped_at = NULL
-WHERE social_links = '[]'::jsonb;
+-- my_visits table
+CREATE TABLE my_visits (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    person_id UUID NOT NULL REFERENCES persons(id),
+    visited_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 ```
+
+### Schema Changes
+```sql
+-- persons table
+ALTER TABLE persons ADD COLUMN my_visit_count INTEGER DEFAULT 0;
+ALTER TABLE persons ADD COLUMN last_my_visit_at TIMESTAMPTZ;
+
+-- event_logs table
+ALTER TABLE event_logs ADD COLUMN cb_event_id VARCHAR(50);
+
+-- interactions table
+ALTER TABLE interactions ADD COLUMN event_log_id UUID REFERENCES event_logs(id);
+
+-- Updated check constraint
+ALTER TABLE interactions ADD CONSTRAINT interactions_type_check CHECK (
+  type IN ('CHAT_MESSAGE', 'PRIVATE_MESSAGE', 'DIRECT_MESSAGE', ...)
+);
+```
+
+### Data Fixes
+- Backfilled `cb_event_id` for 22 existing event_logs
+- Reclassified 82 privateMessage → directMessage in event_logs
+- Reclassified 393 PRIVATE_MESSAGE → DIRECT_MESSAGE in interactions
+- Fixed 76 interactions with incorrectly assumed broadcaster
+
+## Key Learnings
+
+1. **Chaturbate's `broadcaster` field semantics**: Indicates which room an event occurred in, NOT who the broadcaster is. Empty = outside any room (DMs).
+
+2. **Undocumented API fields**: Chaturbate sends an `id` field not mentioned in their spec - useful for traceability.
+
+3. **Never assume data**: Don't fill in empty fields with assumptions - preserve actual values.
 
 ## Next Steps
 
-- Monitor scraper logs for any new issues
-- Verify new profile fields are being populated correctly
-- Consider adding ethnicity, hair color, eye color, height, weight fields if available in bio tab
+- Monitor new event classification accuracy
+- Consider adding UI to manage my_visits manually
+- Investigate linking interactions to event_logs retroactively

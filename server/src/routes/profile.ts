@@ -2036,6 +2036,108 @@ router.post('/:username/visits', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/profile/:username/my-visits/stats
+ * Get stats for how many times I visited this user's room
+ */
+router.get('/:username/my-visits/stats', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const stats = await RoomVisitsService.getMyVisitStats(person.id);
+
+    res.json({
+      ...stats,
+      my_visit_count: person.my_visit_count || 0,
+      last_my_visit_at: person.last_my_visit_at,
+    });
+  } catch (error) {
+    logger.error('Error getting my visit stats', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/:username/my-visits
+ * Record a visit to this user's room (I visited them)
+ */
+router.post('/:username/my-visits', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { visited_at, notes } = req.body;
+
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const visitDate = visited_at ? new Date(visited_at) : new Date();
+    if (isNaN(visitDate.getTime())) {
+      return res.status(400).json({ error: 'Invalid date format' });
+    }
+
+    const visit = await RoomVisitsService.recordMyVisit(person.id, visitDate, notes);
+
+    res.status(201).json(visit);
+  } catch (error) {
+    logger.error('Error recording my visit', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/profile/:username/my-visits
+ * Get my visit history for this user
+ */
+router.get('/:username/my-visits', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { limit = '50', offset = '0' } = req.query;
+
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const result = await RoomVisitsService.getMyVisitsByPersonId(
+      person.id,
+      parseInt(limit as string, 10),
+      parseInt(offset as string, 10)
+    );
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error getting my visits', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/profile/:username/my-visits/:visitId
+ * Delete a my visit record
+ */
+router.delete('/:username/my-visits/:visitId', async (req: Request, res: Response) => {
+  try {
+    const { visitId } = req.params;
+
+    const deleted = await RoomVisitsService.deleteMyVisit(visitId);
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Visit not found' });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error deleting my visit', { error, visitId: req.params.visitId });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
  * GET /api/profile/visits/recent
  * Get recent visitors across all users
  */
@@ -2094,6 +2196,32 @@ router.post('/visits/backfill', async (req: Request, res: Response) => {
     });
   } catch (error) {
     logger.error('Error backfilling room visits', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/my-visits/backfill
+ * Backfill my visits (visits to other rooms) from event_logs
+ * Uses interactions in other broadcasters' rooms to track visits
+ */
+router.post('/my-visits/backfill', async (req: Request, res: Response) => {
+  try {
+    const broadcasterUsername = process.env.CHATURBATE_USERNAME;
+    if (!broadcasterUsername) {
+      return res.status(500).json({ error: 'CHATURBATE_USERNAME not configured' });
+    }
+
+    const result = await RoomVisitsService.backfillMyVisitsFromEventLogs(broadcasterUsername);
+
+    res.json({
+      message: 'My visits backfill complete',
+      processed: result.processed,
+      recorded: result.recorded,
+      skipped: result.skipped,
+    });
+  } catch (error) {
+    logger.error('Error backfilling my visits', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
