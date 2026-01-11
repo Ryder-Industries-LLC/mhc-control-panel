@@ -16,6 +16,102 @@ import FollowHistory from './pages/FollowHistory';
 import EventLog from './pages/EventLog';
 import GlobalLookup from './components/GlobalLookup';
 
+// Auth pages
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import Verify2FA from './pages/Verify2FA';
+import Unauthorized from './pages/Unauthorized';
+
+// Auth
+import { useAuth } from './context/AuthContext';
+
+// User menu component for auth state
+function UserMenu() {
+  const { isAuthenticated, isLoading, user, logout } = useAuth();
+  const [showDropdown, setShowDropdown] = React.useState(false);
+
+  if (isLoading) {
+    return (
+      <div className="text-sm text-mhc-text-muted">Loading...</div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <Link
+        to="/login"
+        className="text-sm font-medium px-3 py-1.5 rounded-md bg-mhc-primary text-white hover:bg-mhc-primary/80 transition-colors"
+      >
+        Sign In
+      </Link>
+    );
+  }
+
+  const handleLogout = async () => {
+    await logout();
+    setShowDropdown(false);
+  };
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setShowDropdown(!showDropdown)}
+        className="flex items-center gap-2 text-sm font-medium px-2 py-1 rounded-md hover:bg-mhc-surface-light transition-colors"
+      >
+        {user?.avatarUrl ? (
+          <img
+            src={user.avatarUrl}
+            alt={user.displayName || 'User'}
+            className="w-6 h-6 rounded-full object-cover"
+          />
+        ) : (
+          <div className="w-6 h-6 rounded-full bg-mhc-primary/20 flex items-center justify-center text-mhc-primary text-xs font-bold">
+            {(user?.displayName || user?.email || 'U')[0].toUpperCase()}
+          </div>
+        )}
+        <span className="text-mhc-text hidden sm:inline">
+          {user?.displayName || user?.email || 'User'}
+        </span>
+        <svg
+          className={`w-4 h-4 text-mhc-text-muted transition-transform ${showDropdown ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {showDropdown && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setShowDropdown(false)}
+          />
+          <div className="absolute right-0 mt-2 w-48 bg-mhc-surface border border-mhc-border rounded-lg shadow-lg z-50">
+            <div className="px-4 py-3 border-b border-mhc-border">
+              <p className="text-sm font-medium text-mhc-text truncate">
+                {user?.displayName || 'User'}
+              </p>
+              <p className="text-xs text-mhc-text-muted truncate">
+                {user?.email || ''}
+              </p>
+            </div>
+            <div className="py-1">
+              <button
+                onClick={handleLogout}
+                className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-mhc-surface-light transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // Navigation link component with active state
 function NavLink({ to, children }: { to: string; children: React.ReactNode }) {
   const location = useLocation();
@@ -69,6 +165,7 @@ function AppContent() {
                 <NavLink to="/event-log">Event Log</NavLink>
                 <NavLink to="/admin">Admin</NavLink>
               </div>
+              <UserMenu />
             </div>
 
             {/* Row 2: Search and contextual actions */}
@@ -84,6 +181,12 @@ function AppContent() {
 
       <main className="flex-1 p-5">
         <Routes>
+          {/* Auth routes */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/verify-2fa" element={<Verify2FA />} />
+          <Route path="/unauthorized" element={<Unauthorized />} />
+
           {/* Default landing page is now Directory/People */}
           <Route path="/" element={<Users />} />
 

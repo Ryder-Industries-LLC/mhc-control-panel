@@ -54,6 +54,9 @@ export interface ScrapedProfileData {
   gender: string | null;
   interestedIn: string | null;
   bodyType: string | null;
+  bodyDecorations: string | null;
+  smokeDrink: string | null;
+  birthdayPublic: string | null;
   ethnicity: string | null;
   hairColor: string | null;
   eyeColor: string | null;
@@ -665,6 +668,9 @@ export class ChaturbateScraperService {
           gender: null,
           interestedIn: null,
           bodyType: null,
+          bodyDecorations: null,
+          smokeDrink: null,
+          birthdayPublic: null,
           ethnicity: null,
           hairColor: null,
           eyeColor: null,
@@ -699,36 +705,41 @@ export class ChaturbateScraperService {
           }
         }
 
-        // Extract display name
-        const displayNameEl = document.querySelector('.username, .broadcaster-name, h1');
-        if (displayNameEl) {
-          data.displayName = displayNameEl.textContent?.trim() || null;
+        // Extract profile details from bio tab using data-testid attributes
+        // Real Name (this is what displays as "Display Name" in Profile Details)
+        data.displayName = getText('[data-testid="bio-tab-real-name-value"]');
+
+        // Location
+        data.location = getText('[data-testid="bio-tab-location-value"]');
+
+        // Age
+        const ageText = getText('[data-testid="bio-tab-age-value"]');
+        if (ageText) {
+          data.age = parseInt(ageText, 10) || null;
         }
 
-        // Extract profile details from details section
-        const detailsSection = document.querySelector('.details, #profile-details, .profile_section');
-        if (detailsSection) {
-          const detailItems = detailsSection.querySelectorAll('tr, .detail-row, .info-row');
-          detailItems.forEach((item: any) => {
-            const labelEl = item.querySelector('th, .label, td:first-child');
-            const valueEl = item.querySelector('td:last-child, .value');
-            const label = labelEl?.textContent?.trim().toLowerCase() || '';
-            const value = valueEl?.textContent?.trim() || '';
+        // Gender (I Am field)
+        data.gender = getText('[data-testid="bio-tab-i-am-value"]');
 
-            if (label.includes('location')) data.location = value;
-            if (label.includes('age')) data.age = parseInt(value, 10) || null;
-            if (label.includes('gender') || label.includes('sex')) data.gender = value;
-            if (label.includes('interested')) data.interestedIn = value;
-            if (label.includes('body')) data.bodyType = value;
-            if (label.includes('ethnicity')) data.ethnicity = value;
-            if (label.includes('hair')) data.hairColor = value;
-            if (label.includes('eye')) data.eyeColor = value;
-            if (label.includes('height')) data.height = value;
-            if (label.includes('weight')) data.weight = value;
-            if (label.includes('language')) {
-              data.languages = value.split(',').map((l: string) => l.trim()).filter(Boolean);
-            }
-          });
+        // Interested In
+        data.interestedIn = getText('[data-testid="bio-tab-interested-in-value"]');
+
+        // Body Type
+        data.bodyType = getText('[data-testid="bio-tab-body-type-value"]');
+
+        // Body Decorations
+        data.bodyDecorations = getText('[data-testid="bio-tab-body-decorations-value"]');
+
+        // Smoke/Drink
+        data.smokeDrink = getText('[data-testid="bio-tab-smoke-drink-value"]');
+
+        // Birthday (public)
+        data.birthdayPublic = getText('[data-testid="bio-tab-birth-date-value"]');
+
+        // Languages
+        const languagesText = getText('[data-testid="bio-tab-language-value"]');
+        if (languagesText) {
+          data.languages = languagesText.split(',').map((l: string) => l.trim()).filter(Boolean);
         }
 
         // Extract tags from room
@@ -822,13 +833,17 @@ export class ChaturbateScraperService {
 
           const urlLower = actualUrl.toLowerCase();
 
-          // Filter out Chaturbate's own Twitter accounts
+          // Filter out Chaturbate's own accounts and internal links
           if (urlLower.includes('twitter.com/cbupdatenews') ||
               urlLower.includes('twitter.com/chaturbate') ||
               urlLower.includes('x.com/cbupdatenews') ||
-              urlLower.includes('x.com/chaturbate')) {
-            return; // Skip Chaturbate's own social accounts
+              urlLower.includes('x.com/chaturbate') ||
+              urlLower.includes('chaturbate.com/')) {
+            return; // Skip Chaturbate's own accounts and internal links
           }
+
+          // Remove trailing slashes from URLs
+          actualUrl = actualUrl.replace(/\/+$/, '');
 
           for (const pattern of socialPatterns) {
             if (urlLower.includes(pattern)) {
@@ -1080,65 +1095,16 @@ export class ChaturbateScraperService {
       profileData.scrapedAt = new Date();
       profileData.detectedFollowStatus = detectedFollowStatus;
 
-      // Download photos (skip locked ones, mark backgrounds)
-      const downloadedPhotos: ScrapedProfileData['photos'] = [];
-
-      for (const photo of profileData.photos) {
-        if (photo.isLocked) {
-          downloadedPhotos.push({ ...photo, localPath: null });
-          continue;
-        }
-
-        try {
-          // Download image using axios
-          const response = await axios.get(photo.url, {
-            responseType: 'arraybuffer',
-            timeout: 30000,
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-            },
-          });
-
-          // Skip placeholder images
-          if (Math.abs(response.data.length - 5045) <= 100) {
-            downloadedPhotos.push({ ...photo, localPath: null });
-            continue;
-          }
-
-          // Generate unique filename
-          const timestamp = Date.now();
-          const hash = crypto.createHash('md5').update(photo.url).digest('hex').substring(0, 8);
-          const filename = `${timestamp}_${hash}.jpg`;
-          const mimeType = response.headers['content-type'] || 'image/jpeg';
-
-          // Save using new storage service with username-based path
-          const result = await storageService.writeWithUsername(
-            username,
-            'profile',
-            filename,
-            Buffer.from(response.data),
-            mimeType
-          );
-
-          const localPath = result.success ? result.relativePath : null;
-
-          downloadedPhotos.push({
-            ...photo,
-            localPath,
-          });
-
-          logger.debug(`Downloaded photo for ${username}`, {
-            url: photo.url,
-            localPath,
-            isBackground: photo.isBackground
-          });
-        } catch (error) {
-          logger.error(`Failed to download photo for ${username}`, { error, url: photo.url });
-          downloadedPhotos.push({ ...photo, localPath: null });
-        }
-      }
-
-      profileData.photos = downloadedPhotos;
+      // NOTE: We no longer download profile page photos here.
+      // The profile page shows thumbnails of photoset images, which are downloaded
+      // in full size from the photoset detail pages below (with proper database tracking).
+      // Downloading here would create duplicates - same images saved twice to S3.
+      // The profileData.photos array keeps URLs for reference in the profiles.photos JSON column.
+      // Set localPath to null since we're not downloading here.
+      profileData.photos = profileData.photos.map(photo => ({
+        ...photo,
+        localPath: null,
+      }));
 
       // Scrape photosets and download media
       const profileMedia: ProfileMediaItem[] = [];
@@ -1203,76 +1169,169 @@ export class ChaturbateScraperService {
             await new Promise(resolve => setTimeout(resolve, photoset.isVideo ? 3000 : 2000));
 
             // Extract media from detail page
-            const mediaItems = await page.evaluate(() => {
-              const items: { url: string; isVideo: boolean }[] = [];
+            // For photosets with multiple images, we need to click through each thumbnail
+            // to get the full-size image URL
+            const mediaItems: { url: string; isVideo: boolean }[] = [];
 
-              // Look for video element with data-testid
+            // First check if this is a video
+            const videoUrl = await page.evaluate(() => {
               const videoEl = document.querySelector('[data-testid="user-video"]') as HTMLVideoElement;
               if (videoEl && videoEl.src) {
-                items.push({ url: videoEl.src, isVideo: true });
+                return videoEl.src;
               }
-
-              // Check ALL video elements on the page
               const allVideos = document.querySelectorAll('video');
-              allVideos.forEach((video: HTMLVideoElement) => {
-                // Check video.src directly
-                if (video.src && video.src.includes('highwebmedia.com') && !items.some(i => i.url === video.src)) {
-                  items.push({ url: video.src, isVideo: true });
+              for (const video of allVideos) {
+                if (video.src && video.src.includes('highwebmedia.com')) {
+                  return video.src;
                 }
-                // Check source tags inside video
-                const sources = video.querySelectorAll('source');
-                sources.forEach((source: HTMLSourceElement) => {
+                const source = video.querySelector('source');
+                if (source) {
                   const src = source.src || source.getAttribute('src');
-                  if (src && src.includes('highwebmedia.com') && !items.some(i => i.url === src)) {
-                    items.push({ url: src, isVideo: true });
+                  if (src && src.includes('highwebmedia.com')) {
+                    return src;
                   }
-                });
-              });
-
-              // Also check for video in source tags outside video element
-              const videoSource = document.querySelector('video source');
-              if (videoSource) {
-                const src = videoSource.getAttribute('src');
-                if (src && !items.some(i => i.url === src)) {
-                  items.push({ url: src, isVideo: true });
                 }
               }
-
-              // Look for images in gallery
-              const imageEls = document.querySelectorAll('.photoset-image img, .gallery-image img, [data-testid="photoset-image"] img');
-              imageEls.forEach((img: any) => {
-                const src = img.getAttribute('src') || img.getAttribute('data-src');
-                if (src && !src.includes('placeholder')) {
-                  // Try to get full-size URL by removing size constraints
-                  let fullUrl = src;
-                  // CB uses URLs like /u/p/c/XX/hash.jpg - these are full size
-                  if (!fullUrl.startsWith('http')) {
-                    fullUrl = fullUrl.startsWith('//') ? `https:${fullUrl}` : `https://chaturbate.com${fullUrl}`;
-                  }
-                  items.push({ url: fullUrl, isVideo: false });
-                }
-              });
-
-              // If no gallery images found, look for any large images on the page
-              if (items.filter(i => !i.isVideo).length === 0) {
-                const allImages = document.querySelectorAll('img');
-                allImages.forEach((img: any) => {
-                  const src = img.getAttribute('src') || '';
-                  // Look for images from the CB CDN that aren't thumbnails
-                  if (src.includes('highwebmedia.com') && !src.includes('150x100') && !src.includes('thumbnail')) {
-                    let fullUrl = src;
-                    if (!fullUrl.startsWith('http')) {
-                      fullUrl = fullUrl.startsWith('//') ? `https:${fullUrl}` : `https://chaturbate.com${fullUrl}`;
-                    }
-                    if (!items.some(i => i.url === fullUrl)) {
-                      items.push({ url: fullUrl, isVideo: false });
-                    }
-                  }
-                });
-              }
-
-              return items;
+              return null;
             });
+
+            if (videoUrl) {
+              mediaItems.push({ url: videoUrl, isVideo: true });
+            } else {
+              // This is a photo photoset - use arrow navigation to click through all images
+              // Chaturbate photosets show one image at a time with left/right arrow navigation
+
+              // Helper function to extract the current main image URL
+              const extractMainImageUrl = async (): Promise<string | null> => {
+                return await page.evaluate(() => {
+                  // Look for images from CDN that are large enough to be main images
+                  const allImages = document.querySelectorAll('img');
+                  for (const img of allImages) {
+                    const src = img.getAttribute('src') || '';
+                    // Main images are from highwebmedia.com and not thumbnails
+                    // Thumbnails typically have _100x100_cropped, _150x100, _s., _t. in URL
+                    if (src.includes('highwebmedia.com') &&
+                        !src.includes('_100x100') &&
+                        !src.includes('150x100') &&
+                        !src.includes('_s.') &&
+                        !src.includes('_t.') &&
+                        !src.includes('_cropped')) {
+                      const rect = img.getBoundingClientRect();
+                      // Only consider reasonably sized images (not tiny thumbnails)
+                      if (rect.width > 200 && rect.height > 200) {
+                        return src.startsWith('http') ? src : `https:${src}`;
+                      }
+                    }
+                  }
+                  return null;
+                });
+              };
+
+              // Check if right arrow navigation exists
+              const hasRightArrow = await page.evaluate(() => {
+                const rightArrow = document.querySelector('[data-testid="right-arrow"]');
+                return !!rightArrow;
+              });
+
+              if (hasRightArrow) {
+                // Navigate through all images using arrow clicks
+                const maxImages = 50; // Safety limit
+                let imageIndex = 0;
+                let lastImageUrl: string | null = null;
+                let consecutiveSameCount = 0;
+
+                logger.info(`Photoset ${photoset.id} has arrow navigation, clicking through images`);
+
+                while (imageIndex < maxImages) {
+                  // Get current main image
+                  const currentImageUrl = await extractMainImageUrl();
+
+                  if (currentImageUrl) {
+                    // Check if we've seen this image before (we've looped back to start)
+                    if (currentImageUrl === lastImageUrl) {
+                      consecutiveSameCount++;
+                      if (consecutiveSameCount >= 2) {
+                        logger.debug(`Detected same image twice in a row, reached end of photoset`);
+                        break;
+                      }
+                    } else {
+                      consecutiveSameCount = 0;
+                    }
+
+                    // Add if not already collected
+                    if (!mediaItems.some(m => m.url === currentImageUrl)) {
+                      mediaItems.push({ url: currentImageUrl, isVideo: false });
+                      logger.debug(`Found image ${mediaItems.length} in photoset ${photoset.id}: ${currentImageUrl.substring(0, 80)}...`);
+                    } else {
+                      // We've seen this image before - likely looped back to start
+                      logger.debug(`Image already collected, reached end of photoset`);
+                      break;
+                    }
+
+                    lastImageUrl = currentImageUrl;
+                  }
+
+                  // Click the right arrow to go to next image
+                  const clicked = await page.evaluate(() => {
+                    // Find the right arrow's parent clickable element
+                    const rightArrow = document.querySelector('[data-testid="right-arrow"]');
+                    if (rightArrow) {
+                      // The clickable area is the parent div containing the arrow
+                      const clickableParent = rightArrow.closest('div[style*="cursor"]') || rightArrow.parentElement;
+                      if (clickableParent) {
+                        (clickableParent as HTMLElement).click();
+                        return true;
+                      }
+                      // Fallback: try clicking the SVG itself
+                      (rightArrow as HTMLElement).click();
+                      return true;
+                    }
+                    return false;
+                  });
+
+                  if (!clicked) {
+                    logger.debug(`Could not click right arrow, stopping navigation`);
+                    break;
+                  }
+
+                  // Wait for the image to change
+                  await new Promise(resolve => setTimeout(resolve, 800));
+                  imageIndex++;
+                }
+
+                logger.info(`Collected ${mediaItems.length} images from photoset ${photoset.id} via arrow navigation`);
+              } else {
+                // No arrow navigation - single image photoset, just get the main image
+                const mainImageUrl = await extractMainImageUrl();
+                if (mainImageUrl) {
+                  mediaItems.push({ url: mainImageUrl, isVideo: false });
+                  logger.debug(`Single image photoset ${photoset.id}: ${mainImageUrl.substring(0, 80)}...`);
+                } else {
+                  // Fallback: try to get all images directly (shouldn't usually happen)
+                  const imageUrls = await page.evaluate(() => {
+                    const urls: string[] = [];
+                    const images = document.querySelectorAll('img');
+                    images.forEach((img: HTMLImageElement) => {
+                      const src = img.getAttribute('src') || '';
+                      if (src.includes('highwebmedia.com') &&
+                          !src.includes('_100x100') &&
+                          !src.includes('150x100') &&
+                          !src.includes('_cropped')) {
+                        const fullUrl = src.startsWith('http') ? src : `https:${src}`;
+                        if (!urls.includes(fullUrl)) {
+                          urls.push(fullUrl);
+                        }
+                      }
+                    });
+                    return urls;
+                  });
+
+                  for (const url of imageUrls) {
+                    mediaItems.push({ url, isVideo: false });
+                  }
+                }
+              }
+            }
 
             logger.info(`Found ${mediaItems.length} media items in photoset ${photoset.id}`);
 
@@ -1281,6 +1340,13 @@ export class ChaturbateScraperService {
               if (!personId) continue;
 
               try {
+                // Check if we already have this source URL for this person (prevent duplicates)
+                const alreadyExists = await ProfileImagesService.hasSourceUrl(personId, item.url);
+                if (alreadyExists) {
+                  logger.debug(`Skipping already downloaded image: ${item.url.substring(0, 80)}...`);
+                  continue;
+                }
+
                 if (item.isVideo) {
                   // Download video using axios
                   // First check file size with HEAD request
@@ -1327,7 +1393,7 @@ export class ChaturbateScraperService {
                   );
 
                   if (result.success) {
-                    // Save to database
+                    // Save to database - use actual provider from write result
                     await ProfileImagesService.create({
                       personId,
                       filePath: result.relativePath,
@@ -1338,7 +1404,8 @@ export class ChaturbateScraperService {
                       fileSize: actualSize,
                       mimeType: actualMimeType,
                       username,
-                      storageProvider: 'ssd',
+                      storageProvider: result.provider || 's3',
+                      sourceUrl: item.url,
                     });
 
                     profileMedia.push({
@@ -1363,8 +1430,13 @@ export class ChaturbateScraperService {
                     },
                   });
 
-                  // Skip placeholder images
-                  if (Math.abs(response.data.length - 5045) <= 100) {
+                  // Skip placeholder images and thumbnails
+                  // Placeholder images are around 5045 bytes
+                  // Navigation thumbnails are typically 2-5 KB
+                  // Real photoset images are much larger (50KB+)
+                  const MIN_IMAGE_SIZE = 10 * 1024; // 10KB minimum
+                  if (response.data.length < MIN_IMAGE_SIZE) {
+                    logger.debug(`Skipping small image (likely thumbnail): ${response.data.length} bytes`);
                     continue;
                   }
 
@@ -1383,7 +1455,7 @@ export class ChaturbateScraperService {
                   );
 
                   if (result.success) {
-                    // Save to database
+                    // Save to database - use actual provider from write result
                     await ProfileImagesService.create({
                       personId,
                       filePath: result.relativePath,
@@ -1394,7 +1466,8 @@ export class ChaturbateScraperService {
                       fileSize: response.data.length,
                       mimeType,
                       username,
-                      storageProvider: 'ssd',
+                      storageProvider: result.provider || 's3',
+                      sourceUrl: item.url,
                     });
 
                     profileMedia.push({

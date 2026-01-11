@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../api/client';
-import { formatDuration, formatGender } from '../utils/formatting';
+import { formatDate, formatDuration, formatGender } from '../utils/formatting';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import { SocialLinksEditor } from '../components/SocialLinksEditor';
 import { ServiceRelationshipEditor, type ServiceRelationship } from '../components/ServiceRelationshipEditor';
@@ -13,6 +13,7 @@ import { RelationshipEditor, type Relationship, type RelationshipTraitSeed } fro
 import { NamesEditor, type ProfileNames, type AddressTermSeed } from '../components/NamesEditor';
 import { RelationshipHistoryViewer } from '../components/RelationshipHistoryViewer';
 import { StarRating } from '../components/StarRating';
+import { Modal } from '../components/Modal';
 // Profile.css removed - fully migrated to Tailwind CSS
 
 interface ProfilePageProps {}
@@ -145,6 +146,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
   const [noteLineLimit, setNoteLineLimit] = useState(6); // Configurable line limit for Read More
   const [showAllNotes, setShowAllNotes] = useState(false); // Show all notes vs first 2
+  const [showAddNoteModal, setShowAddNoteModal] = useState(false);
+  const [showUploadMediaModal, setShowUploadMediaModal] = useState(false);
 
   // Profile attributes state
   const [bannedMe, setBannedMe] = useState(false);
@@ -1543,48 +1546,41 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   showLabel={true}
                 />
               </div>
-            </div>
-          </div>
 
-          {/* Add Note Section (Collapsible) - Collapsed by default */}
-          <div className="mb-5">
-            <CollapsibleSection title="Add Note" defaultCollapsed={true} className="bg-mhc-surface">
-              <div className="flex gap-3">
-                <textarea
-                  value={newNoteContent}
-                  onChange={(e) => setNewNoteContent(e.target.value)}
-                  placeholder="Add a new note..."
-                  rows={2}
-                  className="flex-1 px-4 py-2.5 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                />
+              {/* Add Note link */}
+              <div className="mt-3 pt-3 border-t border-white/10">
                 <button
-                  onClick={handleAddNote}
-                  disabled={notesSaving || !newNoteContent.trim()}
-                  className="px-5 py-2 bg-mhc-primary text-white border-none rounded-md text-sm font-semibold cursor-pointer transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed self-start"
+                  onClick={() => setShowAddNoteModal(true)}
+                  className="text-sm text-mhc-primary hover:text-mhc-primary/80 transition-colors flex items-center gap-1"
                 >
-                  {notesSaving ? 'Adding...' : 'Add Note'}
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Note
                 </button>
               </div>
-              {/* Status Message */}
-              {notesMessage && (
-                <div className={`text-sm mt-3 px-3 py-2 rounded ${
-                  notesMessage.includes('Error')
-                    ? 'bg-red-500/20 text-red-400'
-                    : 'bg-emerald-500/20 text-emerald-400'
-                }`}>
-                  {notesMessage}
-                </div>
-              )}
-            </CollapsibleSection>
+            </div>
           </div>
 
           {/* Media Section (Collapsible) - Expanded by default */}
           <div className="mb-5">
             <CollapsibleSection
               title={
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-1">
                   <span>Media</span>
                   <span className="text-xs text-white/50 font-normal">({uploadedImages.length})</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowUploadMediaModal(true);
+                    }}
+                    className="ml-auto mr-2 text-xs text-mhc-primary hover:text-mhc-primary/80 transition-colors flex items-center gap-1"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Upload
+                  </button>
                 </div>
               }
               defaultCollapsed={false}
@@ -1868,95 +1864,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 );
               })()}
 
-              {/* Upload Section - Nested CollapsibleSection, collapsed by default */}
-              <div className="mt-4">
-                <CollapsibleSection title="Upload Media" defaultCollapsed={true} className="bg-mhc-surface-light">
-                  {imageUploadError && (
-                    <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm mb-4 whitespace-pre-line">
-                      {imageUploadError}
-                    </div>
-                  )}
-                  <div className="space-y-4">
-                    {/* Drag & Drop Zone */}
-                    <div
-                      ref={dropZoneRef}
-                      onDragEnter={handleDragEnter}
-                      onDragLeave={handleDragLeave}
-                      onDragOver={handleDragOver}
-                      onDrop={handleDrop}
-                      onClick={() => !imageUploadLoading && fileInputRef.current?.click()}
-                      className={`relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
-                        isDragging
-                          ? 'border-mhc-primary bg-mhc-primary/10'
-                          : 'border-white/20 hover:border-mhc-primary/50 hover:bg-white/5'
-                      } ${imageUploadLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/gif,image/webp"
-                        multiple
-                        onChange={e => {
-                          const files = Array.from(e.target.files || []);
-                          if (files.length > 0) handleImageUpload(files);
-                        }}
-                        disabled={imageUploadLoading}
-                        className="hidden"
-                      />
-                      <div className="flex flex-col items-center gap-2">
-                        <svg className={`w-8 h-8 ${isDragging ? 'text-mhc-primary' : 'text-white/40'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <div className="text-white/70 text-sm">
-                          {isDragging ? (
-                            <span className="text-mhc-primary font-medium">Drop images here</span>
-                          ) : (
-                            <>
-                              <span className="text-mhc-primary font-medium">Click to upload</span> or drag and drop
-                            </>
-                          )}
-                        </div>
-                        <div className="text-white/40 text-xs">
-                          JPEG, PNG, GIF, or WebP (max 10MB each)
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      <select
-                        value={selectedImageSource}
-                        onChange={e => setSelectedImageSource(e.target.value as 'manual_upload' | 'screensnap' | 'external')}
-                        className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-mhc-primary"
-                      >
-                        <option value="manual_upload">Manual Upload</option>
-                        <option value="screensnap">Screen Capture</option>
-                        <option value="external">External Source</option>
-                      </select>
-                      <input
-                        type="text"
-                        value={imageDescription}
-                        onChange={e => setImageDescription(e.target.value)}
-                        placeholder="Description (optional)"
-                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 focus:outline-none focus:border-mhc-primary"
-                      />
-                    </div>
-
-                    {imageUploadLoading && (
-                      <div className="flex items-center gap-3 text-mhc-text-muted text-sm">
-                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                        </svg>
-                        {uploadProgress ? (
-                          <span>Uploading {uploadProgress.current} of {uploadProgress.total}...</span>
-                        ) : (
-                          <span>Uploading...</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </CollapsibleSection>
-              </div>
             </CollapsibleSection>
           </div>
 
@@ -2433,70 +2340,138 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       title={
                         <div className="flex items-center gap-2">
                           <span>Profile Details</span>
-                          <span className="text-xs text-white/40 font-normal">(Static bio from Chaturbate)</span>
+                          {profileData.profile?.browser_scraped_at ? (
+                            <span className="text-xs text-white/40 font-normal">
+                              (Last refresh: {formatDate(profileData.profile.browser_scraped_at, { relative: true })})
+                            </span>
+                          ) : (
+                            <span className="text-xs text-white/40 font-normal">(Never refreshed)</span>
+                          )}
                         </div>
                       }
                       defaultCollapsed={true}
                       className="bg-mhc-surface-light"
                     >
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div className="p-4 bg-mhc-surface rounded-md">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Display Name:</span>
-                          <span className={`block text-base ${profileData.profile?.display_name ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.display_name || 'Not set'}
-                          </span>
+                      {/* Two-column layout with cards */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Left Column - Basic Info */}
+                        <div className="space-y-4">
+                          <div className="p-4 bg-mhc-surface rounded-md">
+                            <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Basic Info</h5>
+                            <div className="space-y-3">
+                              <div className="flex justify-between">
+                                <span className="text-mhc-text-muted text-sm">Real Name:</span>
+                                <span className={`text-sm ${profileData.profile?.display_name ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                  {profileData.profile?.display_name || 'Not set'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-mhc-text-muted text-sm">Age:</span>
+                                <span className={`text-sm ${profileData.profile?.age ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                  {profileData.profile?.age || 'Not set'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-mhc-text-muted text-sm">Birthday:</span>
+                                <span className={`text-sm ${profileData.profile?.birthday_public ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                  {profileData.profile?.birthday_public || 'Not set'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-mhc-text-muted text-sm">Gender:</span>
+                                <span className={`text-sm ${profileData.profile?.gender ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                  {profileData.profile?.gender ? formatGender(profileData.profile.gender) : 'Not set'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-mhc-text-muted text-sm">Interested In:</span>
+                                <span className={`text-sm ${profileData.profile?.interested_in ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                  {profileData.profile?.interested_in || 'Not set'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="p-4 bg-mhc-surface rounded-md">
+                            <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Location</h5>
+                            <div className="space-y-3">
+                              <div className="flex justify-between">
+                                <span className="text-mhc-text-muted text-sm">Location:</span>
+                                <span className={`text-sm ${profileData.profile?.location ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                  {profileData.profile?.location || 'Not set'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-mhc-text-muted text-sm">Country:</span>
+                                <span className={`text-sm ${profileData.profile?.country ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                  {profileData.profile?.country || 'Not set'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-mhc-text-muted text-sm">Languages:</span>
+                                <span className={`text-sm ${profileData.profile?.spoken_languages ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                  {profileData.profile?.spoken_languages || 'Not set'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="p-4 bg-mhc-surface rounded-md">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Age:</span>
-                          <span className={`block text-base ${profileData.profile?.age ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.age || 'Not set'}
-                          </span>
-                        </div>
-                        <div className="p-4 bg-mhc-surface rounded-md">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Gender:</span>
-                          <span className={`block text-base ${profileData.profile?.gender ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.gender ? formatGender(profileData.profile.gender) : 'Not set'}
-                          </span>
-                        </div>
-                        <div className="p-4 bg-mhc-surface rounded-md">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Location:</span>
-                          <span className={`block text-base ${profileData.profile?.location ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.location || 'Not set'}
-                          </span>
-                        </div>
-                        <div className="p-4 bg-mhc-surface rounded-md">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Country:</span>
-                          <span className={`block text-base ${profileData.profile?.country ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.country || 'Not set'}
-                          </span>
-                        </div>
-                        <div className="p-4 bg-mhc-surface rounded-md">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Languages:</span>
-                          <span className={`block text-base ${profileData.profile?.spoken_languages ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.spoken_languages || 'Not set'}
-                          </span>
-                        </div>
-                        <div className="p-4 bg-mhc-surface rounded-md">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">New Model:</span>
-                          <span className={`block text-base ${profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined
-                              ? (profileData.profile.is_new ? 'Yes' : 'No')
-                              : 'Unknown'}
-                          </span>
-                        </div>
-                        <div className="p-4 bg-mhc-surface rounded-md">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Last Broadcast:</span>
-                          <span className={`block text-base ${profileData.profile?.last_broadcast ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.last_broadcast
-                              ? new Date(profileData.profile.last_broadcast).toLocaleDateString()
-                              : 'Not set'}
-                          </span>
+
+                        {/* Right Column - Physical & Status */}
+                        <div className="space-y-4">
+                          <div className="p-4 bg-mhc-surface rounded-md">
+                            <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Physical</h5>
+                            <div className="space-y-3">
+                              <div className="flex justify-between">
+                                <span className="text-mhc-text-muted text-sm">Body Type:</span>
+                                <span className={`text-sm ${profileData.profile?.body_type ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                  {profileData.profile?.body_type || 'Not set'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-mhc-text-muted text-sm">Body Decorations:</span>
+                                <span className={`text-sm ${profileData.profile?.body_decorations ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                  {profileData.profile?.body_decorations || 'Not set'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-mhc-text-muted text-sm">Smoke/Drink:</span>
+                                <span className={`text-sm ${profileData.profile?.smoke_drink ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                  {profileData.profile?.smoke_drink || 'Not set'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="p-4 bg-mhc-surface rounded-md">
+                            <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Status</h5>
+                            <div className="space-y-3">
+                              <div className="flex justify-between">
+                                <span className="text-mhc-text-muted text-sm">New Model:</span>
+                                <span className={`text-sm ${profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                  {profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined
+                                    ? (profileData.profile.is_new ? 'Yes' : 'No')
+                                    : 'Unknown'}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-mhc-text-muted text-sm">Last Broadcast:</span>
+                                <span className={`text-sm ${profileData.profile?.last_broadcast ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                  {profileData.profile?.last_broadcast
+                                    ? new Date(profileData.profile.last_broadcast).toLocaleDateString()
+                                    : 'Not set'}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
                         </div>
                       </div>
+
+                      {/* Bio - full width */}
                       {profileData.profile?.bio && (
                         <div className="mt-4 p-4 bg-mhc-surface rounded-md">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Bio:</span>
-                          <p className="mt-2 mb-0 leading-relaxed text-mhc-text">
+                          <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Bio</h5>
+                          <p className="mt-2 mb-0 leading-relaxed text-mhc-text whitespace-pre-wrap">
                             {profileData.profile.bio}
                           </p>
                         </div>
@@ -2647,6 +2622,156 @@ const Profile: React.FC<ProfilePageProps> = () => {
           </div>
         </div>
       )}
+
+      {/* Add Note Modal */}
+      <Modal
+        isOpen={showAddNoteModal}
+        title="Add Note"
+        onClose={() => {
+          setShowAddNoteModal(false);
+          setNotesMessage(null);
+        }}
+        size="md"
+      >
+        <div className="space-y-4">
+          <textarea
+            value={newNoteContent}
+            onChange={(e) => setNewNoteContent(e.target.value)}
+            placeholder="Add a new note..."
+            rows={4}
+            className="w-full px-4 py-3 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+            autoFocus
+          />
+          {notesMessage && (
+            <div className={`text-sm px-3 py-2 rounded ${
+              notesMessage.includes('Error')
+                ? 'bg-red-500/20 text-red-400'
+                : 'bg-emerald-500/20 text-emerald-400'
+            }`}>
+              {notesMessage}
+            </div>
+          )}
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => {
+                setShowAddNoteModal(false);
+                setNewNoteContent('');
+                setNotesMessage(null);
+              }}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-medium rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={async () => {
+                await handleAddNote();
+                if (!notesSaving) {
+                  setShowAddNoteModal(false);
+                  setNewNoteContent('');
+                }
+              }}
+              disabled={notesSaving || !newNoteContent.trim()}
+              className="px-4 py-2 bg-mhc-primary hover:bg-mhc-primary/90 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {notesSaving ? 'Adding...' : 'Add Note'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Upload Media Modal */}
+      <Modal
+        isOpen={showUploadMediaModal}
+        title="Upload Media"
+        onClose={() => setShowUploadMediaModal(false)}
+        size="md"
+      >
+        <div className="space-y-4">
+          {imageUploadError && (
+            <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm whitespace-pre-line">
+              {imageUploadError}
+            </div>
+          )}
+
+          {/* Drag & Drop Zone */}
+          <div
+            ref={dropZoneRef}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            onClick={() => !imageUploadLoading && fileInputRef.current?.click()}
+            className={`relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
+              isDragging
+                ? 'border-mhc-primary bg-mhc-primary/10'
+                : 'border-white/20 hover:border-mhc-primary/50 hover:bg-white/5'
+            } ${imageUploadLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              multiple
+              onChange={e => {
+                const files = Array.from(e.target.files || []);
+                if (files.length > 0) handleImageUpload(files);
+              }}
+              disabled={imageUploadLoading}
+              className="hidden"
+            />
+            <div className="flex flex-col items-center gap-2">
+              <svg className={`w-8 h-8 ${isDragging ? 'text-mhc-primary' : 'text-white/40'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <div className="text-white/70 text-sm">
+                {isDragging ? (
+                  <span className="text-mhc-primary font-medium">Drop images here</span>
+                ) : (
+                  <>
+                    <span className="text-mhc-primary font-medium">Click to upload</span> or drag and drop
+                  </>
+                )}
+              </div>
+              <div className="text-white/40 text-xs">
+                JPEG, PNG, GIF, or WebP (max 10MB each)
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <select
+              value={selectedImageSource}
+              onChange={e => setSelectedImageSource(e.target.value as 'manual_upload' | 'screensnap' | 'external')}
+              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-mhc-primary"
+            >
+              <option value="manual_upload">Manual Upload</option>
+              <option value="screensnap">Screen Capture</option>
+              <option value="external">External Source</option>
+            </select>
+            <input
+              type="text"
+              value={imageDescription}
+              onChange={e => setImageDescription(e.target.value)}
+              placeholder="Description (optional)"
+              className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 focus:outline-none focus:border-mhc-primary"
+            />
+          </div>
+
+          {imageUploadLoading && (
+            <div className="flex items-center gap-3 text-mhc-text-muted text-sm">
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              {uploadProgress ? (
+                <span>Uploading {uploadProgress.current} of {uploadProgress.total}...</span>
+              ) : (
+                <span>Uploading...</span>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 };

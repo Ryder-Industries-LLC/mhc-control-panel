@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.33.0] - 2026-01-11
+
+### Added
+
+- **Enhanced Profile Scraping**: Scraper now captures additional profile fields from Chaturbate bio tab
+  - Birthday (from `bio-tab-birth-date-value`)
+  - Interested In (from `bio-tab-interested-in-value`)
+  - Body Type (from `bio-tab-body-type-value`)
+  - Body Decorations (from `bio-tab-body-decorations-value`)
+  - Smoke/Drink (from `bio-tab-smoke-drink-value`)
+- **Source URL Tracking**: Profile images now store original source URL for deduplication
+  - New `source_url` column in `profile_images` table
+  - `hasSourceUrl()` method prevents duplicate downloads
+  - Migration: `077_add_source_url_column.sql`
+- **Reusable Modal Component**: New `Modal.tsx` component for popup overlays
+- **Add Note Modal**: Note creation converted from collapsible section to popup modal
+- **Upload Media Modal**: Media upload converted from nested section to popup modal
+
+### Changed
+
+- **Profile Details Redesign**: Complete UI overhaul with 2-column card layout
+  - Basic Info card: Real Name, Age, Birthday, Gender, Interested In
+  - Location card: Location, Country, Languages
+  - Physical card: Body Type, Body Decorations, Smoke/Drink
+  - Status card: New Model, Last Broadcast
+  - Bio displayed in full-width card below
+- **Profile Details Header**: Now shows "Last refresh: X ago" relative time indicator
+- **Add Note Relocated**: Trigger link moved under Rating section
+- **Upload Media Relocated**: Trigger button moved to Media section header
+- **Display Name Scraping**: Now correctly uses `bio-tab-real-name-value` data-testid instead of `.bio-title`
+
+### Fixed
+
+- **Photoset Image Scraping**: Fixed duplicate images issue - scraper now uses arrow navigation (`data-testid="right-arrow"`) instead of thumbnail clicking to capture all images in photosets
+- **Social Media Link Parsing**: Fixed URL decoding for `/external_link/?url=...` format
+  - URLs now properly decoded from percent-encoding
+  - Trailing slashes removed from URLs
+  - Filtered out Chaturbate internal links (`chaturbate.com/`)
+  - Filtered out `cbupdatenews` Twitter links
+- **Birthday Column Size**: Changed `birthday_public` from `varchar(10)` to `TEXT` to accommodate full date formats like "Nov. 29, 1997"
+- **Languages Array Format**: Fixed `spoken_languages` to pass proper array instead of comma-joined string
+- **RID/DID Integer Overflow**: Changed `rid` and `did` columns from `integer` to `bigint` to handle large Chaturbate IDs
+
+### Database
+
+- Cleared 18,839 profiles with malformed social_links (external_link wrappers or cbupdatenews links)
+- Profiles with bad data queued for rescrape via `browser_scraped_at = NULL`
+
+### Technical
+
+- Updated: `chaturbate-scraper.service.ts` - New bio field extraction, arrow-based photoset navigation, social link filtering
+- Updated: `profile.service.ts` - Added birthday_public, smoke_drink, body_decorations to mergeScrapedProfile
+- Updated: `profile-images.service.ts` - Added source_url column support and hasSourceUrl() method
+- Added: `client/src/components/Modal.tsx` - Reusable modal component
+- Updated: `client/src/pages/Profile.tsx` - New Profile Details layout, modal integration
+
+---
+
 ## [1.32.0] - 2026-01-10
 
 ### Added

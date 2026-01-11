@@ -8,7 +8,56 @@ const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
   timeout: 30000,
+  withCredentials: true, // Send cookies with requests
 });
+
+// Store CSRF token in memory
+let csrfToken: string | null = null;
+
+// Add CSRF token to state-changing requests
+apiClient.interceptors.request.use((config) => {
+  if (csrfToken && ['post', 'put', 'delete', 'patch'].includes(config.method?.toLowerCase() || '')) {
+    config.headers['X-CSRF-Token'] = csrfToken;
+  }
+  return config;
+});
+
+// Update CSRF token from responses
+apiClient.interceptors.response.use(
+  (response) => {
+    const newCsrfToken = response.headers['x-csrf-token'];
+    if (newCsrfToken) {
+      csrfToken = newCsrfToken;
+    }
+    return response;
+  },
+  (error) => {
+    // Handle 401 Unauthorized
+    if (error.response?.status === 401) {
+      const authPaths = ['/login', '/signup', '/verify-2fa', '/forgot-password'];
+      if (!authPaths.some(path => window.location.pathname.startsWith(path))) {
+        // Could redirect to login here if needed
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Helper to set CSRF token (called from AuthContext)
+export function setCsrfToken(token: string | null) {
+  csrfToken = token;
+}
+
+// Helper to get device fingerprint for 2FA trust
+function getDeviceFingerprint(): string {
+  const components = [
+    navigator.userAgent,
+    navigator.language,
+    window.screen.width + 'x' + window.screen.height,
+    new Date().getTimezoneOffset()
+  ];
+  return btoa(components.join('|'));
+}
 
 export interface Person {
   id: string;
@@ -135,8 +184,183 @@ export interface HudsonResponse {
   recentInteractions: Interaction[];
 }
 
+// Auth types
+export interface AuthUser {
+  id: string;
+  email: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+  authMethod: string;
+  totpEnabled: boolean;
+  createdAt: string;
+}
+
+export interface AuthResponse {
+  user: AuthUser;
+  roles: string[];
+  permissions: string[];
+  csrfToken: string;
+}
+
+export interface Auth2FAResponse {
+  requires2FA: true;
+  sessionId: string;
+}
+
+export interface AuthSession {
+  id: string;
+  userAgent: string | null;
+  ipAddress: string | null;
+  createdAt: string;
+  lastActiveAt: string;
+  isCurrent: boolean;
+}
+
+export interface TotpDevice {
+  id: string;
+  name: string;
+  isVerified: boolean;
+  verifiedAt: string | null;
+  lastUsedAt: string | null;
+  useCount: number;
+  createdAt: string;
+}
+
+export interface TrustedDevice {
+  id: string;
+  deviceName: string | null;
+  trustedAt: string;
+  expiresAt: string;
+  lastUsedAt: string | null;
+}
+
 export const api = {
+  // =====================
+  // Auth API
+  // =====================
+  auth: {
+    login: async (credentials: {
+      email?: string;
+      username?: string;
+      subscriberId?: string;
+      password: string;
+    }): Promise<AuthResponse | Auth2FAResponse> => {
+      const response = await apiClient.post('/api/auth/login', credentials);
+      return response.data;
+    },
+
+    google: async (credential: string): Promise<AuthResponse | Auth2FAResponse> => {
+      const response = await apiClient.post('/api/auth/google', { credential });
+      return response.data;
+    },
+
+    signup: async (data: {
+      authMethod: string;
+      email?: string;
+      username?: string;
+      subscriberId?: string;
+      password: string;
+      displayName?: string;
+    }): Promise<AuthResponse> => {
+      const response = await apiClient.post('/api/auth/signup', data);
+      return response.data;
+    },
+
+    verify2FA: async (
+      sessionId: string,
+      code: string,
+      trustDevice = false
+    ): Promise<AuthResponse> => {
+      const response = await apiClient.post('/api/auth/verify-2fa', {
+        sessionId,
+        code,
+        trustDevice,
+        deviceFingerprint: trustDevice ? getDeviceFingerprint() : undefined
+      });
+      return response.data;
+    },
+
+    logout: async (): Promise<void> => {
+      await apiClient.post('/api/auth/logout');
+    },
+
+    logoutAll: async (): Promise<{ sessionsRevoked: number }> => {
+      const response = await apiClient.post('/api/auth/logout-all');
+      return response.data;
+    },
+
+    me: async (): Promise<AuthResponse> => {
+      const response = await apiClient.get('/api/auth/me');
+      return response.data;
+    },
+
+    getSessions: async (): Promise<{ sessions: AuthSession[] }> => {
+      const response = await apiClient.get('/api/auth/sessions');
+      return response.data;
+    },
+
+    revokeSession: async (sessionId: string): Promise<void> => {
+      await apiClient.delete(`/api/auth/sessions/${sessionId}`);
+    },
+
+    // 2FA Management
+    setup2FA: async (deviceName?: string): Promise<{
+      qrCode: string;
+      manualEntryKey: string;
+      deviceId: string;
+    }> => {
+      const response = await apiClient.post('/api/auth/2fa/setup', { deviceName });
+      return response.data;
+    },
+
+    verify2FASetup: async (deviceId: string, code: string): Promise<{
+      success: boolean;
+      recoveryCodes: string[];
+    }> => {
+      const response = await apiClient.post('/api/auth/2fa/verify', { deviceId, code });
+      return response.data;
+    },
+
+    get2FADevices: async (): Promise<{ devices: TotpDevice[] }> => {
+      const response = await apiClient.get('/api/auth/2fa/devices');
+      return response.data;
+    },
+
+    delete2FADevice: async (deviceId: string): Promise<void> => {
+      await apiClient.delete(`/api/auth/2fa/devices/${deviceId}`);
+    },
+
+    regenerateRecoveryCodes: async (): Promise<{ recoveryCodes: string[] }> => {
+      const response = await apiClient.post('/api/auth/2fa/recovery-codes');
+      return response.data;
+    },
+
+    getRecoveryCodeCount: async (): Promise<{ remaining: number }> => {
+      const response = await apiClient.get('/api/auth/2fa/recovery-codes/count');
+      return response.data;
+    },
+
+    getTrustedDevices: async (): Promise<{ devices: TrustedDevice[] }> => {
+      const response = await apiClient.get('/api/auth/2fa/trusted-devices');
+      return response.data;
+    },
+
+    revokeTrustedDevice: async (deviceId: string): Promise<void> => {
+      await apiClient.delete(`/api/auth/2fa/trusted-devices/${deviceId}`);
+    },
+
+    getConfig: async (): Promise<{
+      googleEnabled: boolean;
+      googleClientId: string | null;
+    }> => {
+      const response = await apiClient.get('/api/auth/config');
+      return response.data;
+    }
+  },
+
+  // =====================
   // Lookup API
+  // =====================
   lookup: async (params: {
     username?: string;
     pastedText?: string;

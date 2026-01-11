@@ -344,7 +344,7 @@ export class LiveScreenshotJob {
               fileSize: result.size,
               mimeType,
               username, // Include username for new schema
-              storageProvider: 'ssd',
+              storageProvider: result.provider || 's3',
             });
             captures++;
             logger.debug(`Screenshot captured for ${username}`, { path: result.relativePath });

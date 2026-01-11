@@ -62,6 +62,12 @@ const envSchema = z.object({
   OPENAI_MODEL: z.string().default('gpt-4.1-mini'),
   OPENAI_MAX_TOKENS: z.string().regex(/^\d+$/).transform(Number).default('6000'),
 
+  // Authentication
+  SESSION_SECRET: z.string().min(32).default('development-session-secret-change-in-production-min-32-chars'),
+  TOTP_ENCRYPTION_KEY: z.string().min(32).default('development-totp-key-change-in-production-min-32-characters'),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  COOKIE_DOMAIN: z.string().optional(),
+
   // Runtime
   RUN_MODE: z.enum(['web', 'worker']).default('web'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

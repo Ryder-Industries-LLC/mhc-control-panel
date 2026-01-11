@@ -1,11 +1,15 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import path from 'path';
-import fs from 'fs';
+import cookieParser from 'cookie-parser';
 import { logger } from './config/logger.js';
 import { storageService } from './services/storage/storage.service.js';
 
+// Import auth middleware
+import { loadSession, checkTrustedDevice } from './middleware/auth.middleware.js';
+import { provideCsrfToken } from './middleware/csrf.middleware.js';
+
 // Import routes
+import authRoutes from './routes/auth.js';
 import lookupRoutes from './routes/lookup.js';
 import personRoutes from './routes/person.js';
 import sessionRoutes from './routes/session.js';
@@ -35,46 +39,64 @@ export function createApp() {
   });
 
   // Middleware
-  app.use(cors());
+  app.use(cors({
+    origin: process.env.NODE_ENV === 'production'
+      ? process.env.FRONTEND_URL || true
+      : true,
+    credentials: true // Allow cookies to be sent
+  }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
+  app.use(cookieParser());
 
-  // Storage paths
-  const ssdImagesPath = '/mnt/ssd/mhc-images';
-  const dockerImagesPath = path.join(process.cwd(), 'data', 'images');
+  // Auth middleware - load session for all requests
+  app.use(loadSession);
+  app.use(checkTrustedDevice);
+  app.use(provideCsrfToken);
 
-  // Primary image route - tries SSD first, then Docker for legacy files
-  // This allows migration to happen transparently
-  app.use('/images', (req, res, next) => {
-    const relativePath = req.path;
-    const ssdFullPath = path.join(ssdImagesPath, relativePath);
-    const dockerFullPath = path.join(dockerImagesPath, relativePath);
-    const profilesDockerPath = path.join(dockerImagesPath, 'profiles', relativePath);
+  // Primary image route - S3 primary, Docker fallback for legacy paths
+  app.use('/images', async (req, res, _next) => {
+    const relativePath = req.path.startsWith('/') ? req.path.slice(1) : req.path;
 
-    // Try SSD first (new primary storage)
-    if (fs.existsSync(ssdFullPath)) {
-      return express.static(ssdImagesPath)(req, res, next);
+    // Ensure storage service is initialized
+    await storageService.init();
+
+    // Check if this looks like a legacy UUID path (UUID/filename format)
+    const isLegacyUuidPath = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\//i.test(relativePath);
+
+    // S3 is the primary storage location
+    try {
+      const s3Provider = storageService.getS3Provider();
+      if (s3Provider && !isLegacyUuidPath) {
+        // For non-legacy paths, try S3 first
+        const presignedUrl = await s3Provider.getPresignedUrl(relativePath);
+        if (presignedUrl) {
+          return res.redirect(302, presignedUrl);
+        }
+      }
+    } catch (error) {
+      logger.debug('S3 lookup failed for image', { path: relativePath, error });
     }
 
-    // Try Docker volume (legacy storage during migration)
-    if (fs.existsSync(dockerFullPath)) {
-      return express.static(dockerImagesPath)(req, res, next);
+    // Fallback to Docker volume for legacy UUID paths or if S3 fails
+    if (isLegacyUuidPath) {
+      const dockerProvider = storageService.getDockerProvider();
+      if (dockerProvider) {
+        const result = await dockerProvider.read(relativePath);
+        if (result) {
+          res.set('Content-Type', result.mimeType);
+          res.set('Content-Length', result.size.toString());
+          res.set('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+          return res.send(result.data);
+        }
+      }
     }
 
-    // Try profiles subdirectory in Docker
-    if (fs.existsSync(profilesDockerPath)) {
-      req.url = '/profiles' + req.url;
-      return express.static(dockerImagesPath)(req, res, next);
-    }
-
-    // File not found in any location
+    // Not found
     res.status(404).json({ error: 'Image not found' });
   });
 
-  logger.info('Serving images with SSD-first fallback', {
-    ssd: ssdImagesPath,
-    docker: dockerImagesPath,
-  });
+  logger.info('Serving images from S3 (primary) with Docker fallback for legacy paths');
 
   // Legacy /ssd-images route - redirect to /images for backward compatibility
   app.use('/ssd-images', (req, res) => {
@@ -97,6 +119,11 @@ export function createApp() {
   });
 
   // API routes
+  // Auth routes (public - no auth required for login/signup)
+  app.use('/api/auth', authRoutes);
+
+  // Protected routes (auth will be enforced as we migrate)
+  // TODO: Add requireAuth middleware to these routes once frontend auth is complete
   app.use('/api/lookup', lookupRoutes);
   app.use('/api/person', personRoutes);
   app.use('/api/session', sessionRoutes);

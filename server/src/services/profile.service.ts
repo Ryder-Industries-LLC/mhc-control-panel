@@ -326,13 +326,15 @@ export class ProfileService {
         gender, interested_in, body_type, ethnicity, height,
         spoken_languages, tags, photos, tip_menu,
         social_links, fanclub_price,
-        scraped_at, browser_scraped_at, data_source
+        scraped_at, browser_scraped_at, data_source,
+        birthday_public, smoke_drink, body_decorations
       ) VALUES (
         $1, $2, $3, $4, $5,
         $6, $7, $8, $9, $10,
         $11, $12, $13, $14,
         $15, $16,
-        $17, $18, $19
+        $17, $18, $19,
+        $20, $21, $22
       )
       ON CONFLICT (person_id) DO UPDATE SET
         display_name = COALESCE(EXCLUDED.display_name, profiles.display_name),
@@ -353,6 +355,9 @@ export class ProfileService {
         scraped_at = EXCLUDED.scraped_at,
         browser_scraped_at = EXCLUDED.browser_scraped_at,
         data_source = EXCLUDED.data_source,
+        birthday_public = COALESCE(EXCLUDED.birthday_public, profiles.birthday_public),
+        smoke_drink = COALESCE(EXCLUDED.smoke_drink, profiles.smoke_drink),
+        body_decorations = COALESCE(EXCLUDED.body_decorations, profiles.body_decorations),
         updated_at = NOW()
       RETURNING *
     `;
@@ -368,7 +373,7 @@ export class ProfileService {
       scrapedData.bodyType,
       scrapedData.ethnicity,
       scrapedData.height,
-      scrapedData.languages.join(', ') || null,
+      scrapedData.languages.length > 0 ? scrapedData.languages : null,
       mergedTags,
       JSON.stringify(mergedPhotos),
       JSON.stringify(scrapedData.tipMenu || []),
@@ -377,11 +382,19 @@ export class ProfileService {
       scrapedData.scrapedAt,
       scrapedData.scrapedAt, // browser_scraped_at - same as scrapedAt for browser scrapes
       'chaturbate_profile_scrape',
+      scrapedData.birthdayPublic,
+      scrapedData.smokeDrink,
+      scrapedData.bodyDecorations,
     ];
 
     try {
       const result = await query(sql, values);
       const row = result.rows[0];
+
+      // Auto-populate profile_smoke based on smoke_drink field
+      if (scrapedData.smokeDrink) {
+        await this.updateProfileSmoke(personId, scrapedData.smokeDrink);
+      }
 
       logger.info('Profile merged from scrape', {
         personId,

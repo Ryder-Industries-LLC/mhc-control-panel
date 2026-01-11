@@ -523,6 +523,9 @@ class StorageService {
       result = await writeProvider.write(relativePath, data, mimeType);
     }
 
+    // Add provider type to result so callers know where it was stored
+    result.provider = result.success ? writeProvider.type : undefined;
+
     // Track successful/failed write
     this.lastWriteInfo = {
       destination: result.success ? writeProvider.type : null,

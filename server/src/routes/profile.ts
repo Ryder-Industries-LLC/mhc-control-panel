@@ -1571,6 +1571,7 @@ router.post('/:username/images', upload.single('image'), async (req: Request, re
         source: source as 'manual_upload' | 'screensnap' | 'external' | 'imported',
         description: description || undefined,
         capturedAt: captured_at ? new Date(captured_at) : undefined,
+        username, // Use S3 storage with username-based paths
       }
     );
 
@@ -1752,6 +1753,7 @@ router.post('/:username/images/import-affiliate', async (req: Request, res: Resp
         source: 'imported',
         description: viewers ? `Imported from broadcast (${viewers} viewers)` : 'Imported from affiliate API',
         capturedAt: capturedAt ? new Date(capturedAt) : undefined,
+        username, // Use S3 storage with username-based paths
       }
     );
 
@@ -2408,7 +2410,7 @@ router.post('/bulk/upload', upload.array('images', 500), async (req: Request, re
             size: file.size,
           },
           person.id,
-          { source: 'manual_upload' }
+          { source: 'manual_upload', username } // Use S3 storage with username-based paths
         );
 
         uploaded.push({

@@ -27,6 +27,7 @@ export interface ProfileImage {
   duration_seconds: number | null;
   photoset_id: string | null;
   title: string | null;
+  source_url: string | null;
 }
 
 export interface CreateProfileImageInput {
@@ -46,6 +47,7 @@ export interface CreateProfileImageInput {
   title?: string;
   username?: string; // For new username-based path structure
   storageProvider?: 'docker' | 'ssd' | 's3';
+  sourceUrl?: string; // Original URL from which the image was downloaded
 }
 
 export interface UpdateProfileImageInput {
@@ -151,9 +153,9 @@ export class ProfileImagesService {
         person_id, file_path, original_filename, source, description,
         captured_at, file_size, mime_type, width, height,
         media_type, duration_seconds, photoset_id, title,
-        username, storage_provider
+        username, storage_provider, source_url
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING *
     `;
 
@@ -173,7 +175,8 @@ export class ProfileImagesService {
       data.photosetId || null,
       data.title || null,
       data.username || null,
-      data.storageProvider || 'ssd', // Default to SSD for new images
+      data.storageProvider || 's3', // Default to S3 (primary storage)
+      data.sourceUrl || null,
     ];
 
     try {
@@ -184,7 +187,7 @@ export class ProfileImagesService {
         source: data.source || 'manual_upload',
         mediaType: data.mediaType || 'image',
         username: data.username,
-        storageProvider: data.storageProvider || 'ssd',
+        storageProvider: data.storageProvider || 's3',
       });
       return this.mapRowToImage(result.rows[0]);
     } catch (error) {
@@ -350,7 +353,7 @@ export class ProfileImagesService {
           throw new Error(result.error || 'Failed to save file to storage');
         }
 
-        // Create database record with username and storage provider
+        // Create database record with username and storage provider from write result
         const image = await this.create({
           personId,
           filePath: result.relativePath,
@@ -361,7 +364,7 @@ export class ProfileImagesService {
           fileSize: result.size,
           mimeType: file.mimetype,
           username: options.username,
-          storageProvider: 'ssd',
+          storageProvider: result.provider || 's3',
         });
 
         logger.info('Uploaded file saved (new storage)', {
@@ -383,7 +386,7 @@ export class ProfileImagesService {
       // Save file
       await fs.writeFile(fullPath, file.buffer);
 
-      // Create database record
+      // Create database record (legacy path uses docker storage)
       const image = await this.create({
         personId,
         filePath: relativePath,
@@ -393,6 +396,7 @@ export class ProfileImagesService {
         capturedAt: options?.capturedAt,
         fileSize: file.size,
         mimeType: file.mimetype,
+        storageProvider: 'docker', // Legacy path saves to Docker volume
       });
 
       logger.info('Uploaded file saved (legacy path)', {
@@ -545,6 +549,7 @@ export class ProfileImagesService {
       duration_seconds: row.duration_seconds,
       photoset_id: row.photoset_id,
       title: row.title,
+      source_url: row.source_url,
     };
   }
 
@@ -598,6 +603,22 @@ export class ProfileImagesService {
     } catch (error) {
       logger.error('Error checking photoset', { error, personId, photosetId });
       throw error;
+    }
+  }
+
+  /**
+   * Check if a source URL has already been downloaded for a person
+   * Used to prevent duplicate downloads of the same image
+   */
+  static async hasSourceUrl(personId: string, sourceUrl: string): Promise<boolean> {
+    const sql = `SELECT 1 FROM profile_images WHERE person_id = $1 AND source_url = $2 LIMIT 1`;
+
+    try {
+      const result = await query(sql, [personId, sourceUrl]);
+      return result.rows.length > 0;
+    } catch (error) {
+      logger.error('Error checking source URL', { error, personId });
+      return false; // On error, allow the download to proceed
     }
   }
 

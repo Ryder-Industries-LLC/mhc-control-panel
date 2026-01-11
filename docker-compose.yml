@@ -58,8 +58,7 @@ services:
       AWS_REGION: ${AWS_REGION:-us-east-1}
     volumes:
       - browser_data:/app/data
-      - image_data:/app/data/images
-      # SSD/External storage - requires /Volumes in Docker file sharing
+      # SSD mount for local cache (S3 is primary storage)
       - /Volumes/Imago/MHC-Control_Panel/media:/mnt/ssd/mhc-images
     depends_on:
       db:
@@ -87,8 +86,7 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_REGION: ${AWS_REGION:-us-east-1}
     volumes:
-      - image_data:/app/data/images
-      # SSD/External storage - requires /Volumes in Docker file sharing
+      # SSD mount for local cache (S3 is primary storage)
       - /Volumes/Imago/MHC-Control_Panel/media:/mnt/ssd/mhc-images
     depends_on:
       db:
@@ -112,14 +110,7 @@ services:
       - web
 
 volumes:
-  # NOTE: postgres_data volume is deprecated - DB now on SSD bind mount
-  # Keeping volume definition for reference during migration
-  # Can be removed after confirming SSD bind mount works
-  # postgres_data:
-  #   driver: local
   browser_data:
     driver: local
-  image_data:
-    # NOTE: image_data is being deprecated - images now stored on SSD
-    # at /Volumes/Imago/MHC-Control_Panel/media
-    driver: local
+  # NOTE: image_data volume has been removed - S3 is now primary storage
+  # Backup stored at /Volumes/Imago/MHC-Control_Panel/docker-images-backup/

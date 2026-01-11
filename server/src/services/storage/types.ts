@@ -45,6 +45,7 @@ export interface StorageWriteResult {
   absolutePath: string;
   size: number;
   sha256: string;
+  provider?: StorageProviderType;
   error?: string;
 }
 
@@ -190,11 +191,12 @@ export function isSymlinkCapable(provider: StorageProvider): provider is Symlink
 
 /**
  * Default storage configuration
+ * NOTE: S3 is the primary storage. SSD/Docker are deprecated but kept for legacy compatibility.
  */
 export const DEFAULT_STORAGE_CONFIG: StorageConfig = {
-  globalMode: 'local', // Legacy
-  primaryStorage: 'ssd',
-  fallbackStorage: 'docker',
+  globalMode: 'remote', // S3 is primary
+  primaryStorage: 's3',
+  fallbackStorage: 'ssd',
   local: {
     mode: 'auto',
     ssdEnabled: true,

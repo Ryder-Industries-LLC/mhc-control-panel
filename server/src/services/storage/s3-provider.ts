@@ -59,7 +59,10 @@ export class S3Provider extends BaseStorageProvider {
    * Get the S3 key for a relative path
    */
   private getS3Key(relativePath: string): string {
-    return `${this.prefix}${relativePath}`;
+    // Ensure prefix ends with / and path doesn't start with /
+    const normalizedPrefix = this.prefix.endsWith('/') ? this.prefix : `${this.prefix}/`;
+    const normalizedPath = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
+    return `${normalizedPrefix}${normalizedPath}`;
   }
 
   /**
