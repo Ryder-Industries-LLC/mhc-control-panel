@@ -1537,7 +1537,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
               </div>
 
               {/* Rating */}
-              <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/10">
+              <div className="flex items-center gap-3 mt-3">
                 <span className="text-sm text-white/60">Rating:</span>
                 <StarRating
                   rating={rating}
@@ -1547,11 +1547,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 />
               </div>
 
-              {/* Add Note link */}
-              <div className="mt-3 pt-3 border-t border-white/10">
+              {/* Add Note button */}
+              <div className="mt-3">
                 <button
                   onClick={() => setShowAddNoteModal(true)}
-                  className="text-sm text-mhc-primary hover:text-mhc-primary/80 transition-colors flex items-center gap-1"
+                  className="px-3 py-1.5 bg-mhc-primary hover:bg-mhc-primary/80 text-white text-sm font-medium rounded-md transition-colors flex items-center gap-1.5"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -1561,6 +1561,153 @@ const Profile: React.FC<ProfilePageProps> = () => {
               </div>
             </div>
           </div>
+
+          {/* Profile Details Section - Chaturbate bio data */}
+          {profileData?.profile && (
+            <div className="mb-5">
+              <CollapsibleSection
+                title={
+                  <div className="flex items-center gap-2">
+                    <span>Profile Details</span>
+                    {profileData.profile?.browser_scraped_at ? (
+                      <span className="text-xs text-white/40 font-normal">
+                        (Last refresh: {formatDate(profileData.profile.browser_scraped_at, { relative: true })})
+                      </span>
+                    ) : (
+                      <span className="text-xs text-white/40 font-normal">(Never refreshed)</span>
+                    )}
+                  </div>
+                }
+                defaultCollapsed={true}
+                className="bg-mhc-surface"
+              >
+                {/* Two-column layout with cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Left Column - Basic Info */}
+                  <div className="space-y-4">
+                    <div className="p-4 bg-mhc-surface-light rounded-md">
+                      <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Basic Info</h5>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-mhc-text-muted text-sm">Real Name:</span>
+                          <span className={`text-sm ${profileData.profile?.display_name ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.display_name || 'Not set'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-mhc-text-muted text-sm">Age:</span>
+                          <span className={`text-sm ${profileData.profile?.age ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.age || 'Not set'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-mhc-text-muted text-sm">Birthday:</span>
+                          <span className={`text-sm ${profileData.profile?.birthday_public ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.birthday_public || 'Not set'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-mhc-text-muted text-sm">Gender:</span>
+                          <span className={`text-sm ${profileData.profile?.gender ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.gender ? formatGender(profileData.profile.gender) : 'Not set'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-mhc-text-muted text-sm">Interested In:</span>
+                          <span className={`text-sm ${profileData.profile?.interested_in ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.interested_in || 'Not set'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-mhc-surface-light rounded-md">
+                      <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Location</h5>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-mhc-text-muted text-sm">Location:</span>
+                          <span className={`text-sm ${profileData.profile?.location ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.location || 'Not set'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-mhc-text-muted text-sm">Country:</span>
+                          <span className={`text-sm ${profileData.profile?.country ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.country || 'Not set'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-mhc-text-muted text-sm">Languages:</span>
+                          <span className={`text-sm ${profileData.profile?.spoken_languages ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.spoken_languages || 'Not set'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column - Physical & Status */}
+                  <div className="space-y-4">
+                    <div className="p-4 bg-mhc-surface-light rounded-md">
+                      <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Physical</h5>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-mhc-text-muted text-sm">Body Type:</span>
+                          <span className={`text-sm ${profileData.profile?.body_type ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.body_type || 'Not set'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-mhc-text-muted text-sm">Body Decorations:</span>
+                          <span className={`text-sm ${profileData.profile?.body_decorations ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.body_decorations || 'Not set'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-mhc-text-muted text-sm">Smoke/Drink:</span>
+                          <span className={`text-sm ${profileData.profile?.smoke_drink ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.smoke_drink || 'Not set'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-mhc-surface-light rounded-md">
+                      <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Status</h5>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-mhc-text-muted text-sm">New Model:</span>
+                          <span className={`text-sm ${profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined
+                              ? (profileData.profile.is_new ? 'Yes' : 'No')
+                              : 'Unknown'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-mhc-text-muted text-sm">Last Broadcast:</span>
+                          <span className={`text-sm ${profileData.profile?.last_broadcast ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                            {profileData.profile?.last_broadcast
+                              ? new Date(profileData.profile.last_broadcast).toLocaleDateString()
+                              : 'Not set'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bio - full width */}
+                {profileData.profile?.bio && (
+                  <div className="mt-4 p-4 bg-mhc-surface-light rounded-md">
+                    <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Bio</h5>
+                    <p className="mt-2 mb-0 leading-relaxed text-mhc-text whitespace-pre-wrap">
+                      {profileData.profile.bio}
+                    </p>
+                  </div>
+                )}
+              </CollapsibleSection>
+            </div>
+          )}
 
           {/* Media Section (Collapsible) - Expanded by default */}
           <div className="mb-5">
@@ -2333,149 +2480,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
                           </div>
                         )}
                       </div>
-                    </CollapsibleSection>
-
-                    {/* Profile Details Section - merged from old Profile tab */}
-                    <CollapsibleSection
-                      title={
-                        <div className="flex items-center gap-2">
-                          <span>Profile Details</span>
-                          {profileData.profile?.browser_scraped_at ? (
-                            <span className="text-xs text-white/40 font-normal">
-                              (Last refresh: {formatDate(profileData.profile.browser_scraped_at, { relative: true })})
-                            </span>
-                          ) : (
-                            <span className="text-xs text-white/40 font-normal">(Never refreshed)</span>
-                          )}
-                        </div>
-                      }
-                      defaultCollapsed={true}
-                      className="bg-mhc-surface-light"
-                    >
-                      {/* Two-column layout with cards */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Left Column - Basic Info */}
-                        <div className="space-y-4">
-                          <div className="p-4 bg-mhc-surface rounded-md">
-                            <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Basic Info</h5>
-                            <div className="space-y-3">
-                              <div className="flex justify-between">
-                                <span className="text-mhc-text-muted text-sm">Real Name:</span>
-                                <span className={`text-sm ${profileData.profile?.display_name ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                                  {profileData.profile?.display_name || 'Not set'}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-mhc-text-muted text-sm">Age:</span>
-                                <span className={`text-sm ${profileData.profile?.age ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                                  {profileData.profile?.age || 'Not set'}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-mhc-text-muted text-sm">Birthday:</span>
-                                <span className={`text-sm ${profileData.profile?.birthday_public ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                                  {profileData.profile?.birthday_public || 'Not set'}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-mhc-text-muted text-sm">Gender:</span>
-                                <span className={`text-sm ${profileData.profile?.gender ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                                  {profileData.profile?.gender ? formatGender(profileData.profile.gender) : 'Not set'}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-mhc-text-muted text-sm">Interested In:</span>
-                                <span className={`text-sm ${profileData.profile?.interested_in ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                                  {profileData.profile?.interested_in || 'Not set'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="p-4 bg-mhc-surface rounded-md">
-                            <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Location</h5>
-                            <div className="space-y-3">
-                              <div className="flex justify-between">
-                                <span className="text-mhc-text-muted text-sm">Location:</span>
-                                <span className={`text-sm ${profileData.profile?.location ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                                  {profileData.profile?.location || 'Not set'}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-mhc-text-muted text-sm">Country:</span>
-                                <span className={`text-sm ${profileData.profile?.country ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                                  {profileData.profile?.country || 'Not set'}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-mhc-text-muted text-sm">Languages:</span>
-                                <span className={`text-sm ${profileData.profile?.spoken_languages ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                                  {profileData.profile?.spoken_languages || 'Not set'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Right Column - Physical & Status */}
-                        <div className="space-y-4">
-                          <div className="p-4 bg-mhc-surface rounded-md">
-                            <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Physical</h5>
-                            <div className="space-y-3">
-                              <div className="flex justify-between">
-                                <span className="text-mhc-text-muted text-sm">Body Type:</span>
-                                <span className={`text-sm ${profileData.profile?.body_type ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                                  {profileData.profile?.body_type || 'Not set'}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-mhc-text-muted text-sm">Body Decorations:</span>
-                                <span className={`text-sm ${profileData.profile?.body_decorations ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                                  {profileData.profile?.body_decorations || 'Not set'}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-mhc-text-muted text-sm">Smoke/Drink:</span>
-                                <span className={`text-sm ${profileData.profile?.smoke_drink ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                                  {profileData.profile?.smoke_drink || 'Not set'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="p-4 bg-mhc-surface rounded-md">
-                            <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Status</h5>
-                            <div className="space-y-3">
-                              <div className="flex justify-between">
-                                <span className="text-mhc-text-muted text-sm">New Model:</span>
-                                <span className={`text-sm ${profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                                  {profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined
-                                    ? (profileData.profile.is_new ? 'Yes' : 'No')
-                                    : 'Unknown'}
-                                </span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-mhc-text-muted text-sm">Last Broadcast:</span>
-                                <span className={`text-sm ${profileData.profile?.last_broadcast ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                                  {profileData.profile?.last_broadcast
-                                    ? new Date(profileData.profile.last_broadcast).toLocaleDateString()
-                                    : 'Not set'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Bio - full width */}
-                      {profileData.profile?.bio && (
-                        <div className="mt-4 p-4 bg-mhc-surface rounded-md">
-                          <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Bio</h5>
-                          <p className="mt-2 mb-0 leading-relaxed text-mhc-text whitespace-pre-wrap">
-                            {profileData.profile.bio}
-                          </p>
-                        </div>
-                      )}
                     </CollapsibleSection>
 
                     {/* Social Media Links Section */}

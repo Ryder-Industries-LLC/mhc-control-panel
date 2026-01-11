@@ -1,8 +1,14 @@
-# Session Summary - v1.33.0
+# Session Summary - v1.33.1
 
 **Date**: 2026-01-11
 
 ## What Was Accomplished
+
+### Profile UI Polish (v1.33.1)
+
+- **Add Note Button**: Changed from light text link to styled button with `bg-mhc-primary` background
+- **Profile Overview**: Removed dividing lines between attributes, rating, and Add Note sections
+- **Profile Details Placement**: Moved section to appear directly after profile overview card (removed duplicate from snapshot tab)
 
 ### Profile Scraper Enhancements
 

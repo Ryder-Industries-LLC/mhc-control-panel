@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.33.1] - 2026-01-11
+
+### Changed
+
+- **Add Note Button**: Converted from light text link to styled button with primary background color for better visibility
+- **Profile Overview Layout**: Removed dividing lines between attributes, rating, and Add Note sections for cleaner appearance
+- **Profile Details Placement**: Moved Profile Details section to appear directly after the profile overview card (removed duplicate from snapshot tab)
+
+### Fixed
+
+- **Profile Details Location**: Section now correctly appears at the top of the profile page after the overview card, not buried in the snapshot tab
+
+---
+
 ## [1.33.0] - 2026-01-11
 
 ### Added
