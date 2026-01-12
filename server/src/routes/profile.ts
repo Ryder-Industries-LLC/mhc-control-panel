@@ -2253,7 +2253,7 @@ router.get('/:username/communications', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Person not found' });
     }
 
-    // Get all PRIVATE_MESSAGE interactions involving this person (both directions)
+    // Get all PRIVATE_MESSAGE and DIRECT_MESSAGE interactions involving this person (both directions)
     // Query by metadata fromUser/toUser to get both sent and received messages
     // Use DISTINCT ON with a subquery to deduplicate messages with same content and timestamp
     // but maintain proper ORDER BY timestamp DESC for display
@@ -2268,7 +2268,7 @@ router.get('/:username/communications', async (req: Request, res: Response) => {
            metadata,
            stream_session_id
          FROM interactions
-         WHERE type = 'PRIVATE_MESSAGE'
+         WHERE type IN ('PRIVATE_MESSAGE', 'DIRECT_MESSAGE')
            AND (
              metadata->>'fromUser' ILIKE $1
              OR metadata->>'toUser' ILIKE $1
@@ -2285,7 +2285,7 @@ router.get('/:username/communications', async (req: Request, res: Response) => {
       `SELECT COUNT(*) as total FROM (
          SELECT DISTINCT ON (content, DATE_TRUNC('second', timestamp)) id
          FROM interactions
-         WHERE type = 'PRIVATE_MESSAGE'
+         WHERE type IN ('PRIVATE_MESSAGE', 'DIRECT_MESSAGE')
            AND (
              metadata->>'fromUser' ILIKE $1
              OR metadata->>'toUser' ILIKE $1
@@ -2315,7 +2315,8 @@ router.get('/:username/communications', async (req: Request, res: Response) => {
       const myUsername = process.env.CHATURBATE_USERNAME?.toLowerCase();
       const broadcasterLower = broadcaster?.toLowerCase();
 
-      if (!broadcaster) {
+      // Use type field as primary classification, fall back to broadcaster check for legacy data
+      if (row.type === 'DIRECT_MESSAGE' || !broadcaster) {
         directMessages.push(message);
       } else if (myUsername && broadcasterLower === myUsername) {
         pmMyRoom.push(message);
@@ -2361,7 +2362,7 @@ router.get('/:username/timeline', async (req: Request, res: Response) => {
     }
 
     // All valid timeline event types
-    const allEventTypes = ['USER_ENTER', 'USER_LEAVE', 'CHAT_MESSAGE', 'PRIVATE_MESSAGE', 'TIP_EVENT', 'MEDIA_PURCHASE', 'FANCLUB_JOIN'];
+    const allEventTypes = ['USER_ENTER', 'USER_LEAVE', 'CHAT_MESSAGE', 'PRIVATE_MESSAGE', 'DIRECT_MESSAGE', 'TIP_EVENT', 'MEDIA_PURCHASE', 'FANCLUB_JOIN'];
 
     // Parse and validate event types filter
     let selectedTypes: string[];

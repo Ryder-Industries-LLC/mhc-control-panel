@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.33.3] - 2026-01-11
+
+### Added
+
+- **DM Scraper Job**: New job to scrape Direct Messages from Chaturbate messages page
+  - Navigates to chaturbate.com/messages/ using authenticated browser session
+  - Extracts all messages from each DM thread
+  - Handles complex date/time parsing (relative dates like "Thu 7:30pm" computed from prior full dates)
+  - Detects tips within DM threads ("You tipped 25 tokens" / "username tipped 50 tokens")
+  - Stores raw data in `chaturbate_dm_raw_data` table (one row per message)
+  - Auto-import option to create DIRECT_MESSAGE interactions
+  - Job controls: start/stop with state persistence for resume capability
+  - Test controls: Scrape 1 thread, Scrape 10 threads for validation
+
+- **DM Import Infrastructure**:
+  - New table `chaturbate_dm_raw_data` for storing scraped messages
+  - New table `dm_scrape_state` for tracking which threads have been scraped
+  - New `dm_import` source type for interactions
+  - Message deduplication via content hash
+  - Tip detection with positive (received) vs negative (sent) amounts
+  - Import tracking with `imported_at` and `interaction_id` columns
+  - Migration: `080_create_dm_scraper.sql`
+
+- **Jobs UI - DM Import**:
+  - New DM Import job card with start/stop controls
+  - Test controls for stepped testing (1 → 10 → full run)
+  - Statistics: total runs, threads scraped, messages scraped, imported
+  - Configuration: max threads per run, delay between threads, auto-import
+
+- **DM Import API Endpoints**:
+  - `GET /api/job/dm-import/status` - Job status
+  - `POST /api/job/dm-import/start` - Start full run
+  - `POST /api/job/dm-import/stop` - Stop job
+  - `POST /api/job/dm-import/config` - Update configuration
+  - `POST /api/job/dm-import/scrape-one/:username` - Scrape single thread
+  - `POST /api/job/dm-import/scrape-n` - Scrape N threads
+  - `GET /api/job/dm-import/raw-data` - View raw scraped data
+  - `POST /api/job/dm-import/import-one/:id` - Import single DM
+  - `POST /api/job/dm-import/import-all` - Import all unimported DMs
+
+### Changed
+
+- **DM Support in Queries**: Updated profile, inbox, and hudson routes to include `DIRECT_MESSAGE` type
+- **Interactions Source Constraint**: Added `dm_import` source type
+
+### Technical
+
+- New: `server/src/services/dm-scraper.service.ts` - DM scraping and parsing logic
+- New: `server/src/jobs/dm-import.job.ts` - DM import job with full lifecycle management
+- New: `server/src/db/migrations/080_create_dm_scraper.sql` - DM tables and constraints
+- New: `server/tests/unit/dm-scraper.test.ts` - Unit tests for date parsing and tip detection
+- Updated: `server/src/routes/job.ts` - DM import job endpoints
+- Updated: `server/src/routes/profile.ts` - DIRECT_MESSAGE support in communications
+- Updated: `server/src/routes/inbox.ts` - DIRECT_MESSAGE support
+- Updated: `server/src/routes/hudson.ts` - DIRECT_MESSAGE support
+- Updated: `client/src/pages/Jobs.tsx` - DM Import job UI
+
+---
+
 ## [1.33.2] - 2026-01-11
 
 ### Added

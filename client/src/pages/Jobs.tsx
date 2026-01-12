@@ -114,6 +114,34 @@ interface StatbateConfig {
   prioritizeTippedByMe: boolean;
 }
 
+// DM Import Job Types
+interface DMImportConfig {
+  enabled: boolean;
+  maxThreadsPerRun: number;
+  delayBetweenThreads: number;
+  autoImport: boolean;
+}
+
+interface DMImportStats {
+  lastRun: string | null;
+  totalRuns: number;
+  totalThreadsScraped: number;
+  totalMessagesScraped: number;
+  totalMessagesImported: number;
+  lastRunThreads: number;
+  lastRunMessages: number;
+  currentThread: string | null;
+  progress: number;
+  total: number;
+}
+
+interface DMImportJobStatus {
+  isRunning: boolean;
+  isProcessing: boolean;
+  config: DMImportConfig;
+  stats: DMImportStats;
+}
+
 // Live Screenshot Job Types
 interface LiveScreenshotConfig {
   intervalMinutes: number;
@@ -174,6 +202,7 @@ const Jobs: React.FC = () => {
     cbhours: false,
     statbate: false,
     'live-screenshot': false,
+    'dm-import': false,
   });
 
   // Job statuses
@@ -182,6 +211,7 @@ const Jobs: React.FC = () => {
   const [cbhoursStatus, setCbhoursStatus] = useState<CBHoursJobStatus | null>(null);
   const [statbateStatus, setStatbateStatus] = useState<StatbateJobStatus | null>(null);
   const [liveScreenshotStatus, setLiveScreenshotStatus] = useState<LiveScreenshotJobStatus | null>(null);
+  const [dmImportStatus, setDMImportStatus] = useState<DMImportJobStatus | null>(null);
 
   // Config form states
   const [affiliateConfig, setAffiliateConfig] = useState<AffiliateConfig>({
@@ -227,6 +257,13 @@ const Jobs: React.FC = () => {
     intervalMinutes: 30,
     enabled: true,
   });
+  const [dmImportConfig, setDMImportConfig] = useState<DMImportConfig>({
+    enabled: true,
+    maxThreadsPerRun: 100,
+    delayBetweenThreads: 2000,
+    autoImport: true,
+  });
+  const [scrapeUsername, setScrapeUsername] = useState('');
 
   // Toggle job expansion
   const toggleJob = (jobId: string) => {
@@ -236,12 +273,13 @@ const Jobs: React.FC = () => {
   // Fetch all job statuses
   const fetchAllStatuses = useCallback(async () => {
     try {
-      const [affiliateRes, profileScrapeRes, cbhoursRes, statbateRes, liveScreenshotRes] = await Promise.all([
+      const [affiliateRes, profileScrapeRes, cbhoursRes, statbateRes, liveScreenshotRes, dmImportRes] = await Promise.all([
         fetch('/api/job/affiliate/status'),
         fetch('/api/job/profile-scrape/status'),
         fetch('/api/job/cbhours/status'),
         fetch('/api/job/statbate/status'),
         fetch('/api/job/live-screenshot/status'),
+        fetch('/api/job/dm-import/status'),
       ]);
 
       if (affiliateRes.ok) {
@@ -275,6 +313,14 @@ const Jobs: React.FC = () => {
         setLiveScreenshotStatus(data);
         if (data.config) {
           setLiveScreenshotConfig(data.config);
+        }
+      }
+
+      if (dmImportRes.ok) {
+        const data = await dmImportRes.json();
+        setDMImportStatus(data);
+        if (data.config) {
+          setDMImportConfig(data.config);
         }
       }
 
@@ -317,7 +363,8 @@ const Jobs: React.FC = () => {
                        jobPath === 'profile-scrape' ? 'Profile Capture' :
                        jobPath === 'cbhours' ? 'CBHours' :
                        jobPath === 'statbate' ? 'Statbate Refresh' :
-                       jobPath === 'live-screenshot' ? 'Live Screenshot' : jobPath;
+                       jobPath === 'live-screenshot' ? 'Live Screenshot' :
+                       jobPath === 'dm-import' ? 'DM Import' : jobPath;
         setSuccessMessage(`${jobName} configuration saved successfully`);
         setTimeout(() => setSuccessMessage(null), 3000);
       }
@@ -1446,6 +1493,248 @@ const Jobs: React.FC = () => {
     );
   };
 
+  // ===== DM Import Job Section =====
+  const renderDMImportJob = () => {
+    const isExpanded = expandedJobs['dm-import'];
+    const status = dmImportStatus;
+
+    const handleScrapeOne = async () => {
+      if (!scrapeUsername.trim()) return;
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/job/dm-import/scrape-one/${scrapeUsername.trim()}`, {
+          method: 'POST',
+        });
+        const data = await response.json();
+        if (data.success) {
+          setSuccessMessage(`Scraped ${data.messagesFound} messages from ${scrapeUsername}, saved ${data.messagesSaved}`);
+          setTimeout(() => setSuccessMessage(null), 5000);
+        } else {
+          setError(data.error || 'Failed to scrape thread');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to scrape thread');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const handleScrapeN = async (count: number) => {
+      try {
+        setLoading(true);
+        const response = await fetch('/api/job/dm-import/scrape-n', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ count }),
+        });
+        const data = await response.json();
+        if (data.success) {
+          setSuccessMessage(`Scraped ${data.threadsScraped} threads, ${data.totalMessages} messages`);
+          setTimeout(() => setSuccessMessage(null), 5000);
+        } else {
+          setError(data.error || 'Failed to scrape threads');
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to scrape threads');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    return (
+      <div className="bg-mhc-surface border border-white/10 rounded-lg overflow-hidden">
+        {/* Collapsible Header */}
+        <div
+          className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors"
+          onClick={() => toggleJob('dm-import')}
+        >
+          <div className="flex items-center gap-3">
+            <span className="text-white/40">{isExpanded ? '▼' : '▶'}</span>
+            <StatusBadge
+              isRunning={status?.isRunning || false}
+              isPaused={false}
+              isProcessing={status?.isProcessing}
+            />
+            <span className="font-semibold text-white">DM Import</span>
+            {status?.isProcessing && status.stats.total > 0 && (
+              <span className="text-xs text-white/50">
+                ({status.stats.progress}/{status.stats.total})
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            {!status?.isRunning && (
+              <button
+                onClick={() => handleJobControl('dm-import', 'start', setDMImportStatus)}
+                className="px-3 py-1 rounded text-sm font-medium bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50"
+                disabled={loading || !status?.config?.enabled}
+              >
+                Start Full Run
+              </button>
+            )}
+            {status?.isRunning && (
+              <button
+                onClick={() => handleJobControl('dm-import', 'stop', setDMImportStatus)}
+                className="px-3 py-1 rounded text-sm font-medium bg-red-500 text-white hover:bg-red-600 disabled:opacity-50"
+                disabled={loading}
+              >
+                Stop
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Expanded Content */}
+        {isExpanded && status && (
+          <div className="border-t border-white/10 p-4 space-y-4">
+            {/* Progress if processing */}
+            {status.isProcessing && status.stats.total > 0 && (
+              <ProgressBar
+                progress={status.stats.progress}
+                total={status.stats.total}
+                label={status.stats.currentThread || 'Scraping DMs...'}
+              />
+            )}
+
+            {/* Test Controls */}
+            <div>
+              <h3 className="text-sm font-semibold text-white/70 uppercase mb-3">Test Controls</h3>
+              <div className="flex flex-wrap gap-3 items-end">
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-xs text-white/60 mb-1">Scrape Single Thread</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={scrapeUsername}
+                      onChange={(e) => setScrapeUsername(e.target.value)}
+                      placeholder="Username"
+                      className="flex-1 p-2 border border-white/20 rounded bg-white/5 text-white text-sm focus:outline-none focus:border-mhc-primary"
+                    />
+                    <button
+                      onClick={handleScrapeOne}
+                      disabled={loading || !scrapeUsername.trim()}
+                      className="px-3 py-2 rounded text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
+                    >
+                      Scrape 1
+                    </button>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleScrapeN(10)}
+                  disabled={loading}
+                  className="px-3 py-2 rounded text-sm font-medium bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-50"
+                >
+                  Scrape 10
+                </button>
+              </div>
+              <p className="text-xs text-white/50 mt-2">
+                Use test controls to scrape 1 or 10 threads for validation before running full import.
+              </p>
+            </div>
+
+            {/* Statistics */}
+            <div>
+              <h3 className="text-sm font-semibold text-white/70 uppercase mb-3">Statistics</h3>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <StatCard value={status.stats.totalRuns} label="Total Runs" />
+                <StatCard value={status.stats.totalThreadsScraped} label="Threads Scraped" />
+                <StatCard value={status.stats.totalMessagesScraped} label="Messages Scraped" />
+                <StatCard value={status.stats.totalMessagesImported} label="Imported" />
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <InfoRow label="Last Run" value={formatDate(status.stats.lastRun)} />
+                <InfoRow label="Last Run Threads" value={status.stats.lastRunThreads} />
+              </div>
+            </div>
+
+            {/* Current Status */}
+            <div>
+              <h3 className="text-sm font-semibold text-white/70 uppercase mb-3">Current Status</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                <InfoRow label="Max Threads" value={status.config.maxThreadsPerRun} />
+                <InfoRow label="Delay (ms)" value={status.config.delayBetweenThreads} />
+                <InfoRow label="Auto Import" value={status.config.autoImport ? 'Yes' : 'No'} />
+                <InfoRow label="Enabled" value={status.config.enabled ? 'Yes' : 'No'} />
+              </div>
+            </div>
+
+            {/* Configuration */}
+            <div>
+              <h3 className="text-sm font-semibold text-white/70 uppercase mb-3">Configuration</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dmImportConfig.enabled}
+                    onChange={(e) => setDMImportConfig({ ...dmImportConfig, enabled: e.target.checked })}
+                    className="mr-2 w-4 h-4 accent-mhc-primary"
+                  />
+                  <span className="text-sm text-white/90">Enable Job</span>
+                </label>
+
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dmImportConfig.autoImport}
+                    onChange={(e) => setDMImportConfig({ ...dmImportConfig, autoImport: e.target.checked })}
+                    className="mr-2 w-4 h-4 accent-mhc-primary"
+                  />
+                  <span className="text-sm text-white/90">Auto Import to Interactions</span>
+                </label>
+
+                <div>
+                  <label className="block text-xs text-white/60 mb-1">Max Threads Per Run</label>
+                  <input
+                    type="number"
+                    value={dmImportConfig.maxThreadsPerRun}
+                    onChange={(e) => setDMImportConfig({ ...dmImportConfig, maxThreadsPerRun: parseInt(e.target.value) })}
+                    min="1"
+                    max="500"
+                    className="w-full p-2 border border-white/20 rounded bg-white/5 text-white text-sm focus:outline-none focus:border-mhc-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-white/60 mb-1">Delay Between Threads (ms)</label>
+                  <input
+                    type="number"
+                    value={dmImportConfig.delayBetweenThreads}
+                    onChange={(e) => setDMImportConfig({ ...dmImportConfig, delayBetweenThreads: parseInt(e.target.value) })}
+                    min="500"
+                    max="10000"
+                    className="w-full p-2 border border-white/20 rounded bg-white/5 text-white text-sm focus:outline-none focus:border-mhc-primary"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-white/50 mt-2">
+                Scrapes DM threads from Chaturbate messages page. Requires cookies to be imported.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => handleJobControl('dm-import', 'config', setDMImportStatus, dmImportConfig)}
+                  className="px-4 py-2 rounded font-medium bg-mhc-primary text-white hover:bg-mhc-primary/80 text-sm disabled:opacity-50"
+                  disabled={loading}
+                >
+                  Save Config
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm('Reset all statistics?')) {
+                      handleJobControl('dm-import', 'reset-stats', setDMImportStatus);
+                    }
+                  }}
+                  className="px-3 py-2 rounded font-medium bg-gray-600 text-white hover:bg-gray-500 text-sm"
+                >
+                  Reset Stats
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="max-w-5xl mx-auto p-5">
       <h1 className="text-2xl font-bold mb-6 bg-gradient-to-r from-mhc-primary to-mhc-primary-dark bg-clip-text text-transparent">
@@ -1471,6 +1760,7 @@ const Jobs: React.FC = () => {
         {renderCBHoursJob()}
         {renderStatbateJob()}
         {renderLiveScreenshotJob()}
+        {renderDMImportJob()}
       </div>
     </div>
   );

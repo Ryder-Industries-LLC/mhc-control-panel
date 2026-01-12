@@ -55,7 +55,7 @@ router.get('/threads', async (req: Request, res: Response) => {
            END as is_from_user
          FROM interactions i
          JOIN persons p ON i.person_id = p.id
-         WHERE i.type = 'PRIVATE_MESSAGE'
+         WHERE i.type IN ('PRIVATE_MESSAGE', 'DIRECT_MESSAGE')
        ),
        latest_per_user AS (
          SELECT DISTINCT ON (username)
@@ -92,7 +92,7 @@ router.get('/threads', async (req: Request, res: Response) => {
       `SELECT COUNT(DISTINCT p.username) as count
        FROM interactions i
        JOIN persons p ON i.person_id = p.id
-       WHERE i.type = 'PRIVATE_MESSAGE'`
+       WHERE i.type IN ('PRIVATE_MESSAGE', 'DIRECT_MESSAGE')`
     );
 
     const threads: PMThread[] = result.rows.map(row => ({
@@ -143,7 +143,7 @@ router.get('/thread/:username', async (req: Request, res: Response) => {
            i.content as message
          FROM interactions i
          JOIN persons p ON i.person_id = p.id
-         WHERE i.type = 'PRIVATE_MESSAGE'
+         WHERE i.type IN ('PRIVATE_MESSAGE', 'DIRECT_MESSAGE')
            AND LOWER(p.username) = LOWER($1)
          ORDER BY i.content, DATE_TRUNC('second', i.timestamp), i.id
        ) deduped
@@ -159,7 +159,7 @@ router.get('/thread/:username', async (req: Request, res: Response) => {
            i.id
          FROM interactions i
          JOIN persons p ON i.person_id = p.id
-         WHERE i.type = 'PRIVATE_MESSAGE'
+         WHERE i.type IN ('PRIVATE_MESSAGE', 'DIRECT_MESSAGE')
            AND LOWER(p.username) = LOWER($1)
          ORDER BY i.content, DATE_TRUNC('second', i.timestamp), i.id
        ) deduped`,
@@ -220,7 +220,7 @@ router.get('/stats', async (req: Request, res: Response) => {
          ) as messages_sent
        FROM interactions i
        JOIN persons p ON i.person_id = p.id
-       WHERE i.type = 'PRIVATE_MESSAGE'
+       WHERE i.type IN ('PRIVATE_MESSAGE', 'DIRECT_MESSAGE')
          AND i.timestamp >= $1`,
       [startDate]
     );
@@ -270,7 +270,7 @@ router.get('/search', async (req: Request, res: Response) => {
          i.content as message
        FROM interactions i
        JOIN persons p ON i.person_id = p.id
-       WHERE i.type = 'PRIVATE_MESSAGE'
+       WHERE i.type IN ('PRIVATE_MESSAGE', 'DIRECT_MESSAGE')
          AND (
            i.content ILIKE $1
            OR p.username ILIKE $1

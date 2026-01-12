@@ -1,162 +1,150 @@
-# Session Summary - v1.33.2
+# Session Summary - v1.33.3
 
 **Date**: 2026-01-11
 
 ## What Was Accomplished
 
-### Visit Tracking Improvements
+### DM Scraper Job Implementation
 
-#### Session-Based Visit Deduplication
-Changed room visit deduplication from 5-minute time window to per-broadcast-session:
-- Visits now deduplicated by `session_id` instead of time threshold
-- More accurate visit counting per actual broadcast session
+Complete implementation of a Direct Message scraper for Chaturbate:
 
-#### Two-Way Visit Tracking ("My Visits")
-Added tracking for when YOU visit other users' rooms:
-- New `my_visits` table with person reference, timestamp, and notes
-- New `my_visit_count` and `last_my_visit_at` columns on persons table
-- Backfill from `event_logs` using `raw_event->>'broadcaster'` field
-- When broadcaster in event is NOT your username, you were visiting their room
-- Migration: `078_create_my_visits.sql`
-- Backfilled 167 records from 144 unique users
+#### Core Features
+- **Browser Automation**: Uses Puppeteer with stealth plugin and existing cookie session
+- **Thread Discovery**: Navigates to /messages/, clicks "All" filter, extracts thread list
+- **Message Extraction**: Scrolls through threads to load all messages, extracts content and metadata
+- **Date Parsing**: Handles complex relative dates ("Thu 7:30pm") computed from prior full date headers
+- **Tip Detection**: Identifies tips in DMs with positive (received) vs negative (sent) amounts
 
-### Event Traceability & DM Classification
+#### Database Schema
+- `chaturbate_dm_raw_data` table - One row per scraped message
+- `dm_scrape_state` table - Tracks which threads have been scraped
+- Added `dm_import` source type to interactions constraint
+- Migration: `080_create_dm_scraper.sql`
 
-#### Chaturbate Event ID Tracking
-Discovered Chaturbate sends an undocumented `id` field in all events:
-- Format: `"1768167770126-0"` (timestamp in ms + sequence number)
-- New `cb_event_id` column in `event_logs` stores this value
-- Useful for debugging and Chaturbate support
+#### Job Management
+- Full job lifecycle: start/stop/restore
+- State persistence via JobPersistenceService
+- Configuration: max threads per run, delay between threads, auto-import
+- Stepped testing: Scrape 1 → 10 → full run
 
-#### Event-to-Interaction Linkage
-Added `event_log_id` column to `interactions` table:
-- Links processed interactions back to raw event source
-- Enables full traceability of data origin
+#### API Endpoints
+- Status, config, start/stop
+- Scrape one thread by username
+- Scrape N threads for testing
+- View raw data
+- Import single or all unimported DMs
 
-#### Direct Message Classification
-Proper classification of messages sent outside broadcast rooms:
-- **DM (Direct Message)**: Empty `broadcaster` field - sent outside any room
-- **PM (Private Message)**: Has `broadcaster` field - sent while in someone's room
-- New `DIRECT_MESSAGE` interaction type
-- Event Log page shows DM filter with indigo badge
-- Reclassified 393 historical interactions and 82 event_logs
+#### UI Integration
+- DM Import job card on Jobs page
+- Test controls for stepped testing
+- Statistics display
+- Configuration form
 
-### Bug Fixes
+### DM Support in Queries
 
-#### Event Logging Broken Since Jan 3
-Fixed PostgreSQL error preventing events from being logged:
-- **Error**: "inconsistent types deduced for parameter $1"
-- **Cause**: Complex INSERT...SELECT...WHERE NOT EXISTS with mixed parameter usage
-- **Fix**: Simplified to INSERT...VALUES with explicit type casts and ON CONFLICT DO NOTHING
+Updated queries throughout the codebase to include DIRECT_MESSAGE type:
+- `server/src/routes/profile.ts` - Communications endpoint
+- `server/src/routes/inbox.ts` - Inbox queries
+- `server/src/routes/hudson.ts` - Dashboard queries
 
-#### Duplicate Events
-Fixed race condition causing duplicate event entries:
-- Created unique index on `(method, username, DATE_TRUNC('second', created_at))`
-- Changed INSERT to use `ON CONFLICT DO NOTHING`
-- Deleted 6 existing duplicates
-
-#### Broadcaster Field Never Assumed
-Fixed bad assumption where empty broadcaster was filled with owner username:
-- Empty broadcaster means event occurred outside any room (e.g., DMs)
-- Updated all event handlers to preserve actual value: `event.broadcaster || ''`
-- Fixed 82 event_logs and 76 interactions with incorrectly filled broadcaster
-
-### Event Log UI Enhancements
-
-#### Dual Data View
-Expanded event view now shows side-by-side comparison:
-- **Our Processed Data**: id, method, broadcaster, username, timestamp (from our columns)
-- **Raw Chaturbate API Data**: Complete original event from Chaturbate
-
-#### Filter Improvements
-- Added `directMessage` filter option
-- Added `chatMessage` filter option
-- Stats panel shows separate DM and PM counts (5-column grid)
-
-## Files Modified
+## Files Created
 
 ### Server
 
-- `server/src/api/chaturbate/events-client.ts`
-  - Added `id` field to ChaturbateEvent interface
-  - DM classification in `logEvent()` and `handlePrivateMessage()`
-  - Extracts and stores `cb_event_id`
-  - All handlers use `event.broadcaster || ''` instead of `this.username`
+- `server/src/services/dm-scraper.service.ts`
+  - `parseRelativeDate()` - handles "Thu 7:30pm", "January 4, 2026", "Today 3:15pm"
+  - `parseTipFromMessage()` - detects tip amounts
+  - `getThreadList()` - navigates and extracts threads
+  - `scrapeThread()` - extracts all messages from a thread
+  - `saveMessages()` - saves to database with deduplication
+  - `importToInteraction()` - imports to interactions table
 
-- `server/src/services/room-visits.service.ts`
-  - Session-based deduplication in `recordVisit()`
-  - New methods: `recordMyVisit()`, `getMyVisitStats()`, `getMyVisitsByPersonId()`, `deleteMyVisit()`
-  - `backfillMyVisitsFromEventLogs()` using raw_event broadcaster field
+- `server/src/jobs/dm-import.job.ts`
+  - Full job lifecycle management
+  - `scrapeOneThread()` for testing single thread
+  - `scrapeNThreads()` for batch testing
+  - Auto-import option
 
-- `server/src/types/models.ts`
-  - Added `DIRECT_MESSAGE` to InteractionType
-  - Added `my_visit_count` and `last_my_visit_at` to Person interface
+- `server/src/db/migrations/080_create_dm_scraper.sql`
+  - `chaturbate_dm_raw_data` table
+  - `dm_scrape_state` table
+  - Indexes for efficient queries
+  - Added `dm_import` to interactions source constraint
 
-- `server/src/routes/profile.ts`
-  - New endpoints: GET/POST/DELETE for my-visits
-
-- `server/src/db/migrations/078_create_my_visits.sql` (NEW)
-- `server/src/db/migrations/079_event_traceability.sql` (NEW)
+- `server/tests/unit/dm-scraper.test.ts`
+  - Tests for date parsing
+  - Tests for tip detection
 
 ### Client
 
-- `client/src/pages/EventLog.tsx`
-  - Added `directMessage` and `chatMessage` filter options
-  - Indigo badge for DMs, teal for chat messages
-  - Dual data view in expanded events
-  - 5-column stats grid with separate DM/PM counts
-
-- `client/src/pages/Profile.tsx`
-  - My visits display integration
+- Updated `client/src/pages/Jobs.tsx`
+  - DM Import job types and state
+  - `renderDMImportJob()` component
+  - Test controls UI
 
 ## Database Changes
 
 ### New Tables
+
 ```sql
--- my_visits table
-CREATE TABLE my_visits (
+CREATE TABLE chaturbate_dm_raw_data (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    person_id UUID NOT NULL REFERENCES persons(id),
-    visited_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    notes TEXT,
+    thread_username VARCHAR(255) NOT NULL,
+    message_text TEXT NOT NULL,
+    is_from_me BOOLEAN NOT NULL,
+    raw_date_text VARCHAR(100),
+    computed_timestamp TIMESTAMPTZ,
+    is_tip BOOLEAN DEFAULT FALSE,
+    tip_amount INTEGER,  -- Positive = to me, negative = I gave
+    tip_note TEXT,
+    person_id UUID REFERENCES persons(id),
+    interaction_id UUID REFERENCES interactions(id),
+    imported_at TIMESTAMPTZ,
+    scraped_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    scrape_session_id VARCHAR(50),
+    message_hash VARCHAR(64),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE dm_scrape_state (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    thread_username VARCHAR(255) NOT NULL UNIQUE,
+    person_id UUID REFERENCES persons(id),
+    is_scraped BOOLEAN DEFAULT FALSE,
+    last_scraped_at TIMESTAMPTZ,
+    message_count INTEGER DEFAULT 0,
+    newest_message_hash VARCHAR(64),
+    priority INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
 ### Schema Changes
+
 ```sql
--- persons table
-ALTER TABLE persons ADD COLUMN my_visit_count INTEGER DEFAULT 0;
-ALTER TABLE persons ADD COLUMN last_my_visit_at TIMESTAMPTZ;
-
--- event_logs table
-ALTER TABLE event_logs ADD COLUMN cb_event_id VARCHAR(50);
-
--- interactions table
-ALTER TABLE interactions ADD COLUMN event_log_id UUID REFERENCES event_logs(id);
-
--- Updated check constraint
-ALTER TABLE interactions ADD CONSTRAINT interactions_type_check CHECK (
-  type IN ('CHAT_MESSAGE', 'PRIVATE_MESSAGE', 'DIRECT_MESSAGE', ...)
+-- Added dm_import to interactions source constraint
+ALTER TABLE interactions ADD CONSTRAINT interactions_source_check CHECK (
+    source::text = ANY (ARRAY['cb_events', 'statbate_plus', 'manual', 'dm_import']::text[])
 );
+
+-- Added tip_dm_id to link tips found in DMs
+ALTER TABLE interactions ADD COLUMN tip_dm_id UUID REFERENCES chaturbate_dm_raw_data(id);
 ```
 
-### Data Fixes
-- Backfilled `cb_event_id` for 22 existing event_logs
-- Reclassified 82 privateMessage → directMessage in event_logs
-- Reclassified 393 PRIVATE_MESSAGE → DIRECT_MESSAGE in interactions
-- Fixed 76 interactions with incorrectly assumed broadcaster
+## Key Design Decisions
 
-## Key Learnings
-
-1. **Chaturbate's `broadcaster` field semantics**: Indicates which room an event occurred in, NOT who the broadcaster is. Empty = outside any room (DMs).
-
-2. **Undocumented API fields**: Chaturbate sends an `id` field not mentioned in their spec - useful for traceability.
-
-3. **Never assume data**: Don't fill in empty fields with assumptions - preserve actual values.
+1. **One Row Per Message**: Stores each DM as separate row for easier querying and deduplication
+2. **Dual Timestamp Storage**: Stores both raw date text AND computed timestamp for debugging
+3. **Tip Direction**: Positive amount = received, negative = sent (I gave)
+4. **Import Tracking**: `imported_at` and `interaction_id` track which DMs are imported
+5. **Session-based Scraping**: Groups messages by scrape session for debugging
+6. **Hash-based Deduplication**: Message hash prevents duplicates across runs
 
 ## Next Steps
 
-- Monitor new event classification accuracy
-- Consider adding UI to manage my_visits manually
-- Investigate linking interactions to event_logs retroactively
+1. Run migration: `docker-compose exec web npm run migrate`
+2. Test with single username first, then expand
+3. Consider adding Raw DM Data view in Admin UI
+4. Monitor scraping accuracy and adjust selectors if needed
+5. Add incremental update support (only fetch new messages)
