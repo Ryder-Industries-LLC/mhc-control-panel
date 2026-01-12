@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.33.4] - 2026-01-12
+
+### Added
+
+- **DM Raw Data Columns**: Enhanced DM data table with explicit from/to tracking
+  - New `from_username` column - Who sent the message
+  - New `to_username` column - Who received the message
+  - New `thread_id` column - Foreign key to `dm_scrape_state` for thread reference
+  - Backfill migration populates existing records based on `is_from_me` flag
+  - Admin UI updated to display From/To columns in DM Raw Data table
+  - Migration: `081_dm_from_to_columns.sql`
+
+### Changed
+
+- **DM Scraper Service**: Updated to populate new columns during message save
+  - Uses `env.CHATURBATE_USERNAME` for broadcaster username
+  - Links messages to thread via `thread_id` foreign key
+
+### Technical
+
+- New: `server/src/db/migrations/081_dm_from_to_columns.sql` - From/To columns with FK and indexes
+- Updated: `server/src/services/dm-scraper.service.ts` - Populates from_username, to_username, thread_id
+- Updated: `client/src/pages/Admin.tsx` - DM Raw Data table shows From/To columns
+
+---
+
 ## [1.33.3] - 2026-01-11
 
 ### Added

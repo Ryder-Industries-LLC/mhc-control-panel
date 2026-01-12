@@ -256,6 +256,12 @@ export class DMImportJob {
     let page: Page | null = null;
 
     try {
+      // Mark as processing immediately for UI feedback
+      this.isProcessing = true;
+      this.stats.currentThread = username;
+      this.stats.progress = 0;
+      this.stats.total = 1;
+
       // Check for cookies
       const hasCookies = await ChaturbateScraperService.hasCookies();
       if (!hasCookies) {
@@ -268,6 +274,10 @@ export class DMImportJob {
       await page.setUserAgent(
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       );
+
+      // Set timezone to match user's local timezone (EST/America/New_York)
+      // This ensures CB renders timestamps the same way as in the user's browser
+      await page.emulateTimezone('America/New_York');
 
       // Navigate to homepage first
       await page.goto('https://chaturbate.com/', { waitUntil: 'networkidle2', timeout: 30000 });
@@ -306,6 +316,10 @@ export class DMImportJob {
         error: errorMessage,
       };
     } finally {
+      // Clear processing state
+      this.isProcessing = false;
+      this.stats.currentThread = null;
+      this.stats.progress = 1;
       if (page) {
         await page.close();
       }
@@ -324,6 +338,12 @@ export class DMImportJob {
     let page: Page | null = null;
 
     try {
+      // Mark as processing immediately for UI feedback
+      this.isProcessing = true;
+      this.stats.progress = 0;
+      this.stats.total = count;
+      this.stats.currentThread = 'Starting...';
+
       const hasCookies = await ChaturbateScraperService.hasCookies();
       if (!hasCookies) {
         return { success: false, threadsScraped: 0, totalMessages: 0, error: 'No cookies available' };
@@ -336,11 +356,15 @@ export class DMImportJob {
         'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       );
 
+      // Set timezone to match user's local timezone (EST/America/New_York)
+      await page.emulateTimezone('America/New_York');
+
       await page.goto('https://chaturbate.com/', { waitUntil: 'networkidle2', timeout: 30000 });
       await this.applyCookiesToPage(page);
       await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
 
       // Get thread list
+      this.stats.currentThread = 'Getting thread list...';
       const threads = await DMScraperService.getThreadList(page);
 
       if (threads.length === 0) {
@@ -350,9 +374,15 @@ export class DMImportJob {
       const sessionId = crypto.randomUUID().substring(0, 8);
       let threadsScraped = 0;
       let totalMessages = 0;
+      const actualCount = Math.min(count, threads.length);
+      this.stats.total = actualCount;
 
-      for (let i = 0; i < Math.min(count, threads.length); i++) {
+      for (let i = 0; i < actualCount; i++) {
         const thread = threads[i];
+
+        // Update progress before each thread
+        this.stats.currentThread = thread.username;
+        this.stats.progress = i + 1;
 
         try {
           const messages = await DMScraperService.scrapeThread(page, thread.username, sessionId);
@@ -364,10 +394,10 @@ export class DMImportJob {
           threadsScraped++;
           totalMessages += saved;
 
-          logger.info(`Scraped thread ${i + 1}/${count}: ${thread.username}`, { messages: messages.length });
+          logger.info(`Scraped thread ${i + 1}/${actualCount}: ${thread.username}`, { messages: messages.length });
 
           // Delay between threads
-          if (i < Math.min(count, threads.length) - 1) {
+          if (i < actualCount - 1) {
             await new Promise(resolve => setTimeout(resolve, this.config.delayBetweenThreads));
           }
         } catch (threadError) {
@@ -381,6 +411,9 @@ export class DMImportJob {
       logger.error('Error in scrapeNThreads', { error });
       return { success: false, threadsScraped: 0, totalMessages: 0, error: errorMessage };
     } finally {
+      // Clear processing state
+      this.isProcessing = false;
+      this.stats.currentThread = null;
       if (page) {
         await page.close();
       }
@@ -525,6 +558,65 @@ export class DMImportJob {
       total: 0,
     };
     logger.info('DM import job stats reset');
+  }
+
+  /**
+   * Discover DM threads and add to scrape queue
+   */
+  async discoverThreads(): Promise<{
+    success: boolean;
+    threadsFound: number;
+    threadsAdded: number;
+    error?: string;
+  }> {
+    let page: Page | null = null;
+
+    try {
+      const hasCookies = await ChaturbateScraperService.hasCookies();
+      if (!hasCookies) {
+        return { success: false, threadsFound: 0, threadsAdded: 0, error: 'No cookies available' };
+      }
+
+      const browser = await this.getBrowser();
+      page = await browser.newPage();
+
+      await page.setUserAgent(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      );
+
+      // Set timezone to match user's local timezone (EST/America/New_York)
+      await page.emulateTimezone('America/New_York');
+
+      await page.goto('https://chaturbate.com/', { waitUntil: 'networkidle2', timeout: 30000 });
+      await this.applyCookiesToPage(page);
+      await page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+
+      // Get thread list
+      const threads = await DMScraperService.getThreadList(page);
+
+      if (threads.length === 0) {
+        return { success: true, threadsFound: 0, threadsAdded: 0, error: 'No DM threads found on messages page' };
+      }
+
+      // Add to scrape queue
+      const added = await DMScraperService.addToScrapeQueue(threads);
+
+      logger.info(`Discovered ${threads.length} DM threads, added ${added} to queue`);
+
+      return {
+        success: true,
+        threadsFound: threads.length,
+        threadsAdded: added,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Error discovering DM threads', { error });
+      return { success: false, threadsFound: 0, threadsAdded: 0, error: errorMessage };
+    } finally {
+      if (page) {
+        await page.close();
+      }
+    }
   }
 }
 

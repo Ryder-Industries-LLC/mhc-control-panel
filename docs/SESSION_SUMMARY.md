@@ -1,150 +1,89 @@
-# Session Summary - v1.33.3
+# Session Summary - v1.33.4
 
-**Date**: 2026-01-11
+**Date**: 2026-01-12
 
 ## What Was Accomplished
 
-### DM Scraper Job Implementation
+### DM Scraper Fixes
 
-Complete implementation of a Direct Message scraper for Chaturbate:
+Fixed multiple issues with the DM scraper message ordering and timestamp handling:
 
-#### Core Features
-- **Browser Automation**: Uses Puppeteer with stealth plugin and existing cookie session
-- **Thread Discovery**: Navigates to /messages/, clicks "All" filter, extracts thread list
-- **Message Extraction**: Scrolls through threads to load all messages, extracts content and metadata
-- **Date Parsing**: Handles complex relative dates ("Thu 7:30pm") computed from prior full date headers
-- **Tip Detection**: Identifies tips in DMs with positive (received) vs negative (sent) amounts
+#### Virtual List Position Ordering
+- CB uses absolute positioning (`top: Npx`) for virtual list rendering
+- Changed from DOM order to `topPosition` for reliable message ordering
+- Messages now appear in correct chronological order regardless of scroll/lazy-load state
 
-#### Database Schema
-- `chaturbate_dm_raw_data` table - One row per scraped message
-- `dm_scrape_state` table - Tracks which threads have been scraped
-- Added `dm_import` source type to interactions constraint
-- Migration: `080_create_dm_scraper.sql`
+#### Timezone Emulation
+- Added `page.emulateTimezone('America/New_York')` to Puppeteer
+- Ensures consistent timestamp rendering from CB's virtual list
+- Fixed "Sat 11:25pm" showing as "Sun 4:25am" issue
 
-#### Job Management
-- Full job lifecycle: start/stop/restore
-- State persistence via JobPersistenceService
-- Configuration: max threads per run, delay between threads, auto-import
-- Stepped testing: Scrape 1 → 10 → full run
+#### Message Deduplication
+- Changed deduplication key from text-based to `topPosition`
+- Each message's CSS `top` value is unique and reliable
+- Eliminated duplicate "appreciate it" entries in zackconnorsx thread
 
-#### API Endpoints
-- Status, config, start/stop
-- Scrape one thread by username
-- Scrape N threads for testing
-- View raw data
-- Import single or all unimported DMs
+### Database Schema Enhancement
 
-#### UI Integration
-- DM Import job card on Jobs page
-- Test controls for stepped testing
-- Statistics display
-- Configuration form
+Added explicit from/to columns to DM raw data table:
 
-### DM Support in Queries
+#### New Columns
+- `from_username` - Who sent the message
+- `to_username` - Who received the message
+- `thread_id` - Foreign key to `dm_scrape_state`
 
-Updated queries throughout the codebase to include DIRECT_MESSAGE type:
-- `server/src/routes/profile.ts` - Communications endpoint
-- `server/src/routes/inbox.ts` - Inbox queries
-- `server/src/routes/hudson.ts` - Dashboard queries
+#### Migration (081)
+- Adds three new columns with indexes
+- Foreign key constraint on thread_id
+- Backfills existing records based on `is_from_me` flag
 
-## Files Created
+### UI Updates
+
+- Admin DM Raw Data table now shows From/To columns
+- Fallback display for records without new columns populated
+
+## Files Modified
 
 ### Server
 
 - `server/src/services/dm-scraper.service.ts`
-  - `parseRelativeDate()` - handles "Thu 7:30pm", "January 4, 2026", "Today 3:15pm"
-  - `parseTipFromMessage()` - detects tip amounts
-  - `getThreadList()` - navigates and extracts threads
-  - `scrapeThread()` - extracts all messages from a thread
-  - `saveMessages()` - saves to database with deduplication
-  - `importToInteraction()` - imports to interactions table
+  - Added `page.emulateTimezone('America/New_York')`
+  - Extract `topPosition` from CSS style in `extractVisibleMessages()`
+  - Sort by `topPosition` instead of `domOrder`
+  - Updated `saveMessages()` to populate from_username, to_username, thread_id
+  - Added `env` import for broadcaster username
+
+- `server/src/db/migrations/081_dm_from_to_columns.sql` (NEW)
+  - Adds from_username, to_username, thread_id columns
+  - Creates indexes for filtering
+  - Backfills existing data
 
 - `server/src/jobs/dm-import.job.ts`
-  - Full job lifecycle management
-  - `scrapeOneThread()` for testing single thread
-  - `scrapeNThreads()` for batch testing
-  - Auto-import option
-
-- `server/src/db/migrations/080_create_dm_scraper.sql`
-  - `chaturbate_dm_raw_data` table
-  - `dm_scrape_state` table
-  - Indexes for efficient queries
-  - Added `dm_import` to interactions source constraint
-
-- `server/tests/unit/dm-scraper.test.ts`
-  - Tests for date parsing
-  - Tests for tip detection
+  - Minor updates for job flow
 
 ### Client
 
-- Updated `client/src/pages/Jobs.tsx`
-  - DM Import job types and state
-  - `renderDMImportJob()` component
-  - Test controls UI
-
-## Database Changes
-
-### New Tables
-
-```sql
-CREATE TABLE chaturbate_dm_raw_data (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    thread_username VARCHAR(255) NOT NULL,
-    message_text TEXT NOT NULL,
-    is_from_me BOOLEAN NOT NULL,
-    raw_date_text VARCHAR(100),
-    computed_timestamp TIMESTAMPTZ,
-    is_tip BOOLEAN DEFAULT FALSE,
-    tip_amount INTEGER,  -- Positive = to me, negative = I gave
-    tip_note TEXT,
-    person_id UUID REFERENCES persons(id),
-    interaction_id UUID REFERENCES interactions(id),
-    imported_at TIMESTAMPTZ,
-    scraped_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    scrape_session_id VARCHAR(50),
-    message_hash VARCHAR(64),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE dm_scrape_state (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    thread_username VARCHAR(255) NOT NULL UNIQUE,
-    person_id UUID REFERENCES persons(id),
-    is_scraped BOOLEAN DEFAULT FALSE,
-    last_scraped_at TIMESTAMPTZ,
-    message_count INTEGER DEFAULT 0,
-    newest_message_hash VARCHAR(64),
-    priority INTEGER DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-### Schema Changes
-
-```sql
--- Added dm_import to interactions source constraint
-ALTER TABLE interactions ADD CONSTRAINT interactions_source_check CHECK (
-    source::text = ANY (ARRAY['cb_events', 'statbate_plus', 'manual', 'dm_import']::text[])
-);
-
--- Added tip_dm_id to link tips found in DMs
-ALTER TABLE interactions ADD COLUMN tip_dm_id UUID REFERENCES chaturbate_dm_raw_data(id);
-```
+- `client/src/pages/Admin.tsx`
+  - Added "To" column to DM Raw Data table
+  - Display from_username/to_username with fallbacks
 
 ## Key Design Decisions
 
-1. **One Row Per Message**: Stores each DM as separate row for easier querying and deduplication
-2. **Dual Timestamp Storage**: Stores both raw date text AND computed timestamp for debugging
-3. **Tip Direction**: Positive amount = received, negative = sent (I gave)
-4. **Import Tracking**: `imported_at` and `interaction_id` track which DMs are imported
-5. **Session-based Scraping**: Groups messages by scrape session for debugging
-6. **Hash-based Deduplication**: Message hash prevents duplicates across runs
+1. **topPosition as Sort Key**: The CSS `top` value from CB's virtual list is the single source of truth for message order
+2. **Timezone Emulation**: America/New_York matches CB's server-side rendering timezone
+3. **Explicit From/To**: Rather than inferring direction from `is_from_me`, store explicit usernames
+4. **Thread Reference**: `thread_id` FK allows joining to `dm_scrape_state` for thread metadata
+
+## Verified Results
+
+Tested with zackconnorsx thread - all 12 messages captured correctly:
+- Feb 23, 2025: 7 messages (including both "appreciate it" entries)
+- Mar 29, 2025: 1 message
+- Sat 11:25pm: 1 message (correct timestamp)
+- Sun 4:44pm: 3 messages (including final "devil" emoji)
 
 ## Next Steps
 
-1. Run migration: `docker-compose exec web npm run migrate`
-2. Test with single username first, then expand
-3. Consider adding Raw DM Data view in Admin UI
-4. Monitor scraping accuracy and adjust selectors if needed
-5. Add incremental update support (only fetch new messages)
+1. Monitor scraper accuracy across more threads
+2. Consider adding incremental update support (only fetch new messages)
+3. Add DM search/filter functionality to Admin UI

@@ -123,6 +123,33 @@ interface StatsCollectionJobStatus {
   stats: StatsCollectionStats;
 }
 
+interface DMImportConfig {
+  enabled: boolean;
+  maxThreadsPerRun: number;
+  delayBetweenThreads: number;
+  autoImport: boolean;
+}
+
+interface DMImportStats {
+  lastRun: string | null;
+  totalRuns: number;
+  totalThreadsScraped: number;
+  totalMessagesScraped: number;
+  totalMessagesImported: number;
+  lastRunThreads: number;
+  lastRunMessages: number;
+  currentThread: string | null;
+  progress: number;
+  total: number;
+}
+
+interface DMImportJobStatus {
+  isRunning: boolean;
+  isProcessing: boolean;
+  config: DMImportConfig;
+  stats: DMImportStats;
+}
+
 interface JobStatus {
   isRunning: boolean;
   isProcessing: boolean;
@@ -254,6 +281,24 @@ const Admin: React.FC = () => {
     prioritizeTippedByMe: false,
   });
   const [statbateConfigCollapsed] = useState(true);
+
+  // DM Import job state
+  const [dmImportStatus, setDMImportStatus] = useState<DMImportJobStatus | null>(null);
+  const [dmImportConfigForm, setDMImportConfigForm] = useState<DMImportConfig>({
+    enabled: true,
+    maxThreadsPerRun: 100,
+    delayBetweenThreads: 2000,
+    autoImport: true,
+  });
+  const [dmImportScrapeUsername, setDMImportScrapeUsername] = useState('');
+  const [dmImportMessage, setDMImportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [dmImportRawData, setDMImportRawData] = useState<any[]>([]);
+  const [dmImportRawDataLoading, setDMImportRawDataLoading] = useState(false);
+  const [showDMRawData, setShowDMRawData] = useState(false);
+  const [dmImportQueue, setDMImportQueue] = useState<any[]>([]);
+  const [dmImportQueueStats, setDMImportQueueStats] = useState<{ total: number; scraped: number; pending: number } | null>(null);
+  const [dmImportQueueLoading, setDMImportQueueLoading] = useState(false);
+  const [showDMQueue, setShowDMQueue] = useState(false);
 
   // Broadcast settings state
   const [broadcastSettings, setBroadcastSettings] = useState<{
@@ -388,11 +433,13 @@ const Admin: React.FC = () => {
       fetchJobStatus();
       fetchProfileScrapeStatus();
       fetchStatbateStatus();
+      fetchDMImportStatus();
       checkCookieStatus();
       const interval = setInterval(() => {
         fetchJobStatus();
         fetchProfileScrapeStatus();
         fetchStatbateStatus();
+        fetchDMImportStatus();
       }, 10000);
       return () => clearInterval(interval);
     }
@@ -918,6 +965,193 @@ const Admin: React.FC = () => {
   };
 
   // Note: getStatbateStatusBadge removed - using unified JobStatusButton component
+
+  // DM Import job functions
+  const fetchDMImportStatus = async () => {
+    try {
+      const response = await fetch('/api/job/dm-import/status');
+      if (!response.ok) {
+        throw new Error('Failed to fetch DM import status');
+      }
+      const data = await response.json();
+      setDMImportStatus(data);
+      if (data.config) {
+        setDMImportConfigForm(data.config);
+      }
+    } catch (err) {
+      console.error('Error fetching DM import status:', err);
+    }
+  };
+
+  const handleDMImportJobControl = async (action: 'start' | 'stop') => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/job/dm-import/${action}`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to ${action} DM import job`);
+      }
+      await fetchDMImportStatus();
+    } catch (err) {
+      console.error(`Error ${action}ing DM import job:`, err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDMImportConfigUpdate = async () => {
+    try {
+      setLoading(true);
+      setSuccessMessage(null);
+      const response = await fetch('/api/job/dm-import/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dmImportConfigForm),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to update DM import config');
+      }
+      await fetchDMImportStatus();
+      setSuccessMessage('DM Import configuration saved successfully');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err) {
+      console.error('Error updating DM import config:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDMImportResetStats = async () => {
+    if (!window.confirm('Reset all DM Import statistics?')) return;
+    try {
+      setLoading(true);
+      const response = await fetch('/api/job/dm-import/reset-stats', {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to reset DM import stats');
+      }
+      await fetchDMImportStatus();
+    } catch (err) {
+      console.error('Error resetting DM import stats:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDMImportScrapeOne = async () => {
+    if (!dmImportScrapeUsername.trim()) return;
+    try {
+      setLoading(true);
+      setDMImportMessage(null);
+      const response = await fetch(`/api/job/dm-import/scrape-one/${dmImportScrapeUsername.trim()}`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (data.success) {
+        setDMImportMessage({ type: 'success', text: `Scraped ${data.messagesFound} messages from ${dmImportScrapeUsername}, saved ${data.messagesSaved}` });
+        // Auto-refresh raw data if viewing
+        if (showDMRawData) {
+          fetchDMImportRawData();
+        }
+      } else {
+        setDMImportMessage({ type: 'error', text: data.error || 'Failed to scrape thread' });
+      }
+      await fetchDMImportStatus();
+    } catch (err) {
+      setDMImportMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to scrape thread' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDMImportScrapeN = async (count: number) => {
+    try {
+      setLoading(true);
+      setDMImportMessage(null);
+      const response = await fetch('/api/job/dm-import/scrape-n', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setDMImportMessage({ type: 'success', text: `Scraped ${data.threadsScraped} threads, ${data.totalMessages} messages` });
+        // Auto-refresh raw data if viewing
+        if (showDMRawData) {
+          fetchDMImportRawData();
+        }
+      } else {
+        setDMImportMessage({ type: 'error', text: data.error || 'Failed to scrape threads' });
+      }
+      await fetchDMImportStatus();
+    } catch (err) {
+      setDMImportMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to scrape threads' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchDMImportRawData = async (threadUsername?: string) => {
+    try {
+      setDMImportRawDataLoading(true);
+      const params = new URLSearchParams({ limit: '50' });
+      if (threadUsername) {
+        params.append('threadUsername', threadUsername);
+      }
+      const response = await fetch(`/api/job/dm-import/raw-data?${params}`);
+      if (response.ok) {
+        const data = await response.json();
+        setDMImportRawData(data.rows || []);
+      }
+    } catch (err) {
+      console.error('Error fetching DM raw data:', err);
+    } finally {
+      setDMImportRawDataLoading(false);
+    }
+  };
+
+  const fetchDMImportQueue = async () => {
+    try {
+      setDMImportQueueLoading(true);
+      const response = await fetch('/api/job/dm-import/queue?limit=100');
+      if (response.ok) {
+        const data = await response.json();
+        setDMImportQueue(data.rows || []);
+        setDMImportQueueStats(data.stats || null);
+      }
+    } catch (err) {
+      console.error('Error fetching DM queue:', err);
+    } finally {
+      setDMImportQueueLoading(false);
+    }
+  };
+
+  const handleDMImportDiscoverThreads = async () => {
+    try {
+      setLoading(true);
+      setDMImportMessage(null);
+      const response = await fetch('/api/job/dm-import/discover-threads', { method: 'POST' });
+      const data = await response.json();
+      if (data.success) {
+        setDMImportMessage({
+          type: 'success',
+          text: `Found ${data.threadsFound} threads, added ${data.threadsAdded} to queue`,
+        });
+        await fetchDMImportQueue();
+      } else {
+        setDMImportMessage({ type: 'error', text: data.error || 'Failed to discover threads' });
+      }
+    } catch (err) {
+      setDMImportMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to discover threads' });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleImportCookies = async () => {
     try {
@@ -2152,6 +2386,379 @@ const Admin: React.FC = () => {
         {expandedJobs['statbate'] && (
           <div className="border-t border-white/10 p-4">
             {renderStatbateJobContent()}
+          </div>
+        )}
+      </div>
+
+      {/* DM Import Job Row */}
+      <div className="bg-mhc-surface-light rounded-lg border border-white/10 overflow-hidden">
+        <div
+          className="flex items-center gap-4 p-4 cursor-pointer hover:bg-white/5 transition-colors"
+          onClick={() => toggleJob('dm-import')}
+        >
+          <span className="text-white/40">{expandedJobs['dm-import'] ? '▼' : '▶'}</span>
+          {dmImportStatus && (
+            <JobStatusButton
+              isRunning={dmImportStatus.isRunning}
+              isProcessing={dmImportStatus.isProcessing}
+              enabled={dmImportStatus.config.enabled}
+              onStart={() => handleDMImportJobControl('start')}
+              onStop={() => handleDMImportJobControl('stop')}
+              disabled={loading}
+              extraDisabled={!hasCookies}
+              hasRun={dmImportStatus.stats.totalRuns > 0}
+            />
+          )}
+          <span className="font-semibold text-white">DM Import</span>
+          {dmImportStatus && (
+            <span className="text-mhc-text-muted text-sm ml-auto">
+              Total: {dmImportStatus.stats.totalMessagesScraped.toLocaleString()} scraped
+            </span>
+          )}
+        </div>
+        {/* Progress row when processing */}
+        {dmImportStatus?.isProcessing && dmImportStatus.stats.total > 0 && (
+          <div className="px-4 pb-3 -mt-1">
+            <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-blue-300 text-sm">Scraping DM thread: <span className="font-bold text-white">{dmImportStatus.stats.currentThread || '...'}</span></span>
+                <span className="text-blue-300 text-sm">{dmImportStatus.stats.progress} / {dmImportStatus.stats.total}</span>
+              </div>
+              <div className="w-full bg-blue-500/20 rounded-full h-1.5">
+                <div
+                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
+                  style={{ width: `${dmImportStatus.stats.total > 0 ? (dmImportStatus.stats.progress / dmImportStatus.stats.total) * 100 : 0}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+        {expandedJobs['dm-import'] && (
+          <div className="border-t border-white/10 p-4 space-y-4">
+            {/* Local Status Message */}
+            {dmImportMessage && (
+              <div className={`p-3 rounded-md ${dmImportMessage.type === 'success' ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300' : 'bg-red-500/15 border border-red-500/30 text-red-300'}`}>
+                {dmImportMessage.text}
+              </div>
+            )}
+
+            {/* Test Controls */}
+            <div>
+              <h4 className="text-sm font-semibold text-mhc-text-muted uppercase mb-3">Test Controls</h4>
+              <div className="flex flex-wrap gap-3 items-end">
+                <div className="flex-1 min-w-[200px]">
+                  <label className="block text-xs text-mhc-text-muted mb-1">Scrape Single Thread</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={dmImportScrapeUsername}
+                      onChange={(e) => setDMImportScrapeUsername(e.target.value)}
+                      placeholder="Username"
+                      className="flex-1 p-2 border border-white/20 rounded bg-white/5 text-white text-sm focus:outline-none focus:border-mhc-primary"
+                    />
+                    <button
+                      onClick={handleDMImportScrapeOne}
+                      disabled={loading || !dmImportScrapeUsername.trim()}
+                      className="px-3 py-2 rounded text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
+                    >
+                      Scrape 1
+                    </button>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDMImportScrapeN(10)}
+                  disabled={loading}
+                  className="px-3 py-2 rounded text-sm font-medium bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-50"
+                >
+                  Scrape 10
+                </button>
+              </div>
+              <p className="text-xs text-mhc-text-muted mt-2">
+                Test scraping 1 or 10 threads before running full import.
+              </p>
+            </div>
+
+            {/* Statistics */}
+            {dmImportStatus && (
+              <div>
+                <h4 className="text-sm font-semibold text-mhc-text-muted uppercase mb-3">Statistics</h4>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="bg-mhc-surface rounded-lg p-3">
+                    <div className="text-2xl font-bold text-white">{dmImportStatus.stats.totalRuns}</div>
+                    <div className="text-xs text-mhc-text-muted">Total Runs</div>
+                  </div>
+                  <div className="bg-mhc-surface rounded-lg p-3">
+                    <div className="text-2xl font-bold text-white">{dmImportStatus.stats.totalThreadsScraped}</div>
+                    <div className="text-xs text-mhc-text-muted">Threads Scraped</div>
+                  </div>
+                  <div className="bg-mhc-surface rounded-lg p-3">
+                    <div className="text-2xl font-bold text-white">{dmImportStatus.stats.totalMessagesScraped}</div>
+                    <div className="text-xs text-mhc-text-muted">Messages Scraped</div>
+                  </div>
+                  <div className="bg-mhc-surface rounded-lg p-3">
+                    <div className="text-2xl font-bold text-white">{dmImportStatus.stats.totalMessagesImported}</div>
+                    <div className="text-xs text-mhc-text-muted">Imported</div>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-mhc-text-muted">Last Run:</span>
+                    <span className="text-white">{dmImportStatus.stats.lastRun ? new Date(dmImportStatus.stats.lastRun).toLocaleString() : 'Never'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-mhc-text-muted">Last Run Threads:</span>
+                    <span className="text-white">{dmImportStatus.stats.lastRunThreads}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Configuration */}
+            <div>
+              <h4 className="text-sm font-semibold text-mhc-text-muted uppercase mb-3">Configuration</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dmImportConfigForm.enabled}
+                    onChange={(e) => setDMImportConfigForm({ ...dmImportConfigForm, enabled: e.target.checked })}
+                    className="mr-2 w-4 h-4 accent-mhc-primary"
+                  />
+                  <span className="text-sm text-white/90">Enable Job</span>
+                </label>
+
+                <label className="flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={dmImportConfigForm.autoImport}
+                    onChange={(e) => setDMImportConfigForm({ ...dmImportConfigForm, autoImport: e.target.checked })}
+                    className="mr-2 w-4 h-4 accent-mhc-primary"
+                  />
+                  <span className="text-sm text-white/90">Auto Import to Interactions</span>
+                </label>
+
+                <div>
+                  <label className="block text-xs text-mhc-text-muted mb-1">Max Threads Per Run</label>
+                  <input
+                    type="number"
+                    value={dmImportConfigForm.maxThreadsPerRun}
+                    onChange={(e) => setDMImportConfigForm({ ...dmImportConfigForm, maxThreadsPerRun: parseInt(e.target.value) })}
+                    min="1"
+                    max="500"
+                    className="w-full p-2 border border-white/20 rounded bg-white/5 text-white text-sm focus:outline-none focus:border-mhc-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-mhc-text-muted mb-1">Delay Between Threads (ms)</label>
+                  <input
+                    type="number"
+                    value={dmImportConfigForm.delayBetweenThreads}
+                    onChange={(e) => setDMImportConfigForm({ ...dmImportConfigForm, delayBetweenThreads: parseInt(e.target.value) })}
+                    min="500"
+                    max="10000"
+                    className="w-full p-2 border border-white/20 rounded bg-white/5 text-white text-sm focus:outline-none focus:border-mhc-primary"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-mhc-text-muted mt-2">
+                Scrapes DM threads from Chaturbate messages page. Requires cookies to be imported.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={handleDMImportConfigUpdate}
+                  className="px-4 py-2 rounded font-medium bg-mhc-primary text-white hover:bg-mhc-primary/80 text-sm disabled:opacity-50"
+                  disabled={loading}
+                >
+                  Save Config
+                </button>
+                <button
+                  onClick={handleDMImportResetStats}
+                  className="px-3 py-2 rounded font-medium bg-gray-600 text-white hover:bg-gray-500 text-sm"
+                >
+                  Reset Stats
+                </button>
+              </div>
+            </div>
+
+            {/* Raw Data Viewer */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-mhc-text-muted uppercase">Raw DM Data</h4>
+                <button
+                  onClick={() => {
+                    if (!showDMRawData) {
+                      fetchDMImportRawData();
+                    }
+                    setShowDMRawData(!showDMRawData);
+                  }}
+                  className="px-3 py-1 rounded text-xs font-medium bg-white/10 text-white hover:bg-white/20"
+                >
+                  {showDMRawData ? 'Hide' : 'Show'} Raw Data
+                </button>
+              </div>
+              {showDMRawData && (
+                <div className="bg-mhc-surface rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm text-mhc-text-muted">
+                      {dmImportRawDataLoading ? 'Loading...' : `${dmImportRawData.length} messages`}
+                    </span>
+                    <button
+                      onClick={() => fetchDMImportRawData()}
+                      disabled={dmImportRawDataLoading}
+                      className="px-2 py-1 rounded text-xs font-medium bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 disabled:opacity-50"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  {dmImportRawData.length > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-white/10">
+                            <th className="text-left p-2 text-mhc-text-muted">Thread</th>
+                            <th className="text-left p-2 text-mhc-text-muted">From</th>
+                            <th className="text-left p-2 text-mhc-text-muted">To</th>
+                            <th className="text-left p-2 text-mhc-text-muted">Message</th>
+                            <th className="text-left p-2 text-mhc-text-muted">Date</th>
+                            <th className="text-left p-2 text-mhc-text-muted">Tip</th>
+                            <th className="text-left p-2 text-mhc-text-muted">Imported</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dmImportRawData.map((row: any) => (
+                            <tr key={row.id} className="border-b border-white/5 hover:bg-white/5">
+                              <td className="p-2 text-white font-medium">{row.thread_username}</td>
+                              <td className="p-2 text-white">{row.from_username || (row.is_from_me ? 'Me' : row.thread_username)}</td>
+                              <td className="p-2 text-white">{row.to_username || (row.is_from_me ? row.thread_username : 'Me')}</td>
+                              <td className="p-2 text-white max-w-xs truncate" title={row.message_text}>{row.message_text}</td>
+                              <td className="p-2 text-mhc-text-muted whitespace-nowrap">
+                                {row.computed_timestamp ? new Date(row.computed_timestamp).toLocaleString() : row.raw_date_text || '-'}
+                              </td>
+                              <td className="p-2">
+                                {row.is_tip ? (
+                                  <span className={row.tip_amount > 0 ? 'text-emerald-400' : 'text-red-400'}>
+                                    {row.tip_amount > 0 ? '+' : ''}{row.tip_amount} tkn
+                                  </span>
+                                ) : '-'}
+                              </td>
+                              <td className="p-2">
+                                {row.imported_at ? (
+                                  <span className="text-emerald-400">Yes</span>
+                                ) : (
+                                  <span className="text-mhc-text-muted">No</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-mhc-text-muted text-sm text-center py-4">
+                      No raw DM data found. Scrape some threads first.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Scrape Queue Viewer */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-mhc-text-muted uppercase">
+                  Scrape Queue
+                  {dmImportQueueStats && (
+                    <span className="ml-2 text-xs font-normal">
+                      ({dmImportQueueStats.pending} pending / {dmImportQueueStats.scraped} scraped / {dmImportQueueStats.total} total)
+                    </span>
+                  )}
+                </h4>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleDMImportDiscoverThreads}
+                    disabled={loading || !hasCookies}
+                    className="px-3 py-1 rounded text-xs font-medium bg-purple-500/80 text-white hover:bg-purple-500 disabled:opacity-50"
+                    title="Scan Chaturbate messages page and add threads to queue"
+                  >
+                    Discover Threads
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!showDMQueue) {
+                        fetchDMImportQueue();
+                      }
+                      setShowDMQueue(!showDMQueue);
+                    }}
+                    className="px-3 py-1 rounded text-xs font-medium bg-white/10 text-white hover:bg-white/20"
+                  >
+                    {showDMQueue ? 'Hide' : 'Show'} Queue
+                  </button>
+                </div>
+              </div>
+              {showDMQueue && (
+                <div className="bg-mhc-surface rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm text-mhc-text-muted">
+                      {dmImportQueueLoading ? 'Loading...' : `${dmImportQueue.length} threads in queue`}
+                    </span>
+                    <button
+                      onClick={() => fetchDMImportQueue()}
+                      disabled={dmImportQueueLoading}
+                      className="px-2 py-1 rounded text-xs font-medium bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 disabled:opacity-50"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  {dmImportQueue.length > 0 ? (
+                    <div className="overflow-x-auto max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-mhc-surface">
+                          <tr className="border-b border-white/10">
+                            <th className="text-left p-2 text-mhc-text-muted">Username</th>
+                            <th className="text-left p-2 text-mhc-text-muted">Status</th>
+                            <th className="text-left p-2 text-mhc-text-muted">Messages</th>
+                            <th className="text-left p-2 text-mhc-text-muted">Unimported</th>
+                            <th className="text-left p-2 text-mhc-text-muted">Last Scraped</th>
+                            <th className="text-left p-2 text-mhc-text-muted">Priority</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dmImportQueue.map((row: any) => (
+                            <tr key={row.id} className="border-b border-white/5 hover:bg-white/5">
+                              <td className="p-2 text-white font-medium">{row.thread_username}</td>
+                              <td className="p-2">
+                                {row.is_scraped ? (
+                                  <span className="text-emerald-400">Scraped</span>
+                                ) : (
+                                  <span className="text-yellow-400">Pending</span>
+                                )}
+                              </td>
+                              <td className="p-2 text-white">{row.raw_message_count || row.message_count || 0}</td>
+                              <td className="p-2">
+                                {row.unimported_count > 0 ? (
+                                  <span className="text-yellow-400">{row.unimported_count}</span>
+                                ) : (
+                                  <span className="text-mhc-text-muted">0</span>
+                                )}
+                              </td>
+                              <td className="p-2 text-mhc-text-muted whitespace-nowrap">
+                                {row.last_scraped_at ? new Date(row.last_scraped_at).toLocaleString() : '-'}
+                              </td>
+                              <td className="p-2 text-white">{row.priority || 0}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-mhc-text-muted text-sm text-center py-4">
+                      No threads in queue. Click "Discover Threads" to scan for DM threads.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

@@ -984,4 +984,41 @@ router.post('/dm-import/import-all', async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/job/dm-import/queue
+ * Get the DM scrape queue (threads to be scraped)
+ */
+router.get('/dm-import/queue', async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const showScraped = req.query.showScraped !== 'false';
+
+    const result = await DMScraperService.getScrapeQueue({
+      limit,
+      offset,
+      showScraped,
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Get DM scrape queue error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/dm-import/discover-threads
+ * Discover DM threads from Chaturbate messages page and add to queue
+ */
+router.post('/dm-import/discover-threads', async (_req: Request, res: Response) => {
+  try {
+    const result = await dmImportJob.discoverThreads();
+    res.json(result);
+  } catch (error) {
+    logger.error('Discover DM threads error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;
