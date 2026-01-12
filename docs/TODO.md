@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-11 (v1.33.2)
+**Last Updated**: 2026-01-11 (v1.33.3)
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -179,7 +179,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 
 ### Scraping & Data Import
 
-- [ ] Research if we can scrape CB to pull Direct Messages and save to profile
+- [x] Research if we can scrape CB to pull Direct Messages and save to profile _(v1.33.3 - DM Scraper job implemented)_
 - [ ] Research if we can scrape Chaturbate to pull Notes from username
   - This will be tricky but we should be able to go to the DM interface, search for the user, click on the user, and see the notes
   - Check if there is another way through the API to get this

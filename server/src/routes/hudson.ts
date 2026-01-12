@@ -141,9 +141,9 @@ router.get('/', async (_req: Request, res: Response) => {
       if (metaUsername && metaUsername !== username) {
         return true;
       }
-      // Keep PRIVATE_MESSAGE and CHAT_MESSAGE interactions even if metadata.username is hudson_cage
-      // (These are his outgoing PMs and chat messages which we want to see)
-      if (interaction.type === 'PRIVATE_MESSAGE' || interaction.type === 'CHAT_MESSAGE') {
+      // Keep PRIVATE_MESSAGE, DIRECT_MESSAGE, and CHAT_MESSAGE interactions even if metadata.username is hudson_cage
+      // (These are his outgoing PMs/DMs and chat messages which we want to see)
+      if (interaction.type === 'PRIVATE_MESSAGE' || interaction.type === 'DIRECT_MESSAGE' || interaction.type === 'CHAT_MESSAGE') {
         return true;
       }
       // Filter out everything else where metadata.username === hudson_cage

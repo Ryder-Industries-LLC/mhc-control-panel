@@ -6,6 +6,8 @@ import { cbhoursPollingJob } from '../jobs/cbhours-polling.job.js';
 import { liveScreenshotJob } from '../jobs/live-screenshot.job.js';
 import { mediaTransferJob } from '../jobs/media-transfer.job.js';
 import { statsCollectionJob } from '../jobs/stats-collection.job.js';
+import { dmImportJob } from '../jobs/dm-import.job.js';
+import { DMScraperService } from '../services/dm-scraper.service.js';
 import { ImageStorageService } from '../services/image-storage.service.js';
 import { pool } from '../db/client.js';
 import { logger } from '../config/logger.js';
@@ -25,6 +27,7 @@ router.get('/status', async (_req: Request, res: Response) => {
       profileScrapeJob.syncStateFromDB(),
       liveScreenshotJob.syncStateFromDB(),
       mediaTransferJob.syncStateFromDB(),
+      dmImportJob.syncStateFromDB(),
     ]);
 
     const status = {
@@ -34,6 +37,7 @@ router.get('/status', async (_req: Request, res: Response) => {
       cbhoursPolling: cbhoursPollingJob.getStatus(),
       liveScreenshot: liveScreenshotJob.getStatus(),
       mediaTransfer: mediaTransferJob.getStatus(),
+      dmImport: dmImportJob.getStatus(),
     };
     res.json(status);
   } catch (error) {
@@ -794,6 +798,188 @@ router.post('/stats-collection/reset-stats', async (_req: Request, res: Response
     res.json({ success: true, status: statsCollectionJob.getStatus() });
   } catch (error) {
     logger.error('Reset stats-collection job stats error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================================
+// DM Import Job Routes
+// ============================================================================
+
+/**
+ * GET /api/job/dm-import/status
+ * Get DM import job status
+ */
+router.get('/dm-import/status', async (_req: Request, res: Response) => {
+  try {
+    await dmImportJob.syncStateFromDB();
+    const status = dmImportJob.getStatus();
+    res.json(status);
+  } catch (error) {
+    logger.error('Get dm-import job status error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/dm-import/config
+ * Update DM import job configuration
+ */
+router.post('/dm-import/config', async (req: Request, res: Response) => {
+  try {
+    const { maxThreadsPerRun, delayBetweenThreads, autoImport, enabled } = req.body;
+    await dmImportJob.updateConfig({
+      ...(maxThreadsPerRun !== undefined && { maxThreadsPerRun }),
+      ...(delayBetweenThreads !== undefined && { delayBetweenThreads }),
+      ...(autoImport !== undefined && { autoImport }),
+      ...(enabled !== undefined && { enabled }),
+    });
+    res.json({ success: true, status: dmImportJob.getStatus() });
+  } catch (error) {
+    logger.error('Update dm-import job config error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/dm-import/start
+ * Start the DM import job (full run)
+ */
+router.post('/dm-import/start', async (_req: Request, res: Response) => {
+  try {
+    const result = await dmImportJob.start();
+    res.json({ ...result, status: dmImportJob.getStatus() });
+  } catch (error) {
+    logger.error('Start dm-import job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/dm-import/stop
+ * Stop the DM import job
+ */
+router.post('/dm-import/stop', async (_req: Request, res: Response) => {
+  try {
+    await dmImportJob.stop();
+    res.json({ success: true, status: dmImportJob.getStatus() });
+  } catch (error) {
+    logger.error('Stop dm-import job error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/dm-import/reset-stats
+ * Reset DM import job statistics
+ */
+router.post('/dm-import/reset-stats', async (_req: Request, res: Response) => {
+  try {
+    dmImportJob.resetStats();
+    res.json({ success: true, status: dmImportJob.getStatus() });
+  } catch (error) {
+    logger.error('Reset dm-import job stats error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/dm-import/scrape-one/:username
+ * Scrape a single DM thread (for testing)
+ */
+router.post('/dm-import/scrape-one/:username', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    if (!username) {
+      return res.status(400).json({ error: 'Username required' });
+    }
+
+    logger.info(`Manual DM scrape triggered for ${username}`);
+    const result = await dmImportJob.scrapeOneThread(username);
+
+    res.json({
+      ...result,
+      username,
+    });
+  } catch (error) {
+    logger.error('Manual DM scrape error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/dm-import/scrape-n
+ * Scrape up to N DM threads (for testing)
+ */
+router.post('/dm-import/scrape-n', async (req: Request, res: Response) => {
+  try {
+    const { count = 10 } = req.body;
+
+    logger.info(`Manual DM scrape triggered for ${count} threads`);
+    const result = await dmImportJob.scrapeNThreads(count);
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Manual DM batch scrape error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/job/dm-import/raw-data
+ * Get raw DM data for viewing
+ */
+router.get('/dm-import/raw-data', async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+    const threadUsername = req.query.threadUsername as string | undefined;
+    const onlyTips = req.query.onlyTips === 'true';
+    const onlyUnimported = req.query.onlyUnimported === 'true';
+
+    const result = await DMScraperService.getRawDMData({
+      limit,
+      offset,
+      threadUsername,
+      onlyTips,
+      onlyUnimported,
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Get raw DM data error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/dm-import/import-one/:id
+ * Import a single raw DM to interactions
+ */
+router.post('/dm-import/import-one/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const success = await DMScraperService.importToInteraction(id);
+    res.json({ success, id });
+  } catch (error) {
+    logger.error('Import DM to interaction error', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/job/dm-import/import-all
+ * Import all unimported DMs to interactions
+ */
+router.post('/dm-import/import-all', async (_req: Request, res: Response) => {
+  try {
+    const result = await DMScraperService.importAllUnimported();
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    logger.error('Import all DMs error', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
