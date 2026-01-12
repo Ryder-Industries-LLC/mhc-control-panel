@@ -112,6 +112,15 @@ Key environment variables (see `.env.example`):
 - `CB_AUTH_TOKEN` - Chaturbate Events API token
 - `RUN_MODE` - `web` or `worker`
 
+### Handoff
+
+- If user types handoff…
+  - update docs/SESSION_SUMMARY.md
+  - update docs/TODO.md if needed
+  - no git actions
+  - no deployments
+  - no extra analysis
+
 ### Code Style
 
 - TypeScript strict mode
