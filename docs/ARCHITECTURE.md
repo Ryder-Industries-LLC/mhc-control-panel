@@ -1,8 +1,8 @@
-# AGENTS.md
+# ARCHITECTURE.md
+
+> **This document defines non-negotiable system architecture and is always in force.**
 
 **Project:** MHC Control Panel
-
-**Role:** Autonomous Builder (Claude)
 
 **Owner:** Hudson Cage
 
@@ -10,25 +10,7 @@
 
 ---
 
-## 0. For New Claude Code Sessions (START HERE)
-
-If you're a new Claude Code instance working on this project:
-
-1. **Read this file first** - Understand the architectural rules and constraints
-2. **Read [CLAUDE_CODE_SETUP.md](CLAUDE_CODE_SETUP.md)** - Current project state and recent changes
-3. **Read [README.md](README.md)** - Project overview and quick start
-4. **Read [DEVELOPMENT.md](DEVELOPMENT.md)** - Development workflow
-
-**Recent Major Changes (January 2026)**:
-- v1.25.0: Job status display overhaul (removed Pause, added Starting/Waiting states)
-- v1.25.0: Social media link scraping fixes (locked detection, URL decoding)
-- v1.25.0: Communications/PMs fixes (both directions, broadcaster attribution)
-- v1.25.0: Interactions tab filter chips
-- See `CLAUDE.md` for project context and recent changes
-
----
-
-## 1. Purpose (Read This First)
+## 1. Purpose
 
 You are building a **production-grade Node.js web application** that functions as a persistent analysis and memory system for Chaturbate streaming intelligence.
 

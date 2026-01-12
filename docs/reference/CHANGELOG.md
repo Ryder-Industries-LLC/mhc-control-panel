@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.33.5] - 2026-01-12
+
+### Changed
+
+- **Documentation Reorganization**: Complete restructure of project documentation
+  - Established Tier-1 docs at `docs/` root: ARCHITECTURE.md, MODES.md, SESSION_SUMMARY.md, TODO.md, DECISIONS.md
+  - Created category directories: `docs/reference/`, `docs/features/`, `docs/setup/`, `docs/notes/`, `docs/sessions/`
+  - Moved DATA_SOURCE_STRATEGY.md, SCHEMA.md, TESTING_GUIDE.md, UI_PATTERNS.md, USER_SYSTEM_DESIGN.md, CHANGELOG.md to `docs/reference/`
+  - Moved working notes (FIXES_NEEDED.md, FOLLOW_MANAGEMENT.md, etc.) to `docs/notes/`
+  - Consolidated design decisions from README.md into `docs/DECISIONS.md`
+
+- **CLAUDE.md Updates**:
+  - Updated auto-read whitelist to 6 authoritative documents
+  - Added invariants: "Never contradict ARCHITECTURE.md", "Never treat README.md as authoritative"
+  - Added Command Vocabulary section documenting /hydrate, /handoff, /compact, MODE switching, release commands
+
+- **ARCHITECTURE.md Updates**:
+  - Renamed from AGENTS.md header to ARCHITECTURE.md
+  - Added authoritative law clarification statement
+  - Removed Claude session workflow language (moved to CLAUDE.md)
+
+- **README.md Slimmed**:
+  - Reduced from 359 lines to 140 lines
+  - Removed detailed API contracts, deployment runbooks, design decisions
+  - Added Documentation Index with links to all doc categories
+  - Added "informational only" statement to clarify non-authoritative status
+
+### Technical
+
+- File moves: docs/DATA_SOURCE_STRATEGY.md → docs/reference/, docs/reference/DECISIONS.md → docs/
+- New scaffold: docs/UI_PATTERNS.md
+- Consolidated 5 historical decisions into docs/DECISIONS.md
+
+---
+
 ## [1.33.4] - 2026-01-12
 
 ### Added

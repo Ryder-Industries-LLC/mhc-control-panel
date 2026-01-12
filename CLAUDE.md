@@ -47,14 +47,15 @@ mhc-control-panel/
 
 The system has several background jobs managed through the Admin UI:
 
-| Job Name | Purpose | Key File |
-|----------|---------|----------|
-| Profile Capture | Scrapes CB profiles for detailed data | `profile-scrape.job.ts` |
+| Job Name          | Purpose                                        | Key File                   |
+| ----------------- | ---------------------------------------------- | -------------------------- |
+| Profile Capture   | Scrapes CB profiles for detailed data          | `profile-scrape.job.ts`    |
 | Affiliate Polling | Polls CB Affiliate API for online broadcasters | `affiliate-polling.job.ts` |
-| CBHours Polling | Polls CBHours API for rank/stats | `cbhours-polling.job.ts` |
-| Statbate API | Refreshes Statbate data for tracked models | `statbate-refresh.job.ts` |
+| CBHours Polling   | Polls CBHours API for rank/stats               | `cbhours-polling.job.ts`   |
+| Statbate API      | Refreshes Statbate data for tracked models     | `statbate-refresh.job.ts`  |
 
 **Job States:**
+
 - `Stopped` - Job is not running
 - `Starting` - Job just started, waiting for first cycle
 - `Processing` - Job is actively processing
@@ -81,23 +82,30 @@ docker-compose exec db psql -U mhc_user -d mhc_control_panel
 
 ### Important Files to Read
 
-1. **[docs/AGENTS.md](docs/AGENTS.md)** - Architectural rules and API constraints
-2. **[docs/CHANGELOG.md](docs/CHANGELOG.md)** - Version history and changes
-3. **[docs/TODO.md](docs/TODO.md)** - Outstanding tasks and backlog
+Claude must only auto-read the following documents during /hydrate:
+
+1. **[CLAUDE.md](CLAUDE.md)** - Project context and rules
+2. **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture (authoritative)
+3. **[docs/MODES.md](docs/MODES.md)** - Behavioral modes and their meanings
 4. **[docs/SESSION_SUMMARY.md](docs/SESSION_SUMMARY.md)** - Latest session work summary
+5. **[docs/TODO.md](docs/TODO.md)** - Outstanding tasks and backlog
+6. **[docs/DECISIONS.md](docs/DECISIONS.md)** - Architectural decisions
+
+All other documentation must be loaded explicitly when relevant.
 
 ### API Clients
 
-| API | Client File | Purpose |
-|-----|-------------|---------|
-| Chaturbate Events | `api/chaturbate/events-client.ts` | Real-time room events |
-| Chaturbate Affiliate | `api/chaturbate/affiliate-client.ts` | Broadcaster data |
-| Statbate | `api/statbate/client.ts` | Member/model stats |
-| CBHours | `services/cbhours-stats.service.ts` | Rank and viewer stats |
+| API                  | Client File                          | Purpose               |
+| -------------------- | ------------------------------------ | --------------------- |
+| Chaturbate Events    | `api/chaturbate/events-client.ts`    | Real-time room events |
+| Chaturbate Affiliate | `api/chaturbate/affiliate-client.ts` | Broadcaster data      |
+| Statbate             | `api/statbate/client.ts`             | Member/model stats    |
+| CBHours              | `services/cbhours-stats.service.ts`  | Rank and viewer stats |
 
 ### Environment Variables
 
 Key environment variables (see `.env.example`):
+
 - `DATABASE_URL` - PostgreSQL connection string
 - `CHATURBATE_USERNAME` - Your CB username
 - `STATBATE_API_TOKEN` - Statbate API authentication
@@ -121,6 +129,89 @@ cd server && npm test
 # Run client tests
 cd client && npm test
 ```
+
+---
+
+## Modes of Operation
+
+Claude must always operate in an explicit MODE.
+If none is specified, default to MODE: ARCHITECT and ask for confirmation.
+
+Available modes:
+
+| Mode               | Description                                                 |
+| ------------------ | ----------------------------------------------------------- |
+| ARCHITECT          | Design systems, plan features, make architectural decisions |
+| BUILD              | Implement features, write code, create components           |
+| DEBUG              | Investigate bugs, trace issues, fix defects                 |
+| TEST_CREATOR       | Write unit tests, integration tests, test plans             |
+| QA_ANALYZER        | Review code quality, identify edge cases, validate behavior |
+| BUG_ANALYZER       | Deep-dive bug investigation, root cause analysis            |
+| UI_UX_ANALYZER     | Evaluate user interface, suggest UX improvements            |
+| CONSISTENCY_CHECK  | Audit codebase for inconsistencies, enforce patterns        |
+| DEPLOYMENT_MANAGER | Handle releases, deployments, infrastructure changes        |
+| MHC_IMAGE_SOLVER   | (Project-specific) Solve image-related puzzles for MHC      |
+
+Mode definitions live in docs/MODES.md.
+Claude must not invent new modes.
+
+---
+
+## Session Lifecycle (Mandatory)
+
+Claude must follow this lifecycle for every session:
+
+1. /hydrate
+   - Confirm repository, branch, and working directory
+   - Read and rehydrate from:
+     - this file (CLAUDE.md)
+     - docs/SESSION_SUMMARY.md
+     - docs/TODO.md
+   - Ask for MODE if not provided
+
+2. Work Loop
+   - Operate only in the active MODE
+   - Update docs/TODO.md when new work is discovered
+
+3. /handoff
+   - Update docs/SESSION_SUMMARY.md before ending a session
+   - Ensure next session starting point is recorded
+
+4. /compact
+   - Use when context window is filling up
+   - Summarize current state before compacting
+   - Re-read docs after compact to restore context
+
+---
+
+## Claude Invariants
+
+- Never assume the correct repository or directory
+- Never assume AWS credential location
+- Never make cross-project changes
+- Never contradict ARCHITECTURE.md
+- Never treat README.md as authoritative
+- Always rehydrate docs at session start
+- Always require explicit MODE switching
+
+Every response must end with the following footer:
+
+Project: MHC Control Panel , Repo: mhc-control-panel , Branch: <branch> , Dir: <absolute path>
+
+---
+
+## Command Vocabulary
+
+These commands are conventions for Claude sessions (not executable code):
+
+| Command         | Purpose                                                      |
+| --------------- | ------------------------------------------------------------ |
+| `/hydrate`      | Start of session - confirm context, read docs, set MODE      |
+| `/handoff`      | End of session - update SESSION_SUMMARY.md, record next step |
+| `/compact`      | Summarize state when context is filling, re-read docs after  |
+| `MODE: <NAME>`  | Switch to specified mode (e.g., `MODE: BUILD`)               |
+| `release`       | Execute full release workflow                                |
+| `release stage` | Execute staging/pre-release workflow                         |
 
 ---
 
