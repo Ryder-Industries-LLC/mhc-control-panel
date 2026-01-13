@@ -11,6 +11,7 @@ services:
     container_name: mhc-db
     restart: unless-stopped
     environment:
+      TZ: America/New_York
       POSTGRES_DB: mhc_control_panel
       POSTGRES_USER: mhc_user
       POSTGRES_PASSWORD: mhc_password
@@ -36,6 +37,7 @@ services:
     ports:
       - '3002:3002'
     environment:
+      TZ: America/New_York
       NODE_ENV: production
       RUN_MODE: web
       PORT: 3002
@@ -74,6 +76,7 @@ services:
     container_name: mhc-worker
     restart: unless-stopped
     environment:
+      TZ: America/New_York
       NODE_ENV: production
       RUN_MODE: worker
       DATABASE_URL: postgresql://mhc_user:mhc_password@db:5432/mhc_control_panel
@@ -104,6 +107,8 @@ services:
         REACT_APP_API_URL: http://localhost:3002
     container_name: mhc-frontend
     restart: unless-stopped
+    environment:
+      TZ: America/New_York
     ports:
       - '8080:80'
     depends_on:
