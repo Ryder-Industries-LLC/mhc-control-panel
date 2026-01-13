@@ -1329,7 +1329,7 @@ router.patch('/:username/names', async (req: Request, res: Response) => {
 
 /**
  * GET /api/profile/:username/attributes
- * Get profile attributes (smoke_on_cam, leather_fetish, profile_smoke, had_interaction)
+ * Get profile attributes (smoke_on_cam, leather_fetish, profile_smoke, had_interaction, room_banned)
  */
 router.get('/:username/attributes', async (req: Request, res: Response) => {
   try {
@@ -1354,6 +1354,7 @@ router.get('/:username/attributes', async (req: Request, res: Response) => {
           leather_fetish: false,
           profile_smoke: false,
           had_interaction: false,
+          room_banned: false, // MHC-1104
         },
       });
     }
@@ -1367,13 +1368,13 @@ router.get('/:username/attributes', async (req: Request, res: Response) => {
 
 /**
  * PATCH /api/profile/:username/attributes
- * Update profile attributes (smoke_on_cam, leather_fetish, had_interaction)
+ * Update profile attributes (smoke_on_cam, leather_fetish, had_interaction, room_banned)
  * Note: profile_smoke is auto-populated and cannot be manually updated
  */
 router.patch('/:username/attributes', async (req: Request, res: Response) => {
   try {
     const { username } = req.params;
-    const { smoke_on_cam, leather_fetish, had_interaction } = req.body;
+    const { smoke_on_cam, leather_fetish, had_interaction, room_banned } = req.body;
 
     if (!username) {
       return res.status(400).json({ error: 'Username is required' });
@@ -1388,6 +1389,10 @@ router.patch('/:username/attributes', async (req: Request, res: Response) => {
     }
     if (had_interaction !== undefined && typeof had_interaction !== 'boolean') {
       return res.status(400).json({ error: 'had_interaction must be a boolean' });
+    }
+    // MHC-1104: room_banned validation
+    if (room_banned !== undefined && typeof room_banned !== 'boolean') {
+      return res.status(400).json({ error: 'room_banned must be a boolean' });
     }
 
     // Get or create person
@@ -1406,6 +1411,7 @@ router.patch('/:username/attributes', async (req: Request, res: Response) => {
       smoke_on_cam,
       leather_fetish,
       had_interaction,
+      room_banned, // MHC-1104
     });
 
     logger.info('Profile attributes updated', { username, attributes });
@@ -2567,6 +2573,166 @@ router.post('/bulk/upload', upload.array('images', 500), async (req: Request, re
     });
   } catch (error) {
     logger.error('Error in bulk upload', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// MHC-1105: SEEN WITH ENDPOINTS
+// ============================================================
+
+/**
+ * GET /api/profile/:username/seen-with
+ * Get all usernames associated with a profile via "Seen With"
+ */
+router.get('/:username/seen-with', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    // Get profile ID
+    const profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      return res.json({ seenWith: [] });
+    }
+    const profileId = profileResult.rows[0].id;
+
+    // Get seen_with entries
+    const sql = `
+      SELECT psw.id, psw.seen_with_username, psw.seen_with_person_id, psw.notes, psw.created_at
+      FROM profile_seen_with psw
+      WHERE psw.profile_id = $1
+      ORDER BY psw.created_at DESC
+    `;
+    const result = await query(sql, [profileId]);
+
+    res.json({
+      seenWith: result.rows.map(row => ({
+        id: row.id,
+        username: row.seen_with_username,
+        personId: row.seen_with_person_id,
+        notes: row.notes,
+        createdAt: row.created_at,
+      })),
+    });
+  } catch (error) {
+    logger.error('Error getting seen-with entries', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/:username/seen-with
+ * Add a new "Seen With" entry for a profile
+ */
+router.post('/:username/seen-with', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { seenWithUsername, notes } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+    if (!seenWithUsername || typeof seenWithUsername !== 'string') {
+      return res.status(400).json({ error: 'seenWithUsername is required and must be a string' });
+    }
+
+    // Get or create person
+    const person = await PersonService.findOrCreate({ username, role: 'MODEL' });
+    if (!person) {
+      return res.status(500).json({ error: 'Failed to get person record' });
+    }
+
+    // Ensure profile exists
+    let profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      await query('INSERT INTO profiles (person_id) VALUES ($1)', [person.id]);
+      profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    }
+    const profileId = profileResult.rows[0].id;
+
+    // Normalize the username (lowercase)
+    const normalizedSeenWithUsername = seenWithUsername.toLowerCase().trim();
+
+    // Check if the seen_with person exists in our database
+    const seenWithPerson = await PersonService.findByUsername(normalizedSeenWithUsername);
+    const seenWithPersonId = seenWithPerson?.id || null;
+
+    // Insert seen_with entry (ON CONFLICT DO NOTHING handles duplicates)
+    const sql = `
+      INSERT INTO profile_seen_with (profile_id, seen_with_username, seen_with_person_id, notes)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (profile_id, seen_with_username) DO UPDATE SET notes = EXCLUDED.notes
+      RETURNING id, seen_with_username, seen_with_person_id, notes, created_at
+    `;
+    const result = await query(sql, [profileId, normalizedSeenWithUsername, seenWithPersonId, notes || null]);
+
+    logger.info('Seen-with entry added', { username, seenWithUsername: normalizedSeenWithUsername });
+    res.json({
+      entry: {
+        id: result.rows[0].id,
+        username: result.rows[0].seen_with_username,
+        personId: result.rows[0].seen_with_person_id,
+        notes: result.rows[0].notes,
+        createdAt: result.rows[0].created_at,
+      },
+    });
+  } catch (error) {
+    logger.error('Error adding seen-with entry', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/profile/:username/seen-with/:entryId
+ * Remove a "Seen With" entry from a profile
+ */
+router.delete('/:username/seen-with/:entryId', async (req: Request, res: Response) => {
+  try {
+    const { username, entryId } = req.params;
+
+    if (!username || !entryId) {
+      return res.status(400).json({ error: 'Username and entryId are required' });
+    }
+
+    // Get person
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    // Get profile ID
+    const profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+    const profileId = profileResult.rows[0].id;
+
+    // Delete the entry (ensure it belongs to this profile)
+    const sql = `
+      DELETE FROM profile_seen_with
+      WHERE id = $1 AND profile_id = $2
+      RETURNING id, seen_with_username
+    `;
+    const result = await query(sql, [entryId, profileId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Entry not found' });
+    }
+
+    logger.info('Seen-with entry removed', { username, entryId, seenWithUsername: result.rows[0].seen_with_username });
+    res.json({ success: true, removedUsername: result.rows[0].seen_with_username });
+  } catch (error) {
+    logger.error('Error removing seen-with entry', { error, username: req.params.username });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

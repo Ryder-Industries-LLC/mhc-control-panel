@@ -598,16 +598,17 @@ export class ProfileService {
   }
 
   /**
-   * Get profile attributes (smoke_on_cam, leather_fetish, profile_smoke, had_interaction)
+   * Get profile attributes (smoke_on_cam, leather_fetish, profile_smoke, had_interaction, room_banned)
    */
   static async getAttributes(personId: string): Promise<{
     smoke_on_cam: boolean;
     leather_fetish: boolean;
     profile_smoke: boolean;
     had_interaction: boolean;
+    room_banned: boolean; // MHC-1104
   } | null> {
     const sql = `
-      SELECT smoke_on_cam, leather_fetish, profile_smoke, had_interaction
+      SELECT smoke_on_cam, leather_fetish, profile_smoke, had_interaction, room_banned
       FROM profiles
       WHERE person_id = $1
     `;
@@ -623,6 +624,7 @@ export class ProfileService {
         leather_fetish: row.leather_fetish || false,
         profile_smoke: row.profile_smoke || false,
         had_interaction: row.had_interaction || false,
+        room_banned: row.room_banned || false, // MHC-1104
       };
     } catch (error) {
       logger.error('Error getting profile attributes', { error, personId });
@@ -632,7 +634,7 @@ export class ProfileService {
 
   /**
    * Update profile attributes
-   * Only smoke_on_cam, leather_fetish, and had_interaction can be manually updated
+   * Only smoke_on_cam, leather_fetish, had_interaction, and room_banned can be manually updated
    * profile_smoke is auto-populated from smoke_drink
    */
   static async updateAttributes(
@@ -641,12 +643,14 @@ export class ProfileService {
       smoke_on_cam?: boolean;
       leather_fetish?: boolean;
       had_interaction?: boolean;
+      room_banned?: boolean; // MHC-1104
     }
   ): Promise<{
     smoke_on_cam: boolean;
     leather_fetish: boolean;
     profile_smoke: boolean;
     had_interaction: boolean;
+    room_banned: boolean; // MHC-1104
   }> {
     // Build dynamic update
     const setClauses: string[] = [];
@@ -668,6 +672,12 @@ export class ProfileService {
       values.push(attributes.had_interaction || false);
     }
 
+    // MHC-1104: room_banned attribute
+    if ('room_banned' in attributes) {
+      setClauses.push(`room_banned = $${paramIndex++}`);
+      values.push(attributes.room_banned || false);
+    }
+
     if (setClauses.length === 0) {
       // Nothing to update, just return current values
       const current = await this.getAttributes(personId);
@@ -684,7 +694,7 @@ export class ProfileService {
       UPDATE profiles
       SET ${setClauses.join(', ')}
       WHERE person_id = $${paramIndex}
-      RETURNING smoke_on_cam, leather_fetish, profile_smoke, had_interaction
+      RETURNING smoke_on_cam, leather_fetish, profile_smoke, had_interaction, room_banned
     `;
 
     try {
@@ -699,6 +709,7 @@ export class ProfileService {
         leather_fetish: row.leather_fetish || false,
         profile_smoke: row.profile_smoke || false,
         had_interaction: row.had_interaction || false,
+        room_banned: row.room_banned || false, // MHC-1104
       };
     } catch (error) {
       logger.error('Error updating profile attributes', { error, personId });

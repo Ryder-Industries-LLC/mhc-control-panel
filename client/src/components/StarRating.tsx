@@ -16,19 +16,20 @@ const RATING_LABELS: Record<number, string> = {
   5: 'HOT AF',
 };
 
+// MHC theme-aligned star colors with better contrast
 const RATING_COLORS: Record<number, string> = {
-  0: 'text-white/30',
+  0: 'text-white/40',
   1: 'text-red-400',
   2: 'text-orange-400',
-  3: 'text-yellow-400',
-  4: 'text-lime-400',
-  5: 'text-pink-500',
+  3: 'text-amber-400',
+  4: 'text-emerald-400',
+  5: 'text-pink-400', // Bright pink for HOT AF - stands out more than mhc-primary
 };
 
 const SIZE_CLASSES: Record<string, string> = {
-  sm: 'text-sm gap-0.5',
-  md: 'text-lg gap-1',
-  lg: 'text-2xl gap-1.5',
+  sm: 'text-base gap-0.5',
+  md: 'text-xl gap-1',
+  lg: 'text-3xl gap-1.5',
 };
 
 export const StarRating: React.FC<StarRatingProps> = ({

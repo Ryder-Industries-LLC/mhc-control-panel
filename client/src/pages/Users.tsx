@@ -650,7 +650,7 @@ const Users: React.FC = () => {
   const renderDirectoryTab = () => (
     <>
       <div className="flex justify-between items-center my-6">
-        <h2 className="text-2xl text-white font-semibold">Directory ({formatNumber(persons.length)})</h2>
+        <h2 className="text-2xl text-white font-semibold">People ({formatNumber(persons.length)})</h2>
       </div>
 
       {/* Filters Panel with Counts inside */}
@@ -1272,7 +1272,7 @@ const Users: React.FC = () => {
   // Main render
   return (
     <PeopleLayout
-      title={`Directory (${persons.length.toLocaleString()})`}
+      title={`People (${persons.length.toLocaleString()})`}
       activeSegment={activeTab}
       onSegmentChange={setActiveTab}
       error={error}

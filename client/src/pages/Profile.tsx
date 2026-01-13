@@ -160,6 +160,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [leatherFetish, setLeatherFetish] = useState(false);
   const [profileSmoke, setProfileSmoke] = useState(false);
   const [hadInteraction, setHadInteraction] = useState(false);
+  // MHC-1104: Room Banned flag
+  const [roomBanned, setRoomBanned] = useState(false);
+
+  // MHC-1105: Seen With state
+  const [seenWith, setSeenWith] = useState<Array<{ id: string; username: string; personId?: string; notes?: string; createdAt: string }>>([]);
+  const [seenWithLoading, setSeenWithLoading] = useState(false);
+  const [seenWithInput, setSeenWithInput] = useState('');
+  const [seenWithSuggestions, setSeenWithSuggestions] = useState<Array<{ username: string; id: string }>>([]);
 
   // Top mover badge state
   const [topMoverStatus, setTopMoverStatus] = useState<'gainer' | 'loser' | null>(null);
@@ -277,6 +285,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
       setLeatherFetish(profileData.profile.leather_fetish || false);
       setProfileSmoke(profileData.profile.profile_smoke || false);
       setHadInteraction(profileData.profile.had_interaction || false);
+      // MHC-1104: Room Banned
+      setRoomBanned(profileData.profile.room_banned || false);
     }
   }, [profileData?.profile]);
 
@@ -407,6 +417,23 @@ const Profile: React.FC<ProfilePageProps> = () => {
         }
       };
       fetchMyVisitStats();
+
+      // MHC-1105: Fetch seen_with data
+      const fetchSeenWithData = async () => {
+        setSeenWithLoading(true);
+        try {
+          const response = await fetch(`/api/profile/${profileData.person.username}/seen-with`);
+          if (response.ok) {
+            const data = await response.json();
+            setSeenWith(data.seenWith || []);
+          }
+        } catch (err) {
+          console.error('Error fetching seen-with:', err);
+        } finally {
+          setSeenWithLoading(false);
+        }
+      };
+      fetchSeenWithData();
     }
   }, [profileData?.person?.username]);
 
@@ -1025,6 +1052,92 @@ const Profile: React.FC<ProfilePageProps> = () => {
     }
   };
 
+  // MHC-1104: Room Banned handler
+  const handleRoomBannedToggle = async () => {
+    if (!profileData?.person?.username) return;
+
+    const newValue = !roomBanned;
+    setRoomBanned(newValue);
+
+    try {
+      await fetch(`/api/profile/${profileData.person.username}/attributes`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_banned: newValue }),
+      });
+    } catch (err) {
+      setRoomBanned(!newValue);
+    }
+  };
+
+  // MHC-1105: Seen With handlers
+  const fetchSeenWith = async () => {
+    if (!profileData?.person?.username) return;
+    setSeenWithLoading(true);
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/seen-with`);
+      if (response.ok) {
+        const data = await response.json();
+        setSeenWith(data.seenWith || []);
+      }
+    } catch (err) {
+      console.error('Error fetching seen-with:', err);
+    } finally {
+      setSeenWithLoading(false);
+    }
+  };
+
+  const handleAddSeenWith = async (username: string) => {
+    if (!profileData?.person?.username || !username.trim()) return;
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/seen-with`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seenWithUsername: username.trim() }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setSeenWith(prev => [data.entry, ...prev]);
+        setSeenWithInput('');
+        setSeenWithSuggestions([]);
+      }
+    } catch (err) {
+      console.error('Error adding seen-with:', err);
+    }
+  };
+
+  const handleRemoveSeenWith = async (entryId: string) => {
+    if (!profileData?.person?.username) return;
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/seen-with/${entryId}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        setSeenWith(prev => prev.filter(s => s.id !== entryId));
+      }
+    } catch (err) {
+      console.error('Error removing seen-with:', err);
+    }
+  };
+
+  const handleSeenWithInputChange = async (value: string) => {
+    setSeenWithInput(value);
+    if (value.trim().length >= 2) {
+      // Fetch autocomplete suggestions from directory
+      try {
+        const response = await fetch(`/api/people?search=${encodeURIComponent(value.trim())}&limit=5`);
+        if (response.ok) {
+          const data = await response.json();
+          setSeenWithSuggestions(data.people?.map((p: any) => ({ username: p.username, id: p.id })) || []);
+        }
+      } catch (err) {
+        setSeenWithSuggestions([]);
+      }
+    } else {
+      setSeenWithSuggestions([]);
+    }
+  };
+
   // Service relationship handlers
   const handleSaveServiceRelationship = async (
     role: 'sub' | 'dom',
@@ -1117,10 +1230,26 @@ const Profile: React.FC<ProfilePageProps> = () => {
     setProfileNames(result.names);
   };
 
-  return (
-    <div className="max-w-7xl mx-auto p-5">
-      <h1 className="text-mhc-primary text-4xl font-bold mb-8 py-4 border-b-2 border-mhc-primary">Profile Viewer</h1>
+  // MHC-1101: Set browser tab title to "MHC: {username}" when viewing a profile
+  useEffect(() => {
+    if (profileData?.person?.username) {
+      document.title = `MHC: ${profileData.person.username}`;
+    } else {
+      document.title = 'MHC Control Panel';
+    }
+    // Cleanup: restore default title when leaving the page
+    return () => {
+      document.title = 'MHC Control Panel';
+    };
+  }, [profileData?.person?.username]);
 
+  // MHC-1102: State for T2 expansion in Profile Overview Card
+  // NOTE: Pattern exception - this uses local state rather than CollapsibleSection pattern.
+  // TODO: Refactor to match global expandable Section patterns in future redesign.
+  const [overviewT2Expanded, setOverviewT2Expanded] = useState(false); // Default collapsed
+
+  return (
+    <div className="max-w-7xl mx-auto px-5 pt-2 pb-5">
       {error && (
         <div className="bg-red-500/20 border-l-4 border-red-500 text-red-300 px-4 py-3 rounded-md mb-5">
           <strong className="font-bold mr-1">Error:</strong> {error}
@@ -1130,181 +1259,130 @@ const Profile: React.FC<ProfilePageProps> = () => {
       {/* Profile Content */}
       {profileData && (
         <div>
-          {/* Profile Header */}
-          <div className="bg-gradient-primary text-white rounded-lg p-8 mb-5 shadow-lg">
-            <div className="flex gap-5 items-center flex-wrap md:flex-nowrap">
+          {/* MHC-1101: Page title with username and status on same row - reduced top padding */}
+          <div className="mb-2 flex items-center gap-3">
+            <h1 className="text-3xl font-bold text-white">
+              <a
+                href={`https://chaturbate.com/${profileData.person.username}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-white no-underline hover:text-mhc-primary hover:underline transition-colors"
+              >
+                {profileData.person.username}
+              </a>
+            </h1>
+            {/* Online/Offline status indicator - to the right of username */}
+            {isSessionLive(profileData.latestSession) ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-red-500/30 border border-red-500/50 text-red-300 animate-pulse">
+                <span className="w-2 h-2 bg-red-400 rounded-full"></span>
+                Live
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-gray-500/30 border border-gray-500/50 text-white/70">
+                Offline
+              </span>
+            )}
+          </div>
+
+          {/* Profile Overview Card - Option B Layout (MHC-1102) */}
+          <div className="bg-gradient-primary text-white rounded-lg p-6 mb-5 shadow-lg">
+            <div className="flex gap-5 items-start flex-wrap md:flex-nowrap">
               {/* Profile image section - always show with placeholder fallback */}
-              <div className="flex-shrink-0 flex flex-col items-start gap-3">
-                  {/* Badge row ABOVE image - Live, Model/Member, Followers */}
-                  <div className="flex gap-2 items-center">
-                    {/* LIVE indicator */}
-                    {isSessionLive(profileData.latestSession) && (
-                      <div className="bg-gradient-to-r from-red-500 to-red-600 text-white px-3 py-1 rounded-full font-bold text-xs uppercase tracking-wider shadow-lg animate-pulse border border-white/50">
-                        ● LIVE
-                      </div>
-                    )}
-                    {/* Role indicator */}
-                    <div className={`text-xs px-2 py-1 rounded font-semibold uppercase tracking-wider ${
-                      profileData.person.role === 'MODEL'
-                        ? 'bg-pink-500/80 text-white'
-                        : 'bg-gray-500/80 text-white'
-                    }`}>
-                      {profileData.person.role}
-                    </div>
-                    {/* Followers */}
-                    {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers) && (
-                      <div className="px-2 py-1 rounded text-xs font-semibold bg-black/60 text-white">
-                        ❤️ {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers || 0).toLocaleString()}
-                      </div>
-                    )}
-                  </div>
-                  {/* Image with navigation arrows */}
+              <div className="flex-shrink-0 flex flex-col items-start">
+                  {/* Image with navigation arrows - 440x330 */}
                   <div className="relative group">
                     <img
                       src={
-                        currentProfileImage
-                          ? getProfileImageUrl(currentProfileImage)
-                          : imageHistory.length > 0
-                            ? `/images/${imageHistory[currentImageIndex]?.image_url}`
+                        imageHistory.length > 0
+                          ? `/images/${imageHistory[currentImageIndex]?.image_url}`
+                          : currentProfileImage
+                            ? getProfileImageUrl(currentProfileImage)
                             : getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession))
                               || profileData.profile.photos?.find((p: any) => p.isPrimary)?.url
                               || profileData.profile.photos?.[0]?.url
                               || getPlaceholderImage(profileData.person.role)
                       }
                       alt={profileData.person.username}
-                      className={`w-[200px] h-[150px] rounded-lg object-cover shadow-lg ${
+                      className={`w-[440px] h-[330px] rounded-lg object-cover shadow-lg ${
                         isSessionLive(profileData.latestSession)
                           ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-mhc-surface border-2 border-red-400'
                           : 'border-4 border-white/30'
                       }`}
-                      width="360"
-                      height="270"
+                      width="440"
+                      height="330"
                     />
                     {/* Navigation arrows - only show if multiple images */}
                     {imageHistory.length > 1 && (
                       <>
                         <button
                           onClick={() => setCurrentImageIndex(prev => (prev > 0 ? prev - 1 : imageHistory.length - 1))}
-                          className="absolute left-1 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-7 h-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-lg"
                           title="Previous image"
                         >
                           ‹
                         </button>
                         <button
                           onClick={() => setCurrentImageIndex(prev => (prev < imageHistory.length - 1 ? prev + 1 : 0))}
-                          className="absolute right-1 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-7 h-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-lg"
                           title="Next image"
                         >
                           ›
                         </button>
                         {/* Image counter */}
-                        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
                           {currentImageIndex + 1} / {imageHistory.length}
                         </div>
                       </>
                     )}
                   </div>
-                  {/* Image timestamp */}
-                  {imageHistory.length > 0 && imageHistory[currentImageIndex] && (
-                    <div className="text-xs text-white/90 text-center">
-                      {new Date(imageHistory[currentImageIndex].observed_at).toLocaleString('en-US', {
-                        month: 'long',
-                        day: 'numeric',
-                        year: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit'
-                      })}
+                  {/* Below image row: CB/UN links (left), Following (center), timestamp (right) */}
+                  <div className="flex items-center justify-between w-[440px] mt-1">
+                    {/* CB/UN external links - left aligned */}
+                    <div className="flex gap-1.5">
+                      <a
+                        href={`https://chaturbate.com/${profileData.person.username}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2 py-0.5 bg-orange-500/30 text-orange-200 hover:bg-orange-500/50 hover:text-white rounded transition-colors font-medium text-xs"
+                        title="View on Chaturbate"
+                      >
+                        CB
+                      </a>
+                      <a
+                        href={`https://uncams.com/${profileData.person.username}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2 py-0.5 bg-cyan-500/30 text-cyan-200 hover:bg-cyan-500/50 hover:text-white rounded transition-colors font-medium text-xs"
+                        title="View on UN Cams"
+                      >
+                        UN
+                      </a>
                     </div>
-                  )}
-                  {/* External links */}
-                  <div className="flex gap-2 text-xs mt-1">
-                    <a
-                      href={`https://chaturbate.com/${profileData.person.username}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-2 py-1 bg-orange-500/40 text-orange-200 hover:bg-orange-500/60 hover:text-white rounded transition-colors font-semibold"
-                    >
-                      Chaturbate
-                    </a>
-                    <a
-                      href={`https://uncams.com/${profileData.person.username}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-2 py-1 bg-cyan-500/40 text-cyan-200 hover:bg-cyan-500/60 hover:text-white rounded transition-colors font-semibold"
-                    >
-                      UN Cams
-                    </a>
+                    {/* Following badge - centered under image */}
+                    {profileData.profile?.following && (
+                      <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-200" title="You follow this user">
+                        Following
+                      </span>
+                    )}
+                    {/* Image timestamp - right aligned */}
+                    {imageHistory.length > 0 && imageHistory[currentImageIndex] && (
+                      <div className="text-xs text-white/70">
+                        {new Date(imageHistory[currentImageIndex].observed_at).toLocaleString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit'
+                        })}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-              <div className="flex-1">
-                {/* Last Seen (if offline) - right-aligned at top */}
-                {!isSessionLive(profileData.latestSession) && (
-                  profileData.latestSession?.observed_at ||
-                  profileData.profile?.last_seen_online ||
-                  profileData.person?.last_seen_at
-                ) && (
-                  <div className="text-right text-white/80 text-sm mb-2">
-                    Last Seen: {new Date(
-                      profileData.latestSession?.observed_at ||
-                      profileData.profile?.last_seen_online ||
-                      profileData.person?.last_seen_at
-                    ).toLocaleString('en-US', {
-                      timeZone: 'America/New_York',
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit'
-                    })} ET
-                  </div>
-                )}
-
-                {/* Username row with Following + Live/Offline status */}
-                <div className="flex items-center gap-3 mb-3 flex-wrap">
-                  <h2 className="m-0 text-3xl font-bold">
-                    <a
-                      href={`https://chaturbate.com/${profileData.person.username}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-white no-underline hover:underline"
-                    >
-                      {profileData.person.username}
-                    </a>
-                  </h2>
-                  {/* Follows You badge - POSITION SWAP: condition unchanged (profileData.profile?.follower) */}
-                  {profileData.profile?.follower && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-blue-500/30 border border-blue-500/50" title="Follows you">
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
-                      </svg>
-                      Follows You
-                    </span>
-                  )}
-                  {/* Live/Offline status */}
-                  {isSessionLive(profileData.latestSession) ? (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50">
-                      👁 {(profileData.latestSession?.num_users || 0).toLocaleString()} viewers
-                    </span>
-                  ) : (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-gray-500/30 border border-gray-500/50 text-white/80">
-                      Offline
-                    </span>
-                  )}
-                </div>
-
-                {/* Badges row */}
-                <div className="mb-3 flex items-center gap-2 flex-wrap">
-                  {/* Following badge */}
-                  {profileData.profile?.following && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50" title="You follow this user">
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
-                        <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd"/>
-                      </svg>
-                      Following
-                    </span>
-                  )}
+              {/* Right column - evenly distributed rows to match image height (330px) */}
+              <div className="flex-1 flex flex-col justify-between h-[330px]">
+                {/* Row 1: Relationship Status Badges */}
+                <div className="flex items-center gap-2 flex-wrap">
                   {/* Unified relationship status badge (takes precedence) */}
                   {relationship && ['Active', 'Occasional', 'Potential'].includes(relationship.status) && (
                     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold ${
@@ -1356,14 +1434,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       Banned Me
                     </span>
                   )}
-                  {watchList && (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-yellow-500/30 border border-yellow-500/50" title="On your watchlist">
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
-                      </svg>
-                      Watchlist
-                    </span>
-                  )}
                   {topMoverStatus === 'gainer' && (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-emerald-500/30 border border-emerald-500/50 animate-pulse" title="Top Gainer (7 day)">
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -1382,8 +1452,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   )}
                 </div>
 
-                {/* Stats row - Total Sessions, Images, Visits */}
-                <div className="flex gap-4 mb-3 text-white/80 text-sm">
+                {/* Row 2: Stats row - Followers, Sessions, Images, Visits */}
+                <div className="flex gap-4 text-white/80 text-sm">
+                  {/* Followers */}
+                  {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers) && (
+                    <span title="Follower count">
+                      ❤️ {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers || 0).toLocaleString()} followers
+                    </span>
+                  )}
                   {profileData.sessionStats?.totalSessions > 0 && (
                     <span title="Total broadcast sessions observed">
                       📺 {profileData.sessionStats.totalSessions.toLocaleString()} sessions
@@ -1394,9 +1470,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       🖼️ {imageHistory.length} images
                     </span>
                   )}
+                  {/* MHC-1103: Renamed to "Visits to Me" for clarity */}
                   {roomVisitStats && roomVisitStats.total_visits > 0 && (
-                    <span title={`Visited your room ${roomVisitStats.total_visits} times${roomVisitStats.last_visit ? `. Last visit: ${new Date(roomVisitStats.last_visit).toLocaleDateString()}` : ''}`}>
-                      👋 {roomVisitStats.total_visits.toLocaleString()} visits from them
+                    <span title={`Count of times they appeared in your context (entered your room or viewed your profile). Total: ${roomVisitStats.total_visits}${roomVisitStats.last_visit ? `. Last visit: ${new Date(roomVisitStats.last_visit).toLocaleDateString()}` : ''}`}>
+                      👋 {roomVisitStats.total_visits.toLocaleString()} visits to me
                     </span>
                   )}
                   {myVisitStats && myVisitStats.total_visits > 0 && (
@@ -1406,17 +1483,17 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   )}
                 </div>
 
-                {/* Info row */}
-                <div className="flex gap-2.5 flex-wrap">
+                {/* Row 3: Profile Details - Gender, Age, Location, Rank, Follows Me, Profile Smoke */}
+                <div className="flex gap-2 flex-wrap">
                   {/* Gender */}
                   {(profileData.profile?.gender || profileData.latestSession?.gender || profileData.latestSnapshot?.normalized_metrics?.gender) && (
-                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                    <span className={`px-2.5 py-0.5 rounded text-xs font-medium ${
                       (() => {
                         const gender = (profileData.profile?.gender || profileData.latestSession?.gender || profileData.latestSnapshot?.normalized_metrics?.gender || '').toLowerCase();
-                        if (gender === 'f' || gender === 'female') return 'bg-pink-500/30 border border-pink-500/50';
-                        if (gender === 't' || gender === 'trans') return 'bg-purple-500/30 border border-purple-500/50';
-                        if (gender === 'c' || gender === 'couple') return 'bg-teal-500/30 border border-teal-500/50';
-                        return 'bg-white/20';
+                        if (gender === 'f' || gender === 'female') return 'bg-pink-500/20 text-pink-200';
+                        if (gender === 't' || gender === 'trans') return 'bg-purple-500/20 text-purple-200';
+                        if (gender === 'c' || gender === 'couple') return 'bg-teal-500/20 text-teal-200';
+                        return 'bg-white/10 text-white/80';
                       })()
                     }`}>
                       {formatGender(profileData.profile?.gender || profileData.latestSession?.gender || profileData.latestSnapshot?.normalized_metrics?.gender)}
@@ -1425,43 +1502,262 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
                   {/* Age */}
                   {(profileData.profile?.age || profileData.latestSession?.age) && (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
+                    <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-white/10 text-white/80">
                       {profileData.profile?.age || profileData.latestSession?.age} years
                     </span>
                   )}
 
                   {/* Location */}
                   {(profileData.profile?.location || profileData.latestSession?.location) && (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
+                    <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-white/10 text-white/80">
                       📍 {profileData.profile?.location || profileData.latestSession?.location}
                     </span>
                   )}
 
                   {/* Rank */}
                   {profileData.latestSnapshot?.normalized_metrics?.rank && (
-                    <span className="px-3 py-1 rounded-full text-sm font-semibold bg-white/20">
+                    <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-white/10 text-white/80">
                       Rank #{Math.round(profileData.latestSnapshot.normalized_metrics.rank).toLocaleString()}
+                    </span>
+                  )}
+
+                  {/* Follows Me badge */}
+                  {profileData.profile?.follower && (
+                    <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-200" title="Follows you">
+                      Follows Me
+                    </span>
+                  )}
+
+                  {/* Profile Smoke (read-only indicator) - moved from Row 4 */}
+                  {profileSmoke && (
+                    <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-200" title="Profile indicates smoker">
+                      🚬 Smoke
                     </span>
                   )}
                 </div>
 
-                {/* Room Subject with extracted tags (when live) */}
+                {/* Row 4: Fast Flags including Watchlist and Interaction */}
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Banned Me Toggle */}
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={bannedMe}
+                      onChange={handleBannedToggle}
+                      className="w-4 h-4 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
+                    />
+                    <span className="text-white/80 text-sm">Banned Me</span>
+                  </label>
+
+                  {/* Smoking Toggle */}
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={smokeOnCam}
+                      onChange={handleSmokeOnCamToggle}
+                      className="w-4 h-4 rounded border-2 border-gray-400/50 bg-mhc-surface-light text-gray-400 focus:ring-gray-400 cursor-pointer"
+                    />
+                    <span className="text-white/80 text-sm">Smoking</span>
+                  </label>
+
+                  {/* Fetish Gear Toggle */}
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={leatherFetish}
+                      onChange={handleLeatherFetishToggle}
+                      className="w-4 h-4 rounded border-2 border-purple-500/50 bg-mhc-surface-light text-purple-500 focus:ring-purple-500 cursor-pointer"
+                    />
+                    <span className="text-white/80 text-sm">Fetish Gear</span>
+                  </label>
+
+                  {/* Watchlist Toggle */}
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={watchList}
+                      onChange={handleWatchListToggle}
+                      className="w-4 h-4 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
+                    />
+                    <span className="text-white/80 text-sm">Watchlist</span>
+                  </label>
+
+                  {/* Interaction Toggle - moved from T2 */}
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hadInteraction}
+                      onChange={handleHadInteractionToggle}
+                      className="w-4 h-4 rounded border-2 border-emerald-500/50 bg-mhc-surface-light text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <span className="text-white/80 text-sm">Interaction</span>
+                  </label>
+                </div>
+
+                {/* Row 5: Promoted Tags (T1) - only show specific important tags */}
+                {(() => {
+                  const promotedTagPatterns = ['smoke', 'master', 'kinky', 'fetish', 'bdsm', 'dirty', 'daddy', 'alpha', 'dom', 'slave', 'bulge'];
+                  const allHashtags = profileData.latestSession?.room_subject?.match(/#\w+/g) || [];
+                  const promotedTags = allHashtags.filter((tag: string) =>
+                    promotedTagPatterns.some(pattern => tag.toLowerCase().includes(pattern))
+                  );
+
+                  if (promotedTags.length === 0) return null;
+
+                  return (
+                    <div className="flex flex-wrap gap-1.5">
+                      {promotedTags.map((tag: string, idx: number) => (
+                        <a
+                          key={idx}
+                          href={`/people?tag=${encodeURIComponent(tag.replace('#', ''))}`}
+                          className="px-2 py-0.5 bg-pink-500/30 text-pink-200 rounded-full text-xs font-medium hover:bg-pink-500/50 transition-colors cursor-pointer"
+                          title={`Search People with tag: ${tag}`}
+                        >
+                          {tag}
+                        </a>
+                      ))}
+                    </div>
+                  );
+                })()}
+
+              </div>
+            </div>
+
+            {/* Full-width row: Add Note, Rating, More/Less - below image and right column */}
+            <div className="flex items-center gap-4 mt-4 pt-3 border-t border-white/10">
+              {/* Add Note button - left side */}
+              <button
+                onClick={() => setShowAddNoteModal(true)}
+                className="px-3 py-1 bg-mhc-primary hover:bg-mhc-primary/80 text-white text-sm font-medium rounded-md transition-colors flex items-center gap-1"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Note
+              </button>
+
+              {/* Rating - inline */}
+              <div className="flex items-center gap-2">
+                <StarRating
+                  rating={rating}
+                  onChange={handleRatingChange}
+                  size="md"
+                  showLabel={true}
+                />
+              </div>
+
+              {/* More... toggle - right side */}
+              <button
+                onClick={() => setOverviewT2Expanded(!overviewT2Expanded)}
+                className="ml-auto text-sm text-white/60 hover:text-white transition-colors flex items-center gap-1"
+              >
+                <svg
+                  className={`w-4 h-4 transition-transform ${overviewT2Expanded ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+                {overviewT2Expanded ? 'Less' : 'More...'}
+              </button>
+            </div>
+
+            {/* MHC-1102: T2 Expandable Section */}
+            {overviewT2Expanded && (
+              <div className="mt-4 pt-4 border-t border-white/10">
+                {/* T2 Profile Type and Last Seen row */}
+                <div className="flex flex-wrap items-center gap-4 mb-4 text-sm">
+                  {/* Model/Viewer badge - moved from T1 */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-white/60">Type:</span>
+                    <span className={`px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider ${
+                      profileData.person.role === 'MODEL'
+                        ? 'bg-pink-500/40 text-pink-200'
+                        : 'bg-gray-500/40 text-gray-200'
+                    }`}>
+                      {profileData.person.role}
+                    </span>
+                  </div>
+
+                  {/* Last Seen - moved from T1 */}
+                  {!isSessionLive(profileData.latestSession) &&
+                    (profileData.latestSession?.observed_at ||
+                     profileData.profile?.last_seen_online ||
+                     profileData.person?.last_seen_at) && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-white/60">Last Seen:</span>
+                      <span className="text-white/80">
+                        {new Date(
+                          profileData.latestSession?.observed_at ||
+                          profileData.profile?.last_seen_online ||
+                          profileData.person?.last_seen_at
+                        ).toLocaleString('en-US', {
+                          timeZone: 'America/New_York',
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit'
+                        })} ET
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* T2 Additional Flags */}
+                <div className="flex flex-wrap items-center gap-6 mb-4">
+                  {/* Banned User Toggle (renamed from "Banned by Me") */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={bannedByMe}
+                      onChange={handleBannedByMeToggle}
+                      className="w-5 h-5 rounded border-2 border-orange-500/50 bg-mhc-surface-light text-orange-500 focus:ring-orange-500 cursor-pointer"
+                    />
+                    <span className="text-white/80 font-medium">Banned User</span>
+                  </label>
+
+                  {/* MHC-1104: Room Banned Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={roomBanned}
+                      onChange={handleRoomBannedToggle}
+                      className="w-5 h-5 rounded border-2 border-red-700/50 bg-mhc-surface-light text-red-700 focus:ring-red-700 cursor-pointer"
+                    />
+                    <span className="text-white/80 font-medium">Room Banned</span>
+                  </label>
+                </div>
+
+                {/* T2 # of Sessions */}
+                {profileData.sessionStats?.totalSessions > 0 && (
+                  <div className="mb-4 text-white/80 text-sm">
+                    <span className="text-white/60">Sessions:</span> {profileData.sessionStats.totalSessions.toLocaleString()} total
+                  </div>
+                )}
+
+                {/* T2 Room Subject / Goal */}
                 {profileData.latestSession?.room_subject && (
-                  <div className="mt-4">
+                  <div className="mb-4">
+                    <span className="text-sm text-white/60 block mb-2">Room Subject / Goal:</span>
                     <div className="px-4 py-3 bg-white/15 rounded-lg text-base leading-relaxed border-l-4 border-white/40">
-                      {/* Remove hashtags from display text */}
                       {profileData.latestSession.room_subject.replace(/#\w+/g, '').trim()}
                     </div>
-                    {/* Extract hashtags from room subject and show as pills */}
                     {(() => {
                       const hashtags = profileData.latestSession.room_subject.match(/#\w+/g);
                       if (hashtags && hashtags.length > 0) {
                         return (
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {hashtags.map((tag: string, idx: number) => (
-                              <span key={idx} className="px-2.5 py-1 bg-mhc-primary/80 text-white rounded-full text-xs font-medium">
+                              <a
+                                key={idx}
+                                href={`/people?tag=${encodeURIComponent(tag.replace('#', ''))}`}
+                                className="px-2.5 py-1 bg-mhc-primary/80 text-white rounded-full text-xs font-medium hover:bg-mhc-primary transition-colors cursor-pointer"
+                                title={`Search People with tag: ${tag}`}
+                              >
                                 {tag}
-                              </span>
+                              </a>
                             ))}
                           </div>
                         );
@@ -1471,10 +1767,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   </div>
                 )}
 
-                {/* Session Started (when live) - bottom right aligned text */}
+                {/* T2 Session Started (when live) */}
                 {isSessionLive(profileData.latestSession) && (
-                  <div className="mt-3 text-right text-white/80 text-sm">
-                    Session Started: {new Date(profileData.latestSession.session_start).toLocaleString('en-US', {
+                  <div className="mb-4 text-white/80 text-sm">
+                    <span className="text-white/60">Session Started:</span> {new Date(profileData.latestSession.session_start).toLocaleString('en-US', {
                       timeZone: 'America/New_York',
                       hour: '2-digit',
                       minute: '2-digit',
@@ -1482,258 +1778,212 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     })} ET
                   </div>
                 )}
-              </div>
-            </div>
 
-            {/* Flags - Inside profile card container, below gradient */}
-            <div className="mt-4 pt-4 border-t border-white/10">
-              <div className="flex flex-wrap items-center gap-6">
-                {/* Banned Me Toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={bannedMe}
-                    onChange={handleBannedToggle}
-                    className="w-5 h-5 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
-                  />
-                  <span className="text-white/80 font-medium">Banned Me</span>
-                </label>
-
-                {/* Watchlist Toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={watchList}
-                    onChange={handleWatchListToggle}
-                    className="w-5 h-5 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
-                  />
-                  <span className="text-white/80 font-medium">Watchlist</span>
-                </label>
-
-                {/* Banned by Me Toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={bannedByMe}
-                    onChange={handleBannedByMeToggle}
-                    className="w-5 h-5 rounded border-2 border-orange-500/50 bg-mhc-surface-light text-orange-500 focus:ring-orange-500 cursor-pointer"
-                  />
-                  <span className="text-white/80 font-medium">Banned by Me</span>
-                </label>
-
-                {/* Smoke on Cam Toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={smokeOnCam}
-                    onChange={handleSmokeOnCamToggle}
-                    className="w-5 h-5 rounded border-2 border-gray-400/50 bg-mhc-surface-light text-gray-400 focus:ring-gray-400 cursor-pointer"
-                  />
-                  <span className="text-white/80 font-medium">Smoke on Cam</span>
-                </label>
-
-                {/* Leather/Fetish Toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={leatherFetish}
-                    onChange={handleLeatherFetishToggle}
-                    className="w-5 h-5 rounded border-2 border-purple-500/50 bg-mhc-surface-light text-purple-500 focus:ring-purple-500 cursor-pointer"
-                  />
-                  <span className="text-white/80 font-medium">Leather/Fetish</span>
-                </label>
-
-                {/* Had Interaction Toggle */}
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={hadInteraction}
-                    onChange={handleHadInteractionToggle}
-                    className="w-5 h-5 rounded border-2 border-emerald-500/50 bg-mhc-surface-light text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-                  />
-                  <span className="text-white/80 font-medium">Had Interaction</span>
-                </label>
-
-                {/* Profile Smoke (read-only indicator) */}
-                {profileSmoke && (
-                  <div className="flex items-center gap-2 px-2 py-1 bg-amber-500/20 rounded-md">
-                    <span className="text-amber-400 text-sm">🚬 Profile Smoke</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Rating */}
-              <div className="flex items-center gap-3 mt-3">
-                <span className="text-sm text-white/60">Rating:</span>
-                <StarRating
-                  rating={rating}
-                  onChange={handleRatingChange}
-                  size="md"
-                  showLabel={true}
-                />
-              </div>
-
-              {/* Add Note button */}
-              <div className="mt-3">
-                <button
-                  onClick={() => setShowAddNoteModal(true)}
-                  className="px-3 py-1.5 bg-mhc-primary hover:bg-mhc-primary/80 text-white text-sm font-medium rounded-md transition-colors flex items-center gap-1.5"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Note
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Profile Details Section - Chaturbate bio data */}
-          {profileData?.profile && (
-            <div className="mb-5">
-              <CollapsibleSection
-                title={
-                  <div className="flex items-center gap-2">
-                    <span>Profile Details</span>
-                    {profileData.profile?.browser_scraped_at ? (
-                      <span className="text-xs text-white/40 font-normal">
-                        (Last refresh: {formatDate(profileData.profile.browser_scraped_at, { relative: true })})
-                      </span>
-                    ) : (
-                      <span className="text-xs text-white/40 font-normal">(Never refreshed)</span>
+                {/* MHC-1105: T2 Seen With field */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-white/60">Seen With:</span>
+                  {seenWith.map((entry) => (
+                    <span
+                      key={entry.id}
+                      className="inline-flex items-center gap-1 px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-sm"
+                    >
+                      <a
+                        href={`/profile/${entry.username}`}
+                        className="hover:underline"
+                      >
+                        {entry.username}
+                      </a>
+                      <button
+                        onClick={() => handleRemoveSeenWith(entry.id)}
+                        className="ml-1 text-blue-400 hover:text-red-400"
+                        title="Remove"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  {/* Add username input with autocomplete */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={seenWithInput}
+                      onChange={(e) => handleSeenWithInputChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && seenWithInput.trim()) {
+                          handleAddSeenWith(seenWithInput);
+                        }
+                      }}
+                      placeholder="+ Add Username"
+                      className="px-2 py-1 bg-white/10 text-white text-sm rounded border border-white/20 focus:border-mhc-primary focus:outline-none w-32"
+                    />
+                    {seenWithSuggestions.length > 0 && (
+                      <div className="absolute top-full left-0 mt-1 w-48 bg-mhc-surface border border-white/20 rounded shadow-lg z-10 max-h-32 overflow-y-auto">
+                        {seenWithSuggestions.map((suggestion) => (
+                          <button
+                            key={suggestion.id}
+                            onClick={() => {
+                              handleAddSeenWith(suggestion.username);
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-mhc-primary/20"
+                          >
+                            {suggestion.username}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
-                }
-                defaultCollapsed={true}
-                className="bg-mhc-surface"
-              >
-                {/* Two-column layout with cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Left Column - Basic Info */}
-                  <div className="space-y-4">
-                    <div className="p-4 bg-mhc-surface-light rounded-md">
-                      <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Basic Info</h5>
-                      <div className="space-y-3">
-                        <div className="flex justify-between">
-                          <span className="text-mhc-text-muted text-sm">Real Name:</span>
-                          <span className={`text-sm ${profileData.profile?.display_name ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.display_name || 'Not set'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-mhc-text-muted text-sm">Age:</span>
-                          <span className={`text-sm ${profileData.profile?.age ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.age || 'Not set'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-mhc-text-muted text-sm">Birthday:</span>
-                          <span className={`text-sm ${profileData.profile?.birthday_public ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.birthday_public || 'Not set'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-mhc-text-muted text-sm">Gender:</span>
-                          <span className={`text-sm ${profileData.profile?.gender ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.gender ? formatGender(profileData.profile.gender) : 'Not set'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-mhc-text-muted text-sm">Interested In:</span>
-                          <span className={`text-sm ${profileData.profile?.interested_in ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.interested_in || 'Not set'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-mhc-surface-light rounded-md">
-                      <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Location</h5>
-                      <div className="space-y-3">
-                        <div className="flex justify-between">
-                          <span className="text-mhc-text-muted text-sm">Location:</span>
-                          <span className={`text-sm ${profileData.profile?.location ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.location || 'Not set'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-mhc-text-muted text-sm">Country:</span>
-                          <span className={`text-sm ${profileData.profile?.country ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.country || 'Not set'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-mhc-text-muted text-sm">Languages:</span>
-                          <span className={`text-sm ${profileData.profile?.spoken_languages ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.spoken_languages || 'Not set'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right Column - Physical & Status */}
-                  <div className="space-y-4">
-                    <div className="p-4 bg-mhc-surface-light rounded-md">
-                      <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Physical</h5>
-                      <div className="space-y-3">
-                        <div className="flex justify-between">
-                          <span className="text-mhc-text-muted text-sm">Body Type:</span>
-                          <span className={`text-sm ${profileData.profile?.body_type ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.body_type || 'Not set'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-mhc-text-muted text-sm">Body Decorations:</span>
-                          <span className={`text-sm ${profileData.profile?.body_decorations ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.body_decorations || 'Not set'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-mhc-text-muted text-sm">Smoke/Drink:</span>
-                          <span className={`text-sm ${profileData.profile?.smoke_drink ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.smoke_drink || 'Not set'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-mhc-surface-light rounded-md">
-                      <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Status</h5>
-                      <div className="space-y-3">
-                        <div className="flex justify-between">
-                          <span className="text-mhc-text-muted text-sm">New Model:</span>
-                          <span className={`text-sm ${profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined
-                              ? (profileData.profile.is_new ? 'Yes' : 'No')
-                              : 'Unknown'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-mhc-text-muted text-sm">Last Broadcast:</span>
-                          <span className={`text-sm ${profileData.profile?.last_broadcast ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                            {profileData.profile?.last_broadcast
-                              ? new Date(profileData.profile.last_broadcast).toLocaleDateString()
-                              : 'Not set'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  {seenWithLoading && (
+                    <span className="text-white/40 text-sm">Loading...</span>
+                  )}
                 </div>
 
-                {/* Bio - full width */}
-                {profileData.profile?.bio && (
-                  <div className="mt-4 p-4 bg-mhc-surface-light rounded-md">
-                    <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Bio</h5>
-                    <p className="mt-2 mb-0 leading-relaxed text-mhc-text whitespace-pre-wrap">
-                      {profileData.profile.bio}
-                    </p>
-                  </div>
+                {/* Profile Details - Chaturbate bio data (inside T2) */}
+                {profileData?.profile && (
+                  <CollapsibleSection
+                    title={
+                      <div className="flex items-center gap-2">
+                        <span>Profile Details</span>
+                        {profileData.profile?.browser_scraped_at ? (
+                          <span className="text-xs text-white/40 font-normal">
+                            (Last refresh: {formatDate(profileData.profile.browser_scraped_at, { relative: true })})
+                          </span>
+                        ) : (
+                          <span className="text-xs text-white/40 font-normal">(Never refreshed)</span>
+                        )}
+                      </div>
+                    }
+                    defaultCollapsed={true}
+                    className="bg-white/5 mt-4"
+                  >
+                    {/* Two-column layout with cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Left Column - Basic Info */}
+                      <div className="space-y-4">
+                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                          <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Basic Info</h5>
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted text-sm">Real Name:</span>
+                              <span className={`text-sm ${profileData.profile?.display_name ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                {profileData.profile?.display_name || 'Not set'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted text-sm">Age:</span>
+                              <span className={`text-sm ${profileData.profile?.age ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                {profileData.profile?.age || 'Not set'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted text-sm">Birthday:</span>
+                              <span className={`text-sm ${profileData.profile?.birthday_public ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                {profileData.profile?.birthday_public || 'Not set'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted text-sm">Gender:</span>
+                              <span className={`text-sm ${profileData.profile?.gender ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                {profileData.profile?.gender ? formatGender(profileData.profile.gender) : 'Not set'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted text-sm">Interested In:</span>
+                              <span className={`text-sm ${profileData.profile?.interested_in ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                {profileData.profile?.interested_in || 'Not set'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                          <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Location</h5>
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted text-sm">Location:</span>
+                              <span className={`text-sm ${profileData.profile?.location ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                {profileData.profile?.location || 'Not set'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted text-sm">Country:</span>
+                              <span className={`text-sm ${profileData.profile?.country ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                {profileData.profile?.country || 'Not set'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted text-sm">Languages:</span>
+                              <span className={`text-sm ${profileData.profile?.spoken_languages ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                {profileData.profile?.spoken_languages || 'Not set'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Column - Physical & Status */}
+                      <div className="space-y-4">
+                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                          <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Physical</h5>
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted text-sm">Body Type:</span>
+                              <span className={`text-sm ${profileData.profile?.body_type ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                {profileData.profile?.body_type || 'Not set'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted text-sm">Body Decorations:</span>
+                              <span className={`text-sm ${profileData.profile?.body_decorations ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                {profileData.profile?.body_decorations || 'Not set'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted text-sm">Smoke/Drink:</span>
+                              <span className={`text-sm ${profileData.profile?.smoke_drink ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                {profileData.profile?.smoke_drink || 'Not set'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="p-4 bg-mhc-surface-light rounded-md">
+                          <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Status</h5>
+                          <div className="space-y-3">
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted text-sm">New Model:</span>
+                              <span className={`text-sm ${profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                {profileData.profile?.is_new !== null && profileData.profile?.is_new !== undefined
+                                  ? (profileData.profile.is_new ? 'Yes' : 'No')
+                                  : 'Unknown'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-mhc-text-muted text-sm">Last Broadcast:</span>
+                              <span className={`text-sm ${profileData.profile?.last_broadcast ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                                {profileData.profile?.last_broadcast
+                                  ? new Date(profileData.profile.last_broadcast).toLocaleDateString()
+                                  : 'Not set'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bio - full width */}
+                    {profileData.profile?.bio && (
+                      <div className="mt-4 p-4 bg-mhc-surface-light rounded-md">
+                        <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Bio</h5>
+                        <p className="mt-2 mb-0 leading-relaxed text-mhc-text whitespace-pre-wrap">
+                          {profileData.profile.bio}
+                        </p>
+                      </div>
+                    )}
+                  </CollapsibleSection>
                 )}
-              </CollapsibleSection>
-            </div>
-          )}
+              </div>
+            )}
+          </div>
 
           {/* Media Section (Collapsible) - Expanded by default */}
           <div className="mb-5">
@@ -1788,8 +2038,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
                 return (
                   <div>
-                    {/* Media Type Tabs */}
-                    <div className="flex border-b border-white/10 mb-4">
+                    {/* Media Type Tabs with Source Filters */}
+                    <div className="flex items-center border-b border-white/10 mb-4">
                       <button
                         onClick={() => setMediaSubTab('images')}
                         className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
@@ -1810,39 +2060,41 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       >
                         Videos ({videos.length})
                       </button>
+                      {/* Image Source Filter Chips - inline with tabs */}
+                      {mediaSubTab === 'images' && (
+                        <div className="flex flex-wrap gap-1.5 ml-4 py-1">
+                          {sourceFilters.map(filter => {
+                            const count = filter.key === null
+                              ? allImages.length
+                              : (sourceCountsMap[filter.key] || 0);
+                            const isActive = imageSourceFilter === filter.key;
+                            return (
+                              <button
+                                key={filter.key || 'all'}
+                                onClick={() => {
+                                  setImageSourceFilter(filter.key);
+                                  setShowAllImages(false); // Reset pagination when filter changes
+                                }}
+                                className={`px-2 py-0.5 text-xs font-medium rounded-full transition-all ${
+                                  isActive
+                                    ? `${filter.color} text-white`
+                                    : count === 0
+                                      ? 'bg-white/5 text-white/30'
+                                      : `${filter.color}/20 text-white/70 hover:${filter.color}/40 hover:text-white`
+                                }`}
+                                disabled={count === 0 && filter.key !== null}
+                              >
+                                {filter.label} ({count})
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
 
                     {/* Images Tab Content */}
                     {mediaSubTab === 'images' && (
                       <div>
-                        {/* Image Source Filter Chips */}
-                        {allImages.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mb-4">
-                            {sourceFilters.map(filter => {
-                              const count = filter.key === null
-                                ? allImages.length
-                                : (sourceCountsMap[filter.key] || 0);
-                              if (filter.key !== null && count === 0) return null;
-                              const isActive = imageSourceFilter === filter.key;
-                              return (
-                                <button
-                                  key={filter.key || 'all'}
-                                  onClick={() => {
-                                    setImageSourceFilter(filter.key);
-                                    setShowAllImages(false); // Reset pagination when filter changes
-                                  }}
-                                  className={`px-3 py-1 text-xs font-medium rounded-full transition-all ${
-                                    isActive
-                                      ? `${filter.color} text-white`
-                                      : `${filter.color}/20 text-white/70 hover:${filter.color}/40 hover:text-white`
-                                  }`}
-                                >
-                                  {filter.label} ({count})
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
                         {images.length > 0 ? (
                           <>
                           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">

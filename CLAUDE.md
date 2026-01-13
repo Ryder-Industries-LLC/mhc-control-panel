@@ -205,7 +205,12 @@ Claude must follow this lifecycle for every session:
 
 Every response must end with the following footer:
 
-Project: MHC Control Panel , Repo: mhc-control-panel , Branch: <branch> , Dir: <absolute path>
+| Project       | Value             |        | Git Info  | Value        |
+| ------------- | ----------------- | ------ | --------- | ------------ |
+| Name          | MHC Control Panel | **\_** | Repo Root | <repo_root>  |
+| Absolute Path | <absolute_path>   |        | Status    | <git_status> |
+| Working Dir   | <working_dir>     |        | Branch    | <branch>     |
+| Mode          | <mode>            |        | Commit    | <commit>     |
 
 ---
 

@@ -1,8 +1,31 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-12 (v1.33.4)
+**Last Updated**: 2026-01-13 (v1.34.0)
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
+
+---
+
+## Documentation Gaps (Identified 2026-01-12)
+
+### docs/reference/UI_PATTERNS.md
+
+- [ ] Document form input patterns (textarea, datetime-local, selects)
+- [ ] Document modal component usage
+- [ ] Document button styling conventions
+- [ ] Document Tailwind color tokens (mhc-surface-light, mhc-primary, mhc-text)
+- [ ] Document anti-patterns (inline CSS, default admin styling)
+
+### docs/reference/TESTING_GUIDE.md
+
+- [ ] Update to reflect current v1.33.x page structure (outdated December 2024 reference)
+- [ ] Remove stale checklist items for tabs that no longer exist
+- [ ] Add test cases for Communications manual entry (when implemented)
+
+### docs/reference/SCHEMA.md
+
+- [ ] Add migrations 020-065+ to Migration Plan section (currently stops at 009)
+- [ ] Document `direct_messages` table if it exists (or confirm DMs use interactions table)
 
 ---
 

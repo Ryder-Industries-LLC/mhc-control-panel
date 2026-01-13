@@ -104,6 +104,8 @@ export const formatDuration = (minutes: number | null | undefined): string => {
 
 /**
  * Format gender to full capitalized name
+ * Normalizes various raw values from different sources (Chaturbate Affiliate API,
+ * Statbate, Profile Scraper) to consistent display labels.
  * @param gender Gender value (can be string or number)
  * @returns Formatted gender string
  */
@@ -123,16 +125,33 @@ export const formatGender = (gender: string | number | null | undefined): string
     return genderMap[gender] || 'Unknown';
   }
 
-  // Handle string gender values
-  const genderStr = String(gender).toLowerCase();
+  // Handle string gender values - normalize various raw formats
+  const genderStr = String(gender).toLowerCase().trim();
 
-  if (genderStr === 'male' || genderStr === 'm') return 'Male';
-  if (genderStr === 'female' || genderStr === 'f') return 'Female';
-  if (genderStr === 'trans' || genderStr === 't') return 'Trans';
-  if (genderStr === 'couple' || genderStr === 'c') return 'Couple';
+  // Male variations (including raw Chaturbate values)
+  if (genderStr === 'male' || genderStr === 'm' || genderStr === 'a man' || genderStr === 'man') {
+    return 'Male';
+  }
 
-  // If already capitalized properly, return as-is
-  return gender.toString();
+  // Female variations
+  if (genderStr === 'female' || genderStr === 'f' || genderStr === 'a woman' || genderStr === 'woman') {
+    return 'Female';
+  }
+
+  // Trans variations (including various raw Chaturbate/Statbate values)
+  if (genderStr === 'trans' || genderStr === 't' || genderStr === 'shemale' || genderStr === 'ts' ||
+      genderStr === 'transsexual' || genderStr === 'transgender' || genderStr === 's') {
+    return 'Trans';
+  }
+
+  // Couple variations
+  if (genderStr === 'couple' || genderStr === 'c' || genderStr === 'couples') {
+    return 'Couple';
+  }
+
+  // If already capitalized properly or unknown format, return title case
+  const titleCase = gender.toString().charAt(0).toUpperCase() + gender.toString().slice(1).toLowerCase();
+  return titleCase;
 };
 
 /**

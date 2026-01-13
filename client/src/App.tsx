@@ -157,7 +157,7 @@ function AppContent() {
             {/* Row 1: Main navigation links */}
             <div className="flex items-center justify-between h-10 border-b border-white/5">
               <div className="flex items-center gap-1">
-                <NavLink to="/people">Directory</NavLink>
+                <NavLink to="/people">People</NavLink>
                 <NavLink to="/inbox">Inbox</NavLink>
                 <NavLink to="/stats">Stats</NavLink>
                 <NavLink to="/broadcasts">Broadcasts</NavLink>
@@ -168,12 +168,9 @@ function AppContent() {
               <UserMenu />
             </div>
 
-            {/* Row 2: Search and contextual actions */}
-            <div className="flex items-center justify-between h-10">
-              <div className="flex items-center gap-4">
-                <GlobalLookup inline />
-              </div>
-              {/* Space for future contextual tabs/filters per page */}
+            {/* Row 2: Search centered (MHC-1101) */}
+            <div className="flex items-center justify-center h-10">
+              <GlobalLookup inline />
             </div>
           </div>
         </div>

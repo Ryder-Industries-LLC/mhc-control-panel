@@ -86,6 +86,40 @@ Render.com with `RUN_MODE` environment variable:
 
 ---
 
+## 2026-01-12 — Documentation Tier Structure Validation
+
+**Context:**
+After reorganizing docs/ into a tiered structure (v1.33.5), validation was needed to confirm sufficiency for day-to-day development.
+
+**Decision:**
+The 6-document Tier-1 auto-read set is sufficient:
+
+1. CLAUDE.md (entry point)
+2. ARCHITECTURE.md (authoritative system rules)
+3. MODES.md (behavioral modes)
+4. SESSION_SUMMARY.md (current state)
+5. TODO.md (task backlog)
+6. DECISIONS.md (this file)
+
+Reference docs (`docs/reference/`) are loaded on-demand when relevant.
+
+**Findings from validation:**
+
+- ARCHITECTURE.md and SCHEMA.md are highly useful for BUILD tasks
+- UI_PATTERNS.md is a stub (all TODO) — blocks CONSISTENCY_CHECK mode
+- TESTING_GUIDE.md is stale (December 2024) — needs refresh for v1.33.x
+
+**Tradeoffs:**
+
+- Pro: Minimal /hydrate context, faster session start
+- Pro: Clear separation of authoritative vs reference docs
+- Con: UI_PATTERNS.md gap means UI conventions must be inferred from code
+- Con: TESTING_GUIDE.md staleness may mislead testers
+
+**Status:** Accepted (with remediation tasks added to TODO.md)
+
+---
+
 ## YYYY-MM-DD — <Decision Title>
 
 **Context:**

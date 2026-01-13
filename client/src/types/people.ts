@@ -408,9 +408,10 @@ export const buildStandardCounts = <T extends BasePerson>(
     });
   }
 
+  // MHC-1106: Renamed "With Media" to "With Images" - filter only counts images, not videos
   counts.push(
     { id: 'live', label: 'Live Now', value: data.filter(p => isPersonLive(p)).length, color: 'red' },
-    { id: 'with_image', label: 'With Media', value: data.filter(p => p.image_url).length, color: 'primary' },
+    { id: 'with_image', label: 'With Images', value: data.filter(p => p.image_url).length, color: 'primary' },
     { id: 'with_videos', label: 'With Videos', value: data.filter(p => p.has_videos).length, color: 'pink' },
     { id: 'with_rating', label: 'Rated', value: data.filter(p => (p.rating || 0) > 0).length, color: 'yellow' },
     { id: 'models', label: 'Models', value: data.filter(p => p.role === 'MODEL').length, color: 'purple' },
