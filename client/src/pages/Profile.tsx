@@ -1258,8 +1258,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
       {/* Profile Content */}
       {profileData && (
         <div>
-          {/* MHC-1101: Page title with username and status - sticky header */}
-          <div className="sticky top-0 z-40 bg-mhc-surface py-2 -mx-5 px-5 mb-2 flex items-center gap-3 border-b border-white/10">
+          {/* MHC-1101: Page title with username and status - sticky header (transparent) */}
+          <div className="sticky top-0 z-40 py-2 mb-2 flex items-center gap-3">
             <h1 className="text-3xl font-bold text-white">
               <a
                 href={`https://chaturbate.com/${profileData.person.username}`}
@@ -1288,46 +1288,28 @@ const Profile: React.FC<ProfilePageProps> = () => {
             <div className="flex gap-5 items-start flex-wrap md:flex-nowrap">
               {/* Profile image section - always show with placeholder fallback */}
               <div className="flex-shrink-0 flex flex-col items-start">
-                  {/* Above image row: CB/UN links (left), Following (center), timestamp (right) */}
-                  <div className="flex items-center justify-between w-[440px] mb-1">
-                    {/* CB/UN external links - left aligned */}
-                    <div className="flex gap-1.5">
-                      <a
-                        href={`https://chaturbate.com/${profileData.person.username}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-2 py-0.5 bg-orange-500/30 text-orange-200 hover:bg-orange-500/50 hover:text-white rounded transition-colors font-medium text-xs"
-                        title="View on Chaturbate"
-                      >
-                        CB
-                      </a>
-                      <a
-                        href={`https://uncams.com/${profileData.person.username}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-2 py-0.5 bg-cyan-500/30 text-cyan-200 hover:bg-cyan-500/50 hover:text-white rounded transition-colors font-medium text-xs"
-                        title="View on UN Cams"
-                      >
-                        UN
-                      </a>
-                    </div>
-                    {/* Following badge - centered */}
+                  {/* Above image row: Following | Follows Me (compact, centered) */}
+                  <div className="flex items-center justify-center gap-2 w-[440px] mb-1.5">
                     {profileData.profile?.following && (
-                      <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-200" title="You follow this user">
+                      <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-200 border border-emerald-500/30" title="You follow this user">
                         Following
                       </span>
                     )}
-                    {/* Image timestamp - right aligned */}
+                    {profileData.profile?.follower && (
+                      <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-200 border border-blue-500/30" title="Follows you">
+                        Follows Me
+                      </span>
+                    )}
+                    {/* Show timestamp when image history exists */}
                     {imageHistory.length > 0 && imageHistory[currentImageIndex] && (
-                      <div className="text-xs text-white/70">
+                      <span className="text-xs text-white/50 ml-auto">
                         {new Date(imageHistory[currentImageIndex].observed_at).toLocaleString('en-US', {
                           month: 'short',
                           day: 'numeric',
-                          year: 'numeric',
                           hour: 'numeric',
                           minute: '2-digit'
                         })}
-                      </div>
+                      </span>
                     )}
                   </div>
                   {/* Image with navigation arrows - 440x330 */}
@@ -1376,20 +1358,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       </>
                     )}
                   </div>
-                  {/* Below image row: Add Note (left), Rating (right) - same height as top row */}
-                  <div className="flex items-center justify-between w-[440px] mt-1">
-                    {/* Add Note button - left side, compact to match CB/UN height */}
-                    <button
-                      onClick={() => setShowAddNoteModal(true)}
-                      className="px-2 py-0.5 bg-mhc-primary hover:bg-mhc-primary/80 text-white text-xs font-medium rounded transition-colors flex items-center gap-1"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Add Note
-                    </button>
-
-                    {/* Rating - right side, small size to match row height */}
+                  {/* Below image row: Rating (left) | CB | UN (centered) | + Add Note (right) */}
+                  <div className="flex items-center justify-between w-[440px] mt-1.5">
+                    {/* Rating - left side */}
                     <div className="flex items-center gap-1">
                       <StarRating
                         rating={rating}
@@ -1398,6 +1369,39 @@ const Profile: React.FC<ProfilePageProps> = () => {
                         showLabel={true}
                       />
                     </div>
+
+                    {/* CB/UN external links - centered */}
+                    <div className="flex gap-1.5">
+                      <a
+                        href={`https://chaturbate.com/${profileData.person.username}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-0.5 bg-orange-500/30 text-orange-200 hover:bg-orange-500/50 hover:text-white rounded transition-colors font-medium text-xs min-w-[36px] text-center"
+                        title="View on Chaturbate"
+                      >
+                        CB
+                      </a>
+                      <a
+                        href={`https://uncams.com/${profileData.person.username}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-0.5 bg-cyan-500/30 text-cyan-200 hover:bg-cyan-500/50 hover:text-white rounded transition-colors font-medium text-xs min-w-[36px] text-center"
+                        title="View on UN Cams"
+                      >
+                        UN
+                      </a>
+                    </div>
+
+                    {/* Add Note button - right side */}
+                    <button
+                      onClick={() => setShowAddNoteModal(true)}
+                      className="px-2.5 py-0.5 bg-mhc-primary hover:bg-mhc-primary/80 text-white text-xs font-medium rounded transition-colors flex items-center gap-1"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add Note
+                    </button>
                   </div>
                 </div>
 
@@ -1505,7 +1509,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   )}
                 </div>
 
-                {/* Row 3: Profile Details - Gender, Age, Location, Rank, Follows Me, Profile Smoke */}
+                {/* Row 3: Profile stats - Gender, Age, Location, Rank */}
                 <div className="flex gap-2.5 flex-wrap">
                   {/* Gender */}
                   {(profileData.profile?.gender || profileData.latestSession?.gender || profileData.latestSnapshot?.normalized_metrics?.gender) && (
@@ -1542,23 +1546,125 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       Rank #{Math.round(profileData.latestSnapshot.normalized_metrics.rank).toLocaleString()}
                     </span>
                   )}
+                </div>
 
-                  {/* Follows Me badge */}
-                  {profileData.profile?.follower && (
-                    <span className="px-3 py-1 rounded text-sm font-medium bg-blue-500/20 text-blue-200" title="Follows you">
-                      Follows Me
-                    </span>
-                  )}
+                {/* Row 4: Fast Flags - Safety / Blocking */}
+                <div className="flex flex-wrap items-center gap-4">
+                  {/* Banned Me Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={bannedMe}
+                      onChange={handleBannedToggle}
+                      className="w-4 h-4 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
+                    />
+                    <span className="text-white/90 text-sm font-medium">Banned Me</span>
+                  </label>
 
-                  {/* Profile Smoke (read-only indicator) - moved from Row 4 */}
+                  {/* Banned User Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={bannedByMe}
+                      onChange={handleBannedByMeToggle}
+                      className="w-4 h-4 rounded border-2 border-orange-500/50 bg-mhc-surface-light text-orange-500 focus:ring-orange-500 cursor-pointer"
+                    />
+                    <span className="text-white/90 text-sm font-medium">Banned User</span>
+                  </label>
+
+                  {/* Room Banned Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={roomBanned}
+                      onChange={handleRoomBannedToggle}
+                      className="w-4 h-4 rounded border-2 border-red-700/50 bg-mhc-surface-light text-red-700 focus:ring-red-700 cursor-pointer"
+                    />
+                    <span className="text-white/90 text-sm font-medium">Room Banned</span>
+                  </label>
+                </div>
+
+                {/* Row 5: Fast Flags - Curation / Interest */}
+                <div className="flex flex-wrap items-center gap-4">
+                  {/* Watchlist Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={watchList}
+                      onChange={handleWatchListToggle}
+                      className="w-4 h-4 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
+                    />
+                    <span className="text-white/90 text-sm font-medium">Watchlist</span>
+                  </label>
+
+                  {/* Interaction Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={hadInteraction}
+                      onChange={handleHadInteractionToggle}
+                      className="w-4 h-4 rounded border-2 border-emerald-500/50 bg-mhc-surface-light text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                    />
+                    <span className="text-white/90 text-sm font-medium">Interaction</span>
+                  </label>
+
+                  {/* Smoking Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={smokeOnCam}
+                      onChange={handleSmokeOnCamToggle}
+                      className="w-4 h-4 rounded border-2 border-gray-400/50 bg-mhc-surface-light text-gray-400 focus:ring-gray-400 cursor-pointer"
+                    />
+                    <span className="text-white/90 text-sm font-medium">Smoking</span>
+                  </label>
+
+                  {/* Fetish Gear Toggle */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={leatherFetish}
+                      onChange={handleLeatherFetishToggle}
+                      className="w-4 h-4 rounded border-2 border-purple-500/50 bg-mhc-surface-light text-purple-500 focus:ring-purple-500 cursor-pointer"
+                    />
+                    <span className="text-white/90 text-sm font-medium">Fetish Gear</span>
+                  </label>
+
+                  {/* Profile Smoke indicator (read-only) */}
                   {profileSmoke && (
-                    <span className="px-3 py-1 rounded text-sm font-medium bg-amber-500/20 text-amber-200" title="Profile indicates smoker">
-                      🚬 Smoke
+                    <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-200 border border-amber-500/30" title="Profile indicates smoker">
+                      🚬 Profile Smoke
                     </span>
                   )}
                 </div>
 
-                {/* Row 4: Seen With - moved from T2 */}
+                {/* Row 6: Promoted Tags - only show specific important tags */}
+                {(() => {
+                  const promotedTagPatterns = ['smoke', 'master', 'kinky', 'fetish', 'bdsm', 'dirty', 'daddy', 'alpha', 'dom', 'slave', 'bulge'];
+                  const allHashtags = profileData.latestSession?.room_subject?.match(/#\w+/g) || [];
+                  const promotedTags = allHashtags.filter((tag: string) =>
+                    promotedTagPatterns.some(pattern => tag.toLowerCase().includes(pattern))
+                  );
+
+                  if (promotedTags.length === 0) return null;
+
+                  return (
+                    <div className="flex flex-wrap gap-1.5">
+                      {promotedTags.map((tag: string, idx: number) => (
+                        <a
+                          key={idx}
+                          href={`/people?tag=${encodeURIComponent(tag.replace('#', ''))}`}
+                          className="px-2 py-0.5 bg-pink-500/30 text-pink-200 rounded-full text-xs font-medium hover:bg-pink-500/50 transition-colors cursor-pointer"
+                          title={`Search People with tag: ${tag}`}
+                        >
+                          {tag}
+                        </a>
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                {/* Row 7: Seen With - below tags */}
                 <div className="flex items-center gap-2.5 flex-wrap">
                   <span className="text-sm text-white/70 font-medium">Seen With:</span>
                   {seenWith.map((entry) => (
@@ -1616,116 +1722,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   )}
                 </div>
 
-                {/* Row 5: Fast Flags including Watchlist and Interaction */}
-                <div className="flex flex-wrap items-center gap-4">
-                  {/* Banned Me Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={bannedMe}
-                      onChange={handleBannedToggle}
-                      className="w-4 h-4 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Banned Me</span>
-                  </label>
-
-                  {/* Banned User Toggle - moved from T2 */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={bannedByMe}
-                      onChange={handleBannedByMeToggle}
-                      className="w-4 h-4 rounded border-2 border-orange-500/50 bg-mhc-surface-light text-orange-500 focus:ring-orange-500 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Banned User</span>
-                  </label>
-
-                  {/* Room Banned Toggle - moved from T2 */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={roomBanned}
-                      onChange={handleRoomBannedToggle}
-                      className="w-4 h-4 rounded border-2 border-red-700/50 bg-mhc-surface-light text-red-700 focus:ring-red-700 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Room Banned</span>
-                  </label>
-
-                  {/* Smoking Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={smokeOnCam}
-                      onChange={handleSmokeOnCamToggle}
-                      className="w-4 h-4 rounded border-2 border-gray-400/50 bg-mhc-surface-light text-gray-400 focus:ring-gray-400 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Smoking</span>
-                  </label>
-
-                  {/* Fetish Gear Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={leatherFetish}
-                      onChange={handleLeatherFetishToggle}
-                      className="w-4 h-4 rounded border-2 border-purple-500/50 bg-mhc-surface-light text-purple-500 focus:ring-purple-500 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Fetish Gear</span>
-                  </label>
-
-                  {/* Watchlist Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={watchList}
-                      onChange={handleWatchListToggle}
-                      className="w-4 h-4 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Watchlist</span>
-                  </label>
-
-                  {/* Interaction Toggle - moved from T2 */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={hadInteraction}
-                      onChange={handleHadInteractionToggle}
-                      className="w-4 h-4 rounded border-2 border-emerald-500/50 bg-mhc-surface-light text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Interaction</span>
-                  </label>
-                </div>
-
-                {/* Row 5: Promoted Tags (T1) - only show specific important tags */}
-                {(() => {
-                  const promotedTagPatterns = ['smoke', 'master', 'kinky', 'fetish', 'bdsm', 'dirty', 'daddy', 'alpha', 'dom', 'slave', 'bulge'];
-                  const allHashtags = profileData.latestSession?.room_subject?.match(/#\w+/g) || [];
-                  const promotedTags = allHashtags.filter((tag: string) =>
-                    promotedTagPatterns.some(pattern => tag.toLowerCase().includes(pattern))
-                  );
-
-                  if (promotedTags.length === 0) return null;
-
-                  return (
-                    <div className="flex flex-wrap gap-1.5">
-                      {promotedTags.map((tag: string, idx: number) => (
-                        <a
-                          key={idx}
-                          href={`/people?tag=${encodeURIComponent(tag.replace('#', ''))}`}
-                          className="px-2 py-0.5 bg-pink-500/30 text-pink-200 rounded-full text-xs font-medium hover:bg-pink-500/50 transition-colors cursor-pointer"
-                          title={`Search People with tag: ${tag}`}
-                        >
-                          {tag}
-                        </a>
-                      ))}
-                    </div>
-                  );
-                })()}
-
-                {/* Profile Details link - opens modal */}
+                {/* Row 8: Profile Details link - opens modal */}
                 <button
                   onClick={() => setShowProfileDetailsModal(true)}
-                  className="text-sm text-white/60 hover:text-white transition-colors flex items-center gap-1"
+                  className="text-sm text-white/60 hover:text-white transition-colors flex items-center gap-1 mt-1"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -2719,11 +2719,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
         isOpen={showProfileDetailsModal}
         title="Profile Details"
         onClose={() => setShowProfileDetailsModal(false)}
-        size="lg"
+        size="xl"
       >
-        <div className="space-y-6 max-h-[70vh] overflow-y-auto">
+        <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
           {/* Last refresh timestamp */}
-          <div className="text-xs text-white/40 -mt-2">
+          <div className="text-xs text-white/50 -mt-2 whitespace-nowrap">
             {profileData?.profile?.browser_scraped_at
               ? `Last refresh: ${formatDate(profileData.profile.browser_scraped_at, { relative: true })}`
               : 'Never refreshed'}
