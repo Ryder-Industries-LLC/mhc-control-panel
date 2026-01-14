@@ -186,6 +186,23 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [ ] Consider moving datasources and merging that with Jobs management page
 - [ ] Add settings page feature that allows you to set API keys and environment variables including ability to upload a logo to replace the main page logo
 
+### /profile - UI/UX
+
+- [ ] Profile page UI theming - swap rating/CB links, brighten pills, move Profile Details, sticky header
+- [ ] Fix hover image endless loop - add delay on disappear or hover start
+
+### Code Refactoring
+
+- [ ] Combine and refactor image handling logic - one handler for all image types
+- [ ] Consider combining Person/Directory handling (similar patterns)
+- [ ] Review Live status logic for affiliate data
+
+### Infrastructure / Tech Debt
+
+- [ ] SSD Cleanup - verify media-before-s3 contents exist in S3, then delete 19GB backup
+- [ ] Render Migration Planning - S3-only storage, Render.com for DB and containers
+- [ ] Fully deprecate double image columns - remove DB entries, column, UI refs, storage duplicates
+
 ---
 
 ## New Features (Higher Effort)
