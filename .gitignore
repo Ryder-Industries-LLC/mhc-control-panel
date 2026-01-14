@@ -19,8 +19,8 @@ build/
 .env.*.local
 
 # IDE
-.vscode/
 .idea/
+.vscode/*.log
 *.swp
 *.swo
 *~

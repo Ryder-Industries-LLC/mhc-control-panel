@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.34.2] - 2026-01-13
+
+### Added
+
+- **Baseline Documentation**: Added claude-baseline standard docs for project consistency
+  - `docs/DOC_REVIEW.md` - Documentation review checklist for path/ownership changes
+  - `docs/RUNBOOK.md` - Operational procedures and troubleshooting guide
+  - `docs/SECURITY.md` - Secrets management and security checklist
+- **VSCode Workspace**: Added `.vscode/` settings and `mhc-control-panel.code-workspace` file
+  - Editor settings: format on save, trailing whitespace trimming
+  - Recommended extensions: ESLint, Prettier, GitHub PR, EditorConfig, Tailwind CSS
+
+### Changed
+
+- **Modal Component**: Increased Profile Details modal width for better content display
+- **Profile Page**: UI refinements for modal sizing
+- **.gitignore**: Changed from ignoring all `.vscode/` to only `.vscode/*.log` (allows committing editor settings)
+
+### Technical
+
+- Updated: `client/src/components/Modal.tsx` - Wider modal sizes for Profile Details
+- Updated: `client/src/pages/Profile.tsx` - Modal usage adjustments
+- New: `.vscode/settings.json`, `.vscode/extensions.json`
+- New: `mhc-control-panel.code-workspace`
+
+---
+
 ## [1.33.5] - 2026-01-12
 
 ### Changed

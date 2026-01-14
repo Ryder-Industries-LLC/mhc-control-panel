@@ -1,52 +1,54 @@
-# Session Summary - v1.34.1
+# Session Summary - v1.34.2
 
 **Date**: 2026-01-13
 **Mode**: BUILD
 
 ## What Was Accomplished
 
-### v1.34.1 Release - Profile UI Polish + Infrastructure
+### v1.34.2 Release - Baseline Docs + Modal Improvements
 
-This release includes Profile page UI refinements and Docker timezone configuration.
+This release adds claude-baseline standard documentation and VSCode workspace configuration.
 
-#### Profile Page UI Refinements
+#### Baseline Documentation Added
 
-- **Layout restructuring**: Right column now uses normal top-aligned spacing instead of stretched layout
-- **Visual balance**: Increased pill/text sizes for better visual weight balance with profile image
-- **Seen With moved**: "Seen With" field moved from T2 to T1 (above Fast Flags) with autocomplete
-- **Fast Flags expanded**: Added Banned User and Room Banned toggles to Fast Flags row
-- **CB/UN links repositioned**: Source links moved ABOVE the profile image
-- **Add Note/Rating repositioned**: Placed directly below image with compact sizing
-- **Sticky header**: Username/status header now sticky at top when scrolling
-- **Profile Details modal**: Converted from collapsible section to modal overlay (click "Profile Details..." link)
+- **DOC_REVIEW.md**: Documentation review checklist for when repo moves, ownership changes, or paths change
+- **RUNBOOK.md**: Operational procedures including deployment, database operations, background jobs, and troubleshooting
+- **SECURITY.md**: Secrets management, access control, and security checklist
 
-#### Bug Fix
+#### VSCode Workspace Setup
 
-- **Seen With autocomplete**: Fixed API endpoint from non-existent `/api/people?search=` to `/api/person/search?q=`
+- Added `.vscode/settings.json` with editor settings (format on save, trailing whitespace trimming)
+- Added `.vscode/extensions.json` with recommended extensions (ESLint, Prettier, GitHub PR, EditorConfig, Tailwind CSS)
+- Created `mhc-control-panel.code-workspace` file for VSCode workspace
+- Updated `.gitignore` to allow committing `.vscode/` settings (excluding logs)
 
-#### Infrastructure
+#### UI Improvements
 
-- **Docker timezone**: All containers now use Eastern Time (TZ=America/New_York)
-  - db, web, worker, frontend containers all configured
-  - Logs now display in ET instead of UTC
+- **Modal Component**: Updated for Profile Details modal width
+- **Profile Page**: Refinements to modal sizing for better content display
+
+### Files Created
+
+- `docs/DOC_REVIEW.md`
+- `docs/RUNBOOK.md`
+- `docs/SECURITY.md`
+- `.vscode/settings.json`
+- `.vscode/extensions.json`
+- `mhc-control-panel.code-workspace`
 
 ### Files Modified
 
-**Client:**
-
-- `client/src/pages/Profile.tsx` - Major UI restructuring, API fix
-
-**Infrastructure:**
-
-- `docker-compose.yml` - Added TZ environment variable to all services
+- `.gitignore` - Allow .vscode/ settings
+- `client/src/components/Modal.tsx` - Modal width updates
+- `client/src/pages/Profile.tsx` - Modal sizing refinements
+- `docs/reference/CHANGELOG.md` - v1.34.2 entry
 
 ## Database Status
 
-- ✅ No database changes in this release
-- ✅ Docker containers rebuilt and running with ET timezone
+- No database changes in this release
 
 ## Next Steps
 
 1. Continue Profile page enhancements based on user feedback
-2. Investigate studforyouall data-level issue (deferred)
-3. Review remaining TODO items
+2. Review remaining TODO items
+3. Investigate studforyouall data-level issue (deferred)

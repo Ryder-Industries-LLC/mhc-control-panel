@@ -3,7 +3,7 @@
 **Project:** MHC Control Panel
 **Version:** 1.33.0
 **Last Updated:** 2026-01-10
-**Local Path:** `/Volumes/Imago/Development/MHC/mhc-control-panel`
+**Local Path:** `/Volumes/Imago/Development/code/Ryder/mhc-control-panel`
 
 ---
 
