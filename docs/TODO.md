@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-14 (v1.34.4)
+**Last Updated**: 2026-01-14 (v1.34.6)
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -242,8 +242,13 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 
 ### Authentication
 
-- [ ] Add Register/Signup/Login functionality
-- [ ] Include login options: Email, Google, Facebook, Apple, X
+- [x] Add Register/Signup/Login functionality _(v1.34.6)_
+- [x] Include login options: Email, Google, Facebook, Apple, X _(v1.34.6 - Google OAuth primary, email/username/subscriberId supported)_
+- [x] Google OAuth as primary login with collapsible "more options" _(v1.34.6)_
+- [x] Second gate (password) after OAuth authentication _(v1.34.6)_
+- [x] Configurable gate password in Admin → Settings → Security _(v1.34.6)_
+- [x] All routes protected with GatedRoute component _(v1.34.6)_
+- [x] Google account linking to existing users by email _(v1.34.6)_
 
 ---
 

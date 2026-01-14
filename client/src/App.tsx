@@ -21,9 +21,11 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Verify2FA from './pages/Verify2FA';
 import Unauthorized from './pages/Unauthorized';
+import SecondGate from './pages/SecondGate';
 
 // Auth
 import { useAuth } from './context/AuthContext';
+import { GatedRoute } from './components/auth/GatedRoute';
 
 // User menu component for auth state
 function UserMenu() {
@@ -178,43 +180,45 @@ function AppContent() {
 
       <main className="flex-1 p-5">
         <Routes>
-          {/* Auth routes */}
+          {/* Auth routes - not protected */}
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/verify-2fa" element={<Verify2FA />} />
           <Route path="/unauthorized" element={<Unauthorized />} />
+          <Route path="/gate" element={<SecondGate />} />
 
+          {/* Protected routes - require OAuth + second gate */}
           {/* Default landing page is now Directory/People */}
-          <Route path="/" element={<Users />} />
+          <Route path="/" element={<GatedRoute><Users /></GatedRoute>} />
 
           {/* Stats (formerly Dashboard) */}
-          <Route path="/stats" element={<BroadcasterDashboard />} />
-          <Route path="/dashboard" element={<BroadcasterDashboard />} /> {/* Alias for backwards compatibility */}
-          <Route path="/hudson" element={<BroadcasterDashboard />} /> {/* Alias for backwards compatibility */}
+          <Route path="/stats" element={<GatedRoute><BroadcasterDashboard /></GatedRoute>} />
+          <Route path="/dashboard" element={<GatedRoute><BroadcasterDashboard /></GatedRoute>} /> {/* Alias for backwards compatibility */}
+          <Route path="/hudson" element={<GatedRoute><BroadcasterDashboard /></GatedRoute>} /> {/* Alias for backwards compatibility */}
 
           {/* Broadcasts (formerly Sessions) */}
-          <Route path="/broadcasts" element={<Sessions />} />
-          <Route path="/broadcasts/:id" element={<SessionDetail />} />
-          <Route path="/sessions" element={<Sessions />} /> {/* Alias for backwards compatibility */}
-          <Route path="/sessions/:id" element={<SessionDetail />} /> {/* Alias for backwards compatibility */}
+          <Route path="/broadcasts" element={<GatedRoute><Sessions /></GatedRoute>} />
+          <Route path="/broadcasts/:id" element={<GatedRoute><SessionDetail /></GatedRoute>} />
+          <Route path="/sessions" element={<GatedRoute><Sessions /></GatedRoute>} /> {/* Alias for backwards compatibility */}
+          <Route path="/sessions/:id" element={<GatedRoute><SessionDetail /></GatedRoute>} /> {/* Alias for backwards compatibility */}
 
           {/* Inbox */}
-          <Route path="/inbox" element={<Inbox />} />
+          <Route path="/inbox" element={<GatedRoute><Inbox /></GatedRoute>} />
 
           {/* Directory/People */}
-          <Route path="/people" element={<Users />} />
-          <Route path="/people/:username" element={<Profile />} />
-          <Route path="/profile" element={<Profile />} /> {/* Alias for backwards compatibility */}
-          <Route path="/profile/:username" element={<Profile />} /> {/* Alias for backwards compatibility */}
+          <Route path="/people" element={<GatedRoute><Users /></GatedRoute>} />
+          <Route path="/people/:username" element={<GatedRoute><Profile /></GatedRoute>} />
+          <Route path="/profile" element={<GatedRoute><Profile /></GatedRoute>} /> {/* Alias for backwards compatibility */}
+          <Route path="/profile/:username" element={<GatedRoute><Profile /></GatedRoute>} /> {/* Alias for backwards compatibility */}
 
           {/* Other pages */}
-          <Route path="/my-broadcasts" element={<MyBroadcasts />} />
-          <Route path="/events" element={<EventsFeed />} />
-          <Route path="/event-log" element={<EventLog />} />
-          <Route path="/live" element={<LiveMonitor />} />
-          <Route path="/visitors" element={<Visitors />} />
-          <Route path="/follow-history" element={<FollowHistory />} />
-          <Route path="/admin" element={<Admin />} />
+          <Route path="/my-broadcasts" element={<GatedRoute><MyBroadcasts /></GatedRoute>} />
+          <Route path="/events" element={<GatedRoute><EventsFeed /></GatedRoute>} />
+          <Route path="/event-log" element={<GatedRoute><EventLog /></GatedRoute>} />
+          <Route path="/live" element={<GatedRoute><LiveMonitor /></GatedRoute>} />
+          <Route path="/visitors" element={<GatedRoute><Visitors /></GatedRoute>} />
+          <Route path="/follow-history" element={<GatedRoute><FollowHistory /></GatedRoute>} />
+          <Route path="/admin" element={<GatedRoute><Admin /></GatedRoute>} />
         </Routes>
       </main>
     </div>

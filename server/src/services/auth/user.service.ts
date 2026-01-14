@@ -59,6 +59,7 @@ export interface UpdateUserInput {
   avatarUrl?: string;
   email?: string;
   emailVerified?: boolean;
+  googleId?: string;
 }
 
 const SALT_ROUNDS = 12;
@@ -245,6 +246,12 @@ export class UserService {
     if (updates.emailVerified !== undefined) {
       setClauses.push(`email_verified = $${paramIndex}`);
       values.push(updates.emailVerified);
+      paramIndex++;
+    }
+
+    if (updates.googleId !== undefined) {
+      setClauses.push(`google_id = $${paramIndex}`);
+      values.push(updates.googleId);
       paramIndex++;
     }
 

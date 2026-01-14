@@ -338,6 +338,13 @@ const Admin: React.FC = () => {
   const [noteLineLimitSaving, setNoteLineLimitSaving] = useState(false);
   const [noteLineLimitSuccess, setNoteLineLimitSuccess] = useState<string | null>(null);
 
+  // Security/Gate settings state
+  const [gatePassword, setGatePassword] = useState('');
+  const [gatePasswordLoading, setGatePasswordLoading] = useState(false);
+  const [gatePasswordSaving, setGatePasswordSaving] = useState(false);
+  const [gatePasswordError, setGatePasswordError] = useState<string | null>(null);
+  const [gatePasswordSuccess, setGatePasswordSuccess] = useState<string | null>(null);
+
   // Storage settings state
   type StorageProviderType = 'docker' | 'ssd' | 's3';
   interface StorageConfig {
@@ -461,7 +468,7 @@ const Admin: React.FC = () => {
     }
   }, [activeTab]);
 
-  // Load broadcast settings, image settings, video settings, note settings, storage settings, and stats collection settings when Settings tab is active
+  // Load broadcast settings, image settings, video settings, note settings, storage settings, security settings, and stats collection settings when Settings tab is active
   useEffect(() => {
     if (activeTab === 'settings') {
       fetchBroadcastSettings();
@@ -470,6 +477,7 @@ const Admin: React.FC = () => {
       fetchNoteLineLimitSetting();
       fetchStorageSettings();
       fetchStatsCollectionStatus();
+      fetchGatePassword();
     }
   }, [activeTab]);
 
@@ -504,6 +512,51 @@ const Admin: React.FC = () => {
       // Silent fail
     } finally {
       setNoteLineLimitSaving(false);
+    }
+  };
+
+  // Gate password settings functions
+  const fetchGatePassword = async () => {
+    setGatePasswordLoading(true);
+    setGatePasswordError(null);
+    try {
+      const response = await fetch('/api/settings/gate_password');
+      if (response.ok) {
+        const data = await response.json();
+        setGatePassword(data.value || '');
+      } else if (response.status === 404) {
+        // Setting doesn't exist yet, that's fine
+        setGatePassword('');
+      } else {
+        setGatePasswordError('Failed to load gate password');
+      }
+    } catch (err) {
+      setGatePasswordError('Failed to load gate password');
+    } finally {
+      setGatePasswordLoading(false);
+    }
+  };
+
+  const saveGatePassword = async () => {
+    setGatePasswordSaving(true);
+    setGatePasswordError(null);
+    setGatePasswordSuccess(null);
+    try {
+      const response = await fetch('/api/settings/gate_password', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value: gatePassword }),
+      });
+      if (response.ok) {
+        setGatePasswordSuccess('Gate password saved successfully');
+        setTimeout(() => setGatePasswordSuccess(null), 3000);
+      } else {
+        setGatePasswordError('Failed to save gate password');
+      }
+    } catch (err) {
+      setGatePasswordError('Failed to save gate password');
+    } finally {
+      setGatePasswordSaving(false);
     }
   };
 
@@ -4306,6 +4359,55 @@ const Admin: React.FC = () => {
                   </div>
                 ) : (
                   <div className="text-mhc-text-muted">No storage settings available</div>
+                )}
+              </CollapsibleSection>
+            </div>
+
+            {/* Security Section */}
+            <div className="mb-4">
+              <CollapsibleSection title="Security" defaultCollapsed={true} className="bg-mhc-surface">
+                {gatePasswordError && (
+                  <div className="p-3 px-4 rounded-md mb-4 bg-red-500/15 border-l-4 border-red-500 text-red-300">
+                    {gatePasswordError}
+                  </div>
+                )}
+                {gatePasswordSuccess && (
+                  <div className="p-3 px-4 rounded-md mb-4 bg-green-500/15 border-l-4 border-green-500 text-green-300">
+                    {gatePasswordSuccess}
+                  </div>
+                )}
+                {gatePasswordLoading ? (
+                  <div className="text-mhc-text-muted">Loading security settings...</div>
+                ) : (
+                  <div className="space-y-6">
+                    <div>
+                      <label className="block text-mhc-text mb-2 font-medium">
+                        Gate Password
+                      </label>
+                      <p className="text-mhc-text-muted text-sm mb-2">
+                        Users must enter this password after logging in to access the app. Leave empty to disable the second gate.
+                      </p>
+                      <input
+                        type="text"
+                        value={gatePassword}
+                        onChange={(e) => setGatePassword(e.target.value)}
+                        placeholder="Enter gate password (leave empty to disable)"
+                        className="w-full max-w-md px-3 py-2 bg-mhc-surface border border-white/20 rounded-md text-mhc-text placeholder-mhc-text-muted focus:border-mhc-primary focus:outline-none"
+                      />
+                      <p className="text-mhc-text-muted text-xs mt-1">
+                        Access is granted for 24 hours after entering the correct password.
+                      </p>
+                    </div>
+                    <div className="pt-4 border-t border-white/10">
+                      <button
+                        onClick={saveGatePassword}
+                        disabled={gatePasswordSaving}
+                        className="px-6 py-2 bg-mhc-primary text-white rounded-md hover:bg-mhc-primary-dark transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {gatePasswordSaving ? 'Saving...' : 'Save Security Settings'}
+                      </button>
+                    </div>
+                  </div>
                 )}
               </CollapsibleSection>
             </div>

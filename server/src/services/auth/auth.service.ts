@@ -205,23 +205,31 @@ export class AuthService {
       // Check if email already exists with different auth method
       const existingUser = await UserService.findByEmail(googleUser.email);
       if (existingUser) {
-        return {
-          success: false,
-          error: 'Email already registered with different login method'
-        };
+        // Link Google account to existing user
+        const updatedUser = await UserService.update(existingUser.id, {
+          googleId: googleUser.sub,
+          emailVerified: true, // Google verifies emails
+          displayName: existingUser.displayName || googleUser.name,
+          avatarUrl: existingUser.avatarUrl || googleUser.picture
+        });
+        if (!updatedUser) {
+          return { success: false, error: 'Failed to link Google account' };
+        }
+        user = updatedUser;
+        logger.info('Google account linked to existing user', { userId: existingUser.id });
+      } else {
+        // Create new user
+        user = await UserService.create({
+          authMethod: 'google_oauth',
+          googleId: googleUser.sub,
+          email: googleUser.email,
+          emailVerified: googleUser.email_verified,
+          displayName: googleUser.name,
+          avatarUrl: googleUser.picture || undefined
+        });
+
+        logger.info('New user created via Google OAuth', { userId: user.id });
       }
-
-      // Create new user
-      user = await UserService.create({
-        authMethod: 'google_oauth',
-        googleId: googleUser.sub,
-        email: googleUser.email,
-        emailVerified: googleUser.email_verified,
-        displayName: googleUser.name,
-        avatarUrl: googleUser.picture || undefined
-      });
-
-      logger.info('New user created via Google OAuth', { userId: user.id });
     } else {
       // Update profile info from Google if changed
       if (user.displayName !== googleUser.name || user.avatarUrl !== googleUser.picture) {
