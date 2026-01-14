@@ -21,7 +21,7 @@ export interface ProfileImage {
   mime_type: string | null;
   width: number | null;
   height: number | null;
-  is_current: boolean;
+  is_primary: boolean;
   created_at: Date;
   media_type: MediaType;
   duration_seconds: number | null;
@@ -199,7 +199,10 @@ export class ProfileImagesService {
   /**
    * Update image metadata
    */
-  static async update(imageId: string, data: UpdateProfileImageInput): Promise<ProfileImage | null> {
+  static async update(
+    imageId: string,
+    data: UpdateProfileImageInput
+  ): Promise<ProfileImage | null> {
     const updates: string[] = [];
     const values: any[] = [];
     let paramIndex = 1;
@@ -272,7 +275,11 @@ export class ProfileImagesService {
           logger.info('Profile image file deleted', { imageId, filePath: image.file_path });
         } catch (fileError: any) {
           if (fileError.code !== 'ENOENT') {
-            logger.warn('Failed to delete image file', { imageId, filePath: image.file_path, error: fileError });
+            logger.warn('Failed to delete image file', {
+              imageId,
+              filePath: image.file_path,
+              error: fileError,
+            });
           }
         }
         logger.info('Profile image deleted', { imageId, photosetId: image.photoset_id });
@@ -462,10 +469,10 @@ export class ProfileImagesService {
   }
 
   /**
-   * Set an image as the current/primary image for a person
-   * This will unset any previous current image
+   * Set an image as the primary/featured image for a person
+   * This will unset any previous primary image
    */
-  static async setAsCurrent(imageId: string): Promise<ProfileImage | null> {
+  static async setAsPrimary(imageId: string): Promise<ProfileImage | null> {
     try {
       // First get the image to know which person it belongs to
       const image = await this.getById(imageId);
@@ -473,20 +480,19 @@ export class ProfileImagesService {
         return null;
       }
 
-      // Unset any current image for this person and set the new one
+      // Unset any primary image for this person and set the new one
       // Using a transaction to ensure atomicity
       await query('BEGIN');
 
       try {
-        // Unset all current images for this person
-        await query(
-          `UPDATE profile_images SET is_current = FALSE WHERE person_id = $1`,
-          [image.person_id]
-        );
+        // Unset all primary images for this person
+        await query(`UPDATE profile_images SET is_primary = FALSE WHERE person_id = $1`, [
+          image.person_id,
+        ]);
 
-        // Set the specified image as current
+        // Set the specified image as primary
         const result = await query(
-          `UPDATE profile_images SET is_current = TRUE WHERE id = $1 RETURNING *`,
+          `UPDATE profile_images SET is_primary = TRUE WHERE id = $1 RETURNING *`,
           [imageId]
         );
 
@@ -496,23 +502,23 @@ export class ProfileImagesService {
           return null;
         }
 
-        logger.info('Profile image set as current', { imageId, personId: image.person_id });
+        logger.info('Profile image set as primary', { imageId, personId: image.person_id });
         return this.mapRowToImage(result.rows[0]);
       } catch (error) {
         await query('ROLLBACK');
         throw error;
       }
     } catch (error) {
-      logger.error('Error setting image as current', { error, imageId });
+      logger.error('Error setting image as primary', { error, imageId });
       throw error;
     }
   }
 
   /**
-   * Get the current image for a person
+   * Get the primary image for a person
    */
-  static async getCurrentByPersonId(personId: string): Promise<ProfileImage | null> {
-    const sql = `SELECT * FROM profile_images WHERE person_id = $1 AND is_current = TRUE`;
+  static async getPrimaryByPersonId(personId: string): Promise<ProfileImage | null> {
+    const sql = `SELECT * FROM profile_images WHERE person_id = $1 AND is_primary = TRUE`;
 
     try {
       const result = await query(sql, [personId]);
@@ -521,7 +527,7 @@ export class ProfileImagesService {
       }
       return this.mapRowToImage(result.rows[0]);
     } catch (error) {
-      logger.error('Error getting current image', { error, personId });
+      logger.error('Error getting primary image', { error, personId });
       throw error;
     }
   }
@@ -543,7 +549,7 @@ export class ProfileImagesService {
       mime_type: row.mime_type,
       width: row.width,
       height: row.height,
-      is_current: row.is_current || false,
+      is_primary: row.is_primary || false,
       created_at: row.created_at,
       media_type: row.media_type || 'image',
       duration_seconds: row.duration_seconds,

@@ -8,7 +8,10 @@ import { ProfileEnrichmentService } from '../services/profile-enrichment.service
 import { BroadcastSessionService } from '../services/broadcast-session.service.js';
 import { ServiceRelationshipService } from '../services/service-relationship.service.js';
 import { RelationshipService } from '../services/relationship.service.js';
-import { RelationshipHistoryService, type HistoryFieldType } from '../services/relationship-history.service.js';
+import {
+  RelationshipHistoryService,
+  type HistoryFieldType,
+} from '../services/relationship-history.service.js';
 import { ProfileNotesService } from '../services/profile-notes.service.js';
 import { ProfileImagesService } from '../services/profile-images.service.js';
 import { SocialLinksService, type SocialPlatform } from '../services/social-links.service.js';
@@ -237,7 +240,7 @@ router.post('/:username/scrape', async (req: Request, res: Response) => {
         if (modelData.data.rid && !person.rid) {
           await PersonService.update(person.id, {
             rid: modelData.data.rid,
-            role: 'MODEL'
+            role: 'MODEL',
           });
         }
         logger.info(`Fetched Statbate model data`, { username, rid: modelData.data.rid });
@@ -259,7 +262,7 @@ router.post('/:username/scrape', async (req: Request, res: Response) => {
           if (memberData.data.did && !person.did) {
             await PersonService.update(person.id, {
               did: memberData.data.did,
-              role: 'VIEWER'
+              role: 'VIEWER',
             });
           }
           logger.info(`Fetched Statbate member data`, { username, did: memberData.data.did });
@@ -272,7 +275,8 @@ router.post('/:username/scrape', async (req: Request, res: Response) => {
 
     // Determine online status with priority: CBHours > Affiliate API > fallback to false
     const isLive = cbhoursOnline !== null ? cbhoursOnline : !!affiliateData;
-    const onlineSource = cbhoursOnline !== null ? 'cbhours' : (affiliateData ? 'affiliate_api' : null);
+    const onlineSource =
+      cbhoursOnline !== null ? 'cbhours' : affiliateData ? 'affiliate_api' : null;
 
     res.json({
       person,
@@ -431,8 +435,10 @@ router.post('/:username/scrape-authenticated', async (req: Request, res: Respons
     }
 
     // Determine online status with priority: CBHours > Affiliate API > scraped isOnline
-    const isLive = cbhoursOnline !== null ? cbhoursOnline : (affiliateData ? true : scrapedData.isOnline);
-    const onlineSource = cbhoursOnline !== null ? 'cbhours' : (affiliateData ? 'affiliate_api' : 'scrape');
+    const isLive =
+      cbhoursOnline !== null ? cbhoursOnline : affiliateData ? true : scrapedData.isOnline;
+    const onlineSource =
+      cbhoursOnline !== null ? 'cbhours' : affiliateData ? 'affiliate_api' : 'scrape';
 
     res.json({
       person,
@@ -515,7 +521,7 @@ router.post('/scrape-batch', async (req: Request, res: Response) => {
         successCount++;
 
         // Small delay between profiles
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       } catch (error) {
         logger.error(`Failed to scrape profile for ${username}`, { error });
         results.push({ username, success: false, error: 'Scrape failed' });
@@ -659,7 +665,9 @@ router.patch('/:username', async (req: Request, res: Response) => {
     updates.push('updated_at = NOW()');
 
     // First ensure profile exists using UPSERT
-    const existingProfile = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    const existingProfile = await query('SELECT id FROM profiles WHERE person_id = $1', [
+      person.id,
+    ]);
     if (existingProfile.rows.length === 0) {
       // Create minimal profile if it doesn't exist
       await query(
@@ -796,7 +804,10 @@ router.get('/:username/member-info', async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    logger.error('Error fetching member info from Statbate', { error, username: req.params.username });
+    logger.error('Error fetching member info from Statbate', {
+      error,
+      username: req.params.username,
+    });
     res.status(500).json({ error: 'Failed to fetch member info from Statbate' });
   }
 });
@@ -1006,7 +1017,14 @@ router.put('/:username/service-relationships', async (req: Request, res: Respons
     }
 
     // Validate service level based on role
-    const subLevels = ['Current', 'Occasional', 'Potential', 'Decommissioned', 'Banished', 'Paused'];
+    const subLevels = [
+      'Current',
+      'Occasional',
+      'Potential',
+      'Decommissioned',
+      'Banished',
+      'Paused',
+    ];
     const domLevels = ['Potential', 'Actively Serving', 'Ended', 'Paused'];
     const validLevels = serviceRole === 'sub' ? subLevels : domLevels;
 
@@ -1145,7 +1163,15 @@ router.put('/:username/relationship', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Status is required' });
     }
 
-    const validStatuses = ['Potential', 'Occasional', 'Active', 'On Hold', 'Inactive', 'Decommissioned', 'Banished'];
+    const validStatuses = [
+      'Potential',
+      'Occasional',
+      'Active',
+      'On Hold',
+      'Inactive',
+      'Decommissioned',
+      'Banished',
+    ];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         error: `Invalid status. Valid options: ${validStatuses.join(', ')}`,
@@ -1444,11 +1470,11 @@ router.get('/:username/images/current', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Person not found' });
     }
 
-    const currentImage = await ProfileImagesService.getCurrentByPersonId(person.id);
+    const primaryImage = await ProfileImagesService.getPrimaryByPersonId(person.id);
 
-    res.json({ image: currentImage });
+    res.json({ image: primaryImage });
   } catch (error) {
-    logger.error('Error getting current image', { error, username: req.params.username });
+    logger.error('Error getting primary image', { error, username: req.params.username });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1494,7 +1520,7 @@ router.get('/:username/images', async (req: Request, res: Response) => {
       LIMIT 50
     `;
     const affiliateResult = await query(affiliateImagesSql, [person.id]);
-    const affiliateImages = affiliateResult.rows.map(row => ({
+    const affiliateImages = affiliateResult.rows.map((row) => ({
       id: row.id,
       person_id: person.id,
       file_path: row.file_path,
@@ -1504,7 +1530,7 @@ router.get('/:username/images', async (req: Request, res: Response) => {
       captured_at: row.captured_at,
       uploaded_at: row.captured_at,
       viewers: row.viewers,
-      is_current: false, // Affiliate images cannot be set as current
+      is_primary: false, // Affiliate images cannot be set as primary
       media_type: 'image' as const, // Affiliate API only has images
       duration_seconds: null,
       photoset_id: null,
@@ -1642,15 +1668,15 @@ router.post('/:username/images/:imageId/set-current', async (req: Request, res: 
   try {
     const { imageId } = req.params;
 
-    const image = await ProfileImagesService.setAsCurrent(imageId);
+    const image = await ProfileImagesService.setAsPrimary(imageId);
     if (!image) {
       return res.status(404).json({ error: 'Image not found' });
     }
 
-    logger.info('Image set as current', { imageId, personId: image.person_id });
+    logger.info('Image set as primary', { imageId, personId: image.person_id });
     res.json(image);
   } catch (error) {
-    logger.error('Error setting image as current', { error, imageId: req.params.imageId });
+    logger.error('Error setting image as primary', { error, imageId: req.params.imageId });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -1725,12 +1751,14 @@ router.post('/:username/images/import-affiliate', async (req: Request, res: Resp
           const redirectUrl = response.headers.location;
           if (redirectUrl) {
             const redirectProtocol = redirectUrl.startsWith('https') ? https : http;
-            redirectProtocol.get(redirectUrl, (redirectResponse) => {
-              const chunks: Buffer[] = [];
-              redirectResponse.on('data', (chunk) => chunks.push(chunk));
-              redirectResponse.on('end', () => resolve(Buffer.concat(chunks)));
-              redirectResponse.on('error', reject);
-            }).on('error', reject);
+            redirectProtocol
+              .get(redirectUrl, (redirectResponse) => {
+                const chunks: Buffer[] = [];
+                redirectResponse.on('data', (chunk) => chunks.push(chunk));
+                redirectResponse.on('end', () => resolve(Buffer.concat(chunks)));
+                redirectResponse.on('error', reject);
+              })
+              .on('error', reject);
           } else {
             reject(new Error('Redirect without location'));
           }
@@ -1757,7 +1785,9 @@ router.post('/:username/images/import-affiliate', async (req: Request, res: Resp
       person.id,
       {
         source: 'imported',
-        description: viewers ? `Imported from broadcast (${viewers} viewers)` : 'Imported from affiliate API',
+        description: viewers
+          ? `Imported from broadcast (${viewers} viewers)`
+          : 'Imported from affiliate API',
         capturedAt: capturedAt ? new Date(capturedAt) : undefined,
         username, // Use S3 storage with username-based paths
       }
@@ -2027,11 +2057,13 @@ router.post('/:username/visits', async (req: Request, res: Response) => {
       visitDate,
       undefined, // eventId
       is_broadcasting,
-      undefined  // sessionId
+      undefined // sessionId
     );
 
     if (!visit) {
-      return res.status(409).json({ error: 'Duplicate visit (within 5 minutes of previous visit)' });
+      return res
+        .status(409)
+        .json({ error: 'Duplicate visit (within 5 minutes of previous visit)' });
     }
 
     res.status(201).json(visit);
@@ -2171,9 +2203,7 @@ router.get('/visits/top', async (req: Request, res: Response) => {
   try {
     const { limit = '50' } = req.query;
 
-    const visitors = await RoomVisitsService.getTopVisitors(
-      parseInt(limit as string, 10)
-    );
+    const visitors = await RoomVisitsService.getTopVisitors(parseInt(limit as string, 10));
 
     res.json({ visitors });
   } catch (error) {
@@ -2368,14 +2398,24 @@ router.get('/:username/timeline', async (req: Request, res: Response) => {
     }
 
     // All valid timeline event types
-    const allEventTypes = ['USER_ENTER', 'USER_LEAVE', 'CHAT_MESSAGE', 'PRIVATE_MESSAGE', 'DIRECT_MESSAGE', 'TIP_EVENT', 'MEDIA_PURCHASE', 'FANCLUB_JOIN'];
+    const allEventTypes = [
+      'USER_ENTER',
+      'USER_LEAVE',
+      'CHAT_MESSAGE',
+      'PRIVATE_MESSAGE',
+      'DIRECT_MESSAGE',
+      'TIP_EVENT',
+      'MEDIA_PURCHASE',
+      'FANCLUB_JOIN',
+    ];
 
     // Parse and validate event types filter
     let selectedTypes: string[];
     if (types && typeof types === 'string' && types.trim()) {
-      selectedTypes = types.split(',')
-        .map(t => t.trim().toUpperCase())
-        .filter(t => allEventTypes.includes(t));
+      selectedTypes = types
+        .split(',')
+        .map((t) => t.trim().toUpperCase())
+        .filter((t) => allEventTypes.includes(t));
       // If no valid types provided, use all
       if (selectedTypes.length === 0) {
         selectedTypes = allEventTypes;
@@ -2422,7 +2462,7 @@ router.get('/:username/timeline', async (req: Request, res: Response) => {
       [person.id, ...selectedTypes]
     );
 
-    const events = result.rows.map(row => ({
+    const events = result.rows.map((row) => ({
       id: row.id,
       type: row.type,
       content: row.content,
@@ -2469,7 +2509,9 @@ router.post('/bulk/validate-usernames', async (req: Request, res: Response) => {
     `;
     const result = await query(sql, lowerUsernames);
 
-    const foundUsernames = new Set(result.rows.map((r) => (r as { username: string }).username.toLowerCase()));
+    const foundUsernames = new Set(
+      result.rows.map((r) => (r as { username: string }).username.toLowerCase())
+    );
 
     const found: string[] = [];
     const notFound: string[] = [];
@@ -2511,7 +2553,9 @@ router.post('/bulk/upload', upload.array('images', 500), async (req: Request, re
     for (const file of files) {
       // Parse username from filename
       // Pattern: username.ext or username-suffix.ext
-      const filenameMatch = file.originalname.match(/^([^-\.]+)(?:-[^\.]+)?\.(?:jpe?g|png|gif|webp)$/i);
+      const filenameMatch = file.originalname.match(
+        /^([^-\.]+)(?:-[^\.]+)?\.(?:jpe?g|png|gif|webp)$/i
+      );
 
       if (!filenameMatch) {
         skipped.push({
@@ -2616,7 +2660,7 @@ router.get('/:username/seen-with', async (req: Request, res: Response) => {
     const result = await query(sql, [profileId]);
 
     res.json({
-      seenWith: result.rows.map(row => ({
+      seenWith: result.rows.map((row) => ({
         id: row.id,
         username: row.seen_with_username,
         personId: row.seen_with_person_id,
@@ -2674,9 +2718,17 @@ router.post('/:username/seen-with', async (req: Request, res: Response) => {
       ON CONFLICT (profile_id, seen_with_username) DO UPDATE SET notes = EXCLUDED.notes
       RETURNING id, seen_with_username, seen_with_person_id, notes, created_at
     `;
-    const result = await query(sql, [profileId, normalizedSeenWithUsername, seenWithPersonId, notes || null]);
+    const result = await query(sql, [
+      profileId,
+      normalizedSeenWithUsername,
+      seenWithPersonId,
+      notes || null,
+    ]);
 
-    logger.info('Seen-with entry added', { username, seenWithUsername: normalizedSeenWithUsername });
+    logger.info('Seen-with entry added', {
+      username,
+      seenWithUsername: normalizedSeenWithUsername,
+    });
     res.json({
       entry: {
         id: result.rows[0].id,
@@ -2729,7 +2781,11 @@ router.delete('/:username/seen-with/:entryId', async (req: Request, res: Respons
       return res.status(404).json({ error: 'Entry not found' });
     }
 
-    logger.info('Seen-with entry removed', { username, entryId, seenWithUsername: result.rows[0].seen_with_username });
+    logger.info('Seen-with entry removed', {
+      username,
+      entryId,
+      seenWithUsername: result.rows[0].seen_with_username,
+    });
     res.json({ success: true, removedUsername: result.rows[0].seen_with_username });
   } catch (error) {
     logger.error('Error removing seen-with entry', { error, username: req.params.username });

@@ -1,47 +1,60 @@
-# Session Summary - v1.34.2
+# Session Summary - v1.34.3
 
-**Date**: 2026-01-13
+**Date**: 2026-01-14
 **Mode**: BUILD
 
 ## What Was Accomplished
 
-### v1.34.2 Release - Baseline Docs + Modal Improvements
+### v1.34.3 Release - Profile Media Section Enhancements
 
-This release adds claude-baseline standard documentation and VSCode workspace configuration.
+This session implemented significant UX improvements to the Profile page's media section.
 
-#### Baseline Documentation Added
+#### 1. Draggable Image Preview
 
-- **DOC_REVIEW.md**: Documentation review checklist for when repo moves, ownership changes, or paths change
-- **RUNBOOK.md**: Operational procedures including deployment, database operations, background jobs, and troubleshooting
-- **SECURITY.md**: Secrets management, access control, and security checklist
+- **Draggable hover preview**: The enlarged image preview that appears when hovering over thumbnails is now draggable
+- **Position persistence**: Preview position saved to localStorage (`mhc-preview-position` key) and restored on page load
+- **Visual drag handle**: Added grip icon and "Drag to move" hint at top of preview panel
+- **Viewport constraints**: Preview constrained to stay within browser viewport
 
-#### VSCode Workspace Setup
+#### 2. Image Source Label Renaming
 
-- Added `.vscode/settings.json` with editor settings (format on save, trailing whitespace trimming)
-- Added `.vscode/extensions.json` with recommended extensions (ESLint, Prettier, GitHub PR, EditorConfig, Tailwind CSS)
-- Created `mhc-control-panel.code-workspace` file for VSCode workspace
-- Updated `.gitignore` to allow committing `.vscode/` settings (excluding logs)
+Updated image source labels for clarity:
 
-#### UI Improvements
+| Source          | Old Label | New Label      |
+| --------------- | --------- | -------------- |
+| `affiliate_api` | Auto      | **Live**       |
+| `external`      | Ext       | **Link**       |
+| `screensnap`    | Snap      | **Snap**       |
+| `imported`      | (none)    | **Import**     |
 
-- **Modal Component**: Updated for Profile Details modal width
-- **Profile Page**: Refinements to modal sizing for better content display
+- Created centralized `SOURCE_LABELS` mapping for consistency across UI
+- Filter chips and thumbnail badges now use the same source
 
-### Files Created
+#### 3. Sort Controls Added
 
-- `docs/DOC_REVIEW.md`
-- `docs/RUNBOOK.md`
-- `docs/SECURITY.md`
-- `.vscode/settings.json`
-- `.vscode/extensions.json`
-- `mhc-control-panel.code-workspace`
+- Added "Sort: Newest/Oldest" toggle button in the media filter bar
+- Clicking toggles sort direction with visual arrow indicator
+- Default sort is newest-first (descending by date)
+
+#### 4. Thumbnail Time Display
+
+- Hover overlay now shows both date AND time
+- Format: `MMM DD` left-aligned, `HH:MM:SS` right-aligned
+- Time displayed in 24-hour format, ET timezone
+- Added `formatTimeET()` helper function for consistent timezone formatting
 
 ### Files Modified
 
-- `.gitignore` - Allow .vscode/ settings
-- `client/src/components/Modal.tsx` - Modal width updates
-- `client/src/pages/Profile.tsx` - Modal sizing refinements
-- `docs/reference/CHANGELOG.md` - v1.34.2 entry
+- `client/src/pages/Profile.tsx` - All media section enhancements
+- `server/src/routes/profile.ts` - (from prior session changes)
+- `server/src/services/person.service.ts` - (from prior session changes)
+- `server/src/services/profile-images.service.ts` - (from prior session changes)
+
+## Current State
+
+- **Docker containers**: Running (will rebuild with release)
+- **Git**: Modified files on main branch
+- **Build**: Client builds successfully with no new errors
 
 ## Database Status
 
@@ -49,6 +62,7 @@ This release adds claude-baseline standard documentation and VSCode workspace co
 
 ## Next Steps
 
-1. Continue Profile page enhancements based on user feedback
-2. Review remaining TODO items
-3. Investigate studforyouall data-level issue (deferred)
+1. Investigate backup storage migration (`/Volumes/Imago/MHC-Control_Panel/media`)
+2. Sync images from backup to S3 and update database records
+3. Address remaining documentation gaps
+4. Continue runtime issue investigation

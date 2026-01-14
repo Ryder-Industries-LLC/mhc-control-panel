@@ -15,10 +15,7 @@ export class PersonService {
    * Find person by ID
    */
   static async findById(id: string): Promise<Person | null> {
-    const result = await query<Person>(
-      'SELECT * FROM persons WHERE id = $1',
-      [id]
-    );
+    const result = await query<Person>('SELECT * FROM persons WHERE id = $1', [id]);
     return result.rows[0] || null;
   }
 
@@ -57,13 +54,7 @@ export class PersonService {
    * Auto-excludes if username is 'smk_lover'
    */
   static async findOrCreate(params: CreatePersonParams): Promise<Person> {
-    const {
-      username,
-      platform = 'chaturbate',
-      role = 'UNKNOWN',
-      rid = null,
-      did = null,
-    } = params;
+    const { username, platform = 'chaturbate', role = 'UNKNOWN', rid = null, did = null } = params;
 
     const normalizedUsername = username.toLowerCase();
 
@@ -214,7 +205,7 @@ export class PersonService {
       [`${normalizedQuery}%`, limit]
     );
 
-    return result.rows.map(row => row.username);
+    return result.rows.map((row) => row.username);
   }
 
   /**
@@ -241,7 +232,7 @@ export class PersonService {
         (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL)
           + (SELECT COUNT(*) FROM profile_images WHERE person_id = p.id) as image_count,
         COALESCE(
-          (SELECT file_path FROM profile_images WHERE person_id = p.id AND is_current = true LIMIT 1),
+          (SELECT file_path FROM profile_images WHERE person_id = p.id AND is_primary = true LIMIT 1),
           (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1)
         ) as image_url,
         (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
@@ -271,10 +262,7 @@ export class PersonService {
    * Delete a person and all related data
    */
   static async delete(id: string): Promise<boolean> {
-    const result = await query(
-      'DELETE FROM persons WHERE id = $1 RETURNING id',
-      [id]
-    );
+    const result = await query('DELETE FROM persons WHERE id = $1 RETURNING id', [id]);
     return result.rows.length > 0;
   }
 
@@ -297,8 +285,8 @@ export class PersonService {
     );
 
     // Sort by observed_at descending and limit
-    const sorted = result.rows.sort((a, b) =>
-      new Date(b.observed_at).getTime() - new Date(a.observed_at).getTime()
+    const sorted = result.rows.sort(
+      (a, b) => new Date(b.observed_at).getTime() - new Date(a.observed_at).getTime()
     );
 
     return sorted.slice(0, limit);

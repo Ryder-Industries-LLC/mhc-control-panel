@@ -4,12 +4,19 @@ import { api } from '../api/client';
 import { formatDate, formatDuration, formatGender } from '../utils/formatting';
 import { CollapsibleSection } from '../components/CollapsibleSection';
 import { SocialLinksEditor } from '../components/SocialLinksEditor';
-import { ServiceRelationshipEditor, type ServiceRelationship } from '../components/ServiceRelationshipEditor';
+import {
+  ServiceRelationshipEditor,
+  type ServiceRelationship,
+} from '../components/ServiceRelationshipEditor';
 import { CommsSection } from '../components/profile/CommsSection';
 import { TimelineTab } from '../components/profile/TimelineTab';
 import { InteractionsTab } from '../components/profile/InteractionsTab';
 import { HistoryTab } from '../components/profile/HistoryTab';
-import { RelationshipEditor, type Relationship, type RelationshipTraitSeed } from '../components/RelationshipEditor';
+import {
+  RelationshipEditor,
+  type Relationship,
+  type RelationshipTraitSeed,
+} from '../components/RelationshipEditor';
 import { NamesEditor, type ProfileNames, type AddressTermSeed } from '../components/NamesEditor';
 import { RelationshipHistoryViewer } from '../components/RelationshipHistoryViewer';
 import { StarRating } from '../components/StarRating';
@@ -45,7 +52,11 @@ const isSessionLive = (session: any): boolean => {
  * New path structure: /images/people/{username}/{auto|uploads|snaps|profile}/filename
  * Legacy paths: /images/{uuid}/filename or /images/profiles/{uuid}/filename
  */
-const getProfileImageUrl = (image: { file_path: string; storage_provider?: string | null; source?: string }): string => {
+const getProfileImageUrl = (image: {
+  file_path: string;
+  storage_provider?: string | null;
+  source?: string;
+}): string => {
   // All images now served from unified /images/ route
   // Server handles fallback between SSD and Docker paths
   return `/images/${image.file_path}`;
@@ -71,6 +82,30 @@ const getSessionImageUrl = (session: any, isLive: boolean): string | null => {
   // Fall back to external URL if no local cache
   return session.image_url_360x270 || null;
 };
+
+// Format time in ET timezone (HH:MM:SS)
+const formatTimeET = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  return date.toLocaleTimeString('en-US', {
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+};
+
+// Source label mapping for consistency
+const SOURCE_LABELS: Record<string, { label: string; shortLabel: string; color: string }> = {
+  affiliate_api: { label: 'Live', shortLabel: 'Live', color: 'bg-blue-500' },
+  profile: { label: 'Profile', shortLabel: 'Profile', color: 'bg-cyan-500' },
+  screensnap: { label: 'Screenshot', shortLabel: 'Snap', color: 'bg-purple-500' },
+  external: { label: 'Link', shortLabel: 'Link', color: 'bg-orange-500' },
+  manual_upload: { label: 'Upload', shortLabel: 'Upload', color: 'bg-green-500' },
+  imported: { label: 'Import', shortLabel: 'Import', color: 'bg-gray-500' },
+};
+
+const getSourceInfo = (source: string) => SOURCE_LABELS[source] || { label: source, shortLabel: source, color: 'bg-gray-500' };
 
 // Placeholder images for profiles without photos
 // Viewer: Simple silhouette in grayscale
@@ -165,10 +200,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [roomBanned, setRoomBanned] = useState(false);
 
   // MHC-1105: Seen With state
-  const [seenWith, setSeenWith] = useState<Array<{ id: string; username: string; personId?: string; notes?: string; createdAt: string }>>([]);
+  const [seenWith, setSeenWith] = useState<
+    Array<{ id: string; username: string; personId?: string; notes?: string; createdAt: string }>
+  >([]);
   const [seenWithLoading, setSeenWithLoading] = useState(false);
   const [seenWithInput, setSeenWithInput] = useState('');
-  const [seenWithSuggestions, setSeenWithSuggestions] = useState<Array<{ username: string; id: string }>>([]);
+  const [seenWithSuggestions, setSeenWithSuggestions] = useState<
+    Array<{ username: string; id: string }>
+  >([]);
 
   // Top mover badge state
   const [topMoverStatus, setTopMoverStatus] = useState<'gainer' | 'loser' | null>(null);
@@ -176,13 +215,32 @@ const Profile: React.FC<ProfilePageProps> = () => {
   // Image preview modal state
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
+  // Draggable preview position (persisted to localStorage)
+  const [previewPosition, setPreviewPosition] = useState<{ x: number; y: number }>(() => {
+    const saved = localStorage.getItem('mhc-preview-position');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return { x: window.innerWidth - 620, y: 80 };
+      }
+    }
+    return { x: window.innerWidth - 620, y: 80 };
+  });
+  const [isDraggingPreview, setIsDraggingPreview] = useState(false);
+  const dragStartRef = useRef<{ x: number; y: number; posX: number; posY: number } | null>(null);
+
   // Image upload state
   const [uploadedImages, setUploadedImages] = useState<any[]>([]);
   const [currentProfileImage, setCurrentProfileImage] = useState<any | null>(null);
   const [imageUploadLoading, setImageUploadLoading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(
+    null
+  );
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
-  const [selectedImageSource, setSelectedImageSource] = useState<'manual_upload' | 'screensnap' | 'external'>('manual_upload');
+  const [selectedImageSource, setSelectedImageSource] = useState<
+    'manual_upload' | 'screensnap' | 'external'
+  >('manual_upload');
   const [imageDescription, setImageDescription] = useState('');
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -197,6 +255,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [mediaSubTab, setMediaSubTab] = useState<'images' | 'videos'>('images');
   const [showAllImages, setShowAllImages] = useState(false);
   const [imageSourceFilter, setImageSourceFilter] = useState<string | null>(null); // null = 'All'
+  const [imageSortOrder, setImageSortOrder] = useState<'newest' | 'oldest'>('newest');
 
   // Social links state
   const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
@@ -232,11 +291,50 @@ const Profile: React.FC<ProfilePageProps> = () => {
     last_visit: string | null;
   } | null>(null);
 
+  // Drag handlers for preview window
+  const handlePreviewMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingPreview(true);
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      posX: previewPosition.x,
+      posY: previewPosition.y,
+    };
+  };
+
+  useEffect(() => {
+    if (!isDraggingPreview) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragStartRef.current) return;
+      const dx = e.clientX - dragStartRef.current.x;
+      const dy = e.clientY - dragStartRef.current.y;
+      const newX = Math.max(0, Math.min(window.innerWidth - 100, dragStartRef.current.posX + dx));
+      const newY = Math.max(0, Math.min(window.innerHeight - 100, dragStartRef.current.posY + dy));
+      setPreviewPosition({ x: newX, y: newY });
+    };
+
+    const handleMouseUp = () => {
+      setIsDraggingPreview(false);
+      dragStartRef.current = null;
+      // Save position to localStorage
+      localStorage.setItem('mhc-preview-position', JSON.stringify(previewPosition));
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingPreview, previewPosition]);
+
   // Load image upload limits on mount
   useEffect(() => {
     fetch('/api/settings/image-upload/config')
-      .then(response => response.ok ? response.json() : null)
-      .then(config => {
+      .then((response) => (response.ok ? response.json() : null))
+      .then((config) => {
         if (config?.limits) {
           setImageUploadLimits(config.limits);
         }
@@ -255,16 +353,16 @@ const Profile: React.FC<ProfilePageProps> = () => {
       setError(null);
 
       fetch(`/api/profile/${urlUsername}`)
-        .then(response => {
+        .then((response) => {
           if (!response.ok) {
             throw new Error('Failed to fetch profile');
           }
           return response.json();
         })
-        .then(data => {
+        .then((data) => {
           setProfileData(data);
         })
-        .catch(err => {
+        .catch((err) => {
           setError(err instanceof Error ? err.message : 'Unknown error');
           setProfileData(null);
         })
@@ -344,7 +442,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
       const fetchServiceRelationships = async () => {
         setServiceRelationshipsLoading(true);
         try {
-          const response = await fetch(`/api/profile/${profileData.person.username}/service-relationships`);
+          const response = await fetch(
+            `/api/profile/${profileData.person.username}/service-relationships`
+          );
           if (response.ok) {
             const data = await response.json();
             setServiceRelationships(data.relationships || []);
@@ -408,7 +508,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
       // Fetch my visit stats (I visited them)
       const fetchMyVisitStats = async () => {
         try {
-          const response = await fetch(`/api/profile/${profileData.person.username}/my-visits/stats`);
+          const response = await fetch(
+            `/api/profile/${profileData.person.username}/my-visits/stats`
+          );
           if (response.ok) {
             const data = await response.json();
             setMyVisitStats(data);
@@ -459,8 +561,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
   useEffect(() => {
     if (profileData?.person?.username) {
       fetch('/api/system/follower-trends/dashboard?days=7&limit=10')
-        .then(response => response.json())
-        .then(data => {
+        .then((response) => response.json())
+        .then((data) => {
           const currentUsername = profileData.person.username.toLowerCase();
           const isTopGainer = data.topGainers?.some(
             (m: { username: string }) => m.username.toLowerCase() === currentUsername
@@ -486,23 +588,23 @@ const Profile: React.FC<ProfilePageProps> = () => {
   useEffect(() => {
     if (profileData?.person?.id) {
       fetch(`/api/person/${profileData.person.id}/images?limit=10`)
-        .then(response => response.json())
-        .then(data => {
+        .then((response) => response.json())
+        .then((data) => {
           setImageHistory(data.images || []);
           setCurrentImageIndex(0);
         })
-        .catch(err => {
+        .catch((err) => {
           console.error('Failed to fetch image history', err);
           setImageHistory([]);
         });
     }
     if (profileData?.person?.username) {
       fetch(`/api/profile/${profileData.person.username}/images/current`)
-        .then(response => response.json())
-        .then(data => {
+        .then((response) => response.json())
+        .then((data) => {
           setCurrentProfileImage(data.image || null);
         })
-        .catch(err => {
+        .catch((err) => {
           console.error('Failed to fetch current profile image', err);
           setCurrentProfileImage(null);
         });
@@ -547,11 +649,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
     if (profileData?.person?.username) {
       setImageUploadLoading(true);
       fetch(`/api/profile/${profileData.person.username}/images`)
-        .then(response => response.json())
-        .then(data => {
+        .then((response) => response.json())
+        .then((data) => {
           setUploadedImages(data.images || []);
         })
-        .catch(err => {
+        .catch((err) => {
           console.error('Failed to fetch profile images', err);
           setUploadedImages([]);
         })
@@ -575,7 +677,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
       if (response.ok) {
         const note = await response.json();
-        setProfileNotes(prev => [note, ...prev]);
+        setProfileNotes((prev) => [note, ...prev]);
         setNewNoteContent('');
         setNotesMessage('Note added!');
         setTimeout(() => setNotesMessage(null), 3000);
@@ -605,7 +707,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
       if (response.ok) {
         const updatedNote = await response.json();
-        setProfileNotes(prev => prev.map(n => n.id === noteId ? updatedNote : n));
+        setProfileNotes((prev) => prev.map((n) => (n.id === noteId ? updatedNote : n)));
         setEditingNoteId(null);
         setEditingNoteContent('');
         setEditingNoteDate('');
@@ -631,7 +733,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
       });
 
       if (response.ok) {
-        setProfileNotes(prev => prev.filter(n => n.id !== noteId));
+        setProfileNotes((prev) => prev.filter((n) => n.id !== noteId));
         setNotesMessage('Note deleted!');
         setTimeout(() => setNotesMessage(null), 3000);
       }
@@ -671,10 +773,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const getCurrentUploadLimit = (): number => {
     if (!imageUploadLimits) return 20 * 1024 * 1024; // Default 20MB
     switch (selectedImageSource) {
-      case 'manual_upload': return imageUploadLimits.manual;
-      case 'screensnap': return imageUploadLimits.screenshot;
-      case 'external': return imageUploadLimits.external;
-      default: return imageUploadLimits.manual;
+      case 'manual_upload':
+        return imageUploadLimits.manual;
+      case 'screensnap':
+        return imageUploadLimits.screenshot;
+      case 'external':
+        return imageUploadLimits.external;
+      default:
+        return imageUploadLimits.manual;
     }
   };
 
@@ -691,8 +797,12 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
     // Get the size limit for the current source type
     const sizeLimit = getCurrentUploadLimit();
-    const sourceName = selectedImageSource === 'manual_upload' ? 'manual upload' :
-                       selectedImageSource === 'screensnap' ? 'screenshot' : 'external';
+    const sourceName =
+      selectedImageSource === 'manual_upload'
+        ? 'manual upload'
+        : selectedImageSource === 'screensnap'
+          ? 'screenshot'
+          : 'external';
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -700,7 +810,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
       // Client-side size validation
       if (file.size > sizeLimit) {
-        errors.push(`${file.name}: File size (${formatFileSize(file.size)}) exceeds the ${formatFileSize(sizeLimit)} limit for ${sourceName} uploads`);
+        errors.push(
+          `${file.name}: File size (${formatFileSize(file.size)}) exceeds the ${formatFileSize(sizeLimit)} limit for ${sourceName} uploads`
+        );
         continue;
       }
 
@@ -731,7 +843,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
     // Add all successfully uploaded images to state
     if (uploadedSuccessfully.length > 0) {
-      setUploadedImages(prev => [...uploadedSuccessfully, ...prev]);
+      setUploadedImages((prev) => [...uploadedSuccessfully, ...prev]);
     }
 
     // Show errors if any
@@ -773,7 +885,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
     e.stopPropagation();
     setIsDragging(false);
 
-    const files = Array.from(e.dataTransfer.files).filter(file =>
+    const files = Array.from(e.dataTransfer.files).filter((file) =>
       ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)
     );
 
@@ -786,7 +898,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
   // Set image as current/primary
   // For affiliate images, first import them to profile_images, then set as current
-  const handleSetAsCurrent = async (imageId: string, isAffiliateImage: boolean = false, affiliateData?: { imageUrl: string; capturedAt: string; viewers?: number }) => {
+  const handleSetAsCurrent = async (
+    imageId: string,
+    isAffiliateImage: boolean = false,
+    affiliateData?: { imageUrl: string; capturedAt: string; viewers?: number }
+  ) => {
     if (!profileData?.person?.username) return;
 
     try {
@@ -794,15 +910,18 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
       // If this is an affiliate image, import it first
       if (isAffiliateImage && affiliateData) {
-        const importResponse = await fetch(`/api/profile/${profileData.person.username}/images/import-affiliate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            imageUrl: affiliateData.imageUrl,
-            capturedAt: affiliateData.capturedAt,
-            viewers: affiliateData.viewers,
-          }),
-        });
+        const importResponse = await fetch(
+          `/api/profile/${profileData.person.username}/images/import-affiliate`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              imageUrl: affiliateData.imageUrl,
+              capturedAt: affiliateData.capturedAt,
+              viewers: affiliateData.viewers,
+            }),
+          }
+        );
 
         if (!importResponse.ok) {
           const data = await importResponse.json();
@@ -814,9 +933,12 @@ const Profile: React.FC<ProfilePageProps> = () => {
       }
 
       // Now set as current
-      const response = await fetch(`/api/profile/${profileData.person.username}/images/${targetImageId}/set-current`, {
-        method: 'POST',
-      });
+      const response = await fetch(
+        `/api/profile/${profileData.person.username}/images/${targetImageId}/set-current`,
+        {
+          method: 'POST',
+        }
+      );
 
       if (!response.ok) {
         const data = await response.json();
@@ -831,7 +953,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
       }
 
       // Refresh the current profile image for the overview
-      const currentResponse = await fetch(`/api/profile/${profileData.person.username}/images/current`);
+      const currentResponse = await fetch(
+        `/api/profile/${profileData.person.username}/images/current`
+      );
       if (currentResponse.ok) {
         const data = await currentResponse.json();
         setCurrentProfileImage(data.image || null);
@@ -847,12 +971,15 @@ const Profile: React.FC<ProfilePageProps> = () => {
     if (!window.confirm('Are you sure you want to delete this image?')) return;
 
     try {
-      const response = await fetch(`/api/profile/${profileData.person.username}/images/${imageId}`, {
-        method: 'DELETE',
-      });
+      const response = await fetch(
+        `/api/profile/${profileData.person.username}/images/${imageId}`,
+        {
+          method: 'DELETE',
+        }
+      );
 
       if (response.ok) {
-        setUploadedImages(prev => prev.filter(img => img.id !== imageId));
+        setUploadedImages((prev) => prev.filter((img) => img.id !== imageId));
       }
     } catch (err) {
       console.error('Failed to delete image', err);
@@ -913,9 +1040,12 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
     setSocialLinksLoading(true);
     try {
-      const response = await fetch(`/api/profile/${profileData.person.username}/social-links/${platform}`, {
-        method: 'DELETE',
-      });
+      const response = await fetch(
+        `/api/profile/${profileData.person.username}/social-links/${platform}`,
+        {
+          method: 'DELETE',
+        }
+      );
 
       if (!response.ok) {
         const data = await response.json();
@@ -1098,7 +1228,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
       });
       if (response.ok) {
         const data = await response.json();
-        setSeenWith(prev => [data.entry, ...prev]);
+        setSeenWith((prev) => [data.entry, ...prev]);
         setSeenWithInput('');
         setSeenWithSuggestions([]);
       }
@@ -1110,11 +1240,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const handleRemoveSeenWith = async (entryId: string) => {
     if (!profileData?.person?.username) return;
     try {
-      const response = await fetch(`/api/profile/${profileData.person.username}/seen-with/${entryId}`, {
-        method: 'DELETE',
-      });
+      const response = await fetch(
+        `/api/profile/${profileData.person.username}/seen-with/${entryId}`,
+        {
+          method: 'DELETE',
+        }
+      );
       if (response.ok) {
-        setSeenWith(prev => prev.filter(s => s.id !== entryId));
+        setSeenWith((prev) => prev.filter((s) => s.id !== entryId));
       }
     } catch (err) {
       console.error('Error removing seen-with:', err);
@@ -1126,11 +1259,15 @@ const Profile: React.FC<ProfilePageProps> = () => {
     if (value.trim().length >= 2) {
       // Fetch autocomplete suggestions from directory
       try {
-        const response = await fetch(`/api/person/search?q=${encodeURIComponent(value.trim())}&limit=5`);
+        const response = await fetch(
+          `/api/person/search?q=${encodeURIComponent(value.trim())}&limit=5`
+        );
         if (response.ok) {
           const data = await response.json();
           // /api/person/search returns { usernames: string[] }
-          setSeenWithSuggestions(data.usernames?.map((username: string) => ({ username, id: null })) || []);
+          setSeenWithSuggestions(
+            data.usernames?.map((username: string) => ({ username, id: null })) || []
+          );
         }
       } catch (err) {
         setSeenWithSuggestions([]);
@@ -1153,18 +1290,21 @@ const Profile: React.FC<ProfilePageProps> = () => {
   ) => {
     if (!profileData?.person?.username) return;
 
-    const response = await fetch(`/api/profile/${profileData.person.username}/service-relationships`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        serviceRole: role,
-        serviceLevel: data.serviceLevel,
-        serviceTypes: data.serviceTypes,
-        startedAt: data.startedAt,
-        endedAt: data.endedAt,
-        notes: data.notes,
-      }),
-    });
+    const response = await fetch(
+      `/api/profile/${profileData.person.username}/service-relationships`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serviceRole: role,
+          serviceLevel: data.serviceLevel,
+          serviceTypes: data.serviceTypes,
+          startedAt: data.startedAt,
+          endedAt: data.endedAt,
+          notes: data.notes,
+        }),
+      }
+    );
 
     if (!response.ok) {
       throw new Error('Failed to save service relationship');
@@ -1173,8 +1313,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
     const result = await response.json();
 
     // Update local state
-    setServiceRelationships(prev => {
-      const filtered = prev.filter(r => r.service_role !== role);
+    setServiceRelationships((prev) => {
+      const filtered = prev.filter((r) => r.service_role !== role);
       return [...filtered, result];
     });
   };
@@ -1182,20 +1322,25 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const handleRemoveServiceRelationship = async (role: 'sub' | 'dom') => {
     if (!profileData?.person?.username) return;
 
-    const response = await fetch(`/api/profile/${profileData.person.username}/service-relationships/${role}`, {
-      method: 'DELETE',
-    });
+    const response = await fetch(
+      `/api/profile/${profileData.person.username}/service-relationships/${role}`,
+      {
+        method: 'DELETE',
+      }
+    );
 
     if (!response.ok) {
       throw new Error('Failed to remove service relationship');
     }
 
     // Update local state
-    setServiceRelationships(prev => prev.filter(r => r.service_role !== role));
+    setServiceRelationships((prev) => prev.filter((r) => r.service_role !== role));
   };
 
   // Unified relationship handler
-  const handleSaveRelationship = async (data: Omit<Relationship, 'id' | 'profile_id' | 'created_at' | 'updated_at'>) => {
+  const handleSaveRelationship = async (
+    data: Omit<Relationship, 'id' | 'profile_id' | 'created_at' | 'updated_at'>
+  ) => {
     if (!profileData?.person?.username) return;
 
     const response = await fetch(`/api/profile/${profileData.person.username}/relationship`, {
@@ -1288,190 +1433,265 @@ const Profile: React.FC<ProfilePageProps> = () => {
             <div className="flex gap-5 items-start flex-wrap md:flex-nowrap">
               {/* Profile image section - always show with placeholder fallback */}
               <div className="flex-shrink-0 flex flex-col items-start">
-                  {/* Above image row: Following | Follows Me (compact, centered) */}
-                  <div className="flex items-center justify-center gap-2 w-[440px] mb-1.5">
-                    {profileData.profile?.following && (
-                      <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-200 border border-emerald-500/30" title="You follow this user">
-                        Following
-                      </span>
-                    )}
-                    {profileData.profile?.follower && (
-                      <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-200 border border-blue-500/30" title="Follows you">
-                        Follows Me
-                      </span>
-                    )}
-                    {/* Show timestamp when image history exists */}
-                    {imageHistory.length > 0 && imageHistory[currentImageIndex] && (
-                      <span className="text-xs text-white/50 ml-auto">
-                        {new Date(imageHistory[currentImageIndex].observed_at).toLocaleString('en-US', {
+                {/* Above image row: Following | Follows Me (compact, centered) */}
+                <div className="flex items-center justify-center gap-2 w-[440px] mb-1.5">
+                  {profileData.profile?.following && (
+                    <span
+                      className="px-2.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-200 border border-emerald-500/30"
+                      title="You follow this user"
+                    >
+                      Following
+                    </span>
+                  )}
+                  {profileData.profile?.follower && (
+                    <span
+                      className="px-2.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-200 border border-blue-500/30"
+                      title="Follows you"
+                    >
+                      Follows Me
+                    </span>
+                  )}
+                  {/* Show timestamp when image history exists */}
+                  {imageHistory.length > 0 && imageHistory[currentImageIndex] && (
+                    <span className="text-xs text-white/50 ml-auto">
+                      {new Date(imageHistory[currentImageIndex].observed_at).toLocaleString(
+                        'en-US',
+                        {
                           month: 'short',
                           day: 'numeric',
                           hour: 'numeric',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                    )}
-                  </div>
-                  {/* Image with navigation arrows - 440x330 */}
-                  <div className="relative group">
-                    <img
-                      src={
-                        imageHistory.length > 0
-                          ? `/images/${imageHistory[currentImageIndex]?.image_url}`
-                          : currentProfileImage
-                            ? getProfileImageUrl(currentProfileImage)
-                            : getSessionImageUrl(profileData.latestSession, isSessionLive(profileData.latestSession))
-                              || profileData.profile.photos?.find((p: any) => p.isPrimary)?.url
-                              || profileData.profile.photos?.[0]?.url
-                              || getPlaceholderImage(profileData.person.role)
-                      }
-                      alt={profileData.person.username}
-                      className={`w-[440px] h-[330px] rounded-lg object-cover shadow-lg ${
-                        isSessionLive(profileData.latestSession)
-                          ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-mhc-surface border-2 border-red-400'
-                          : 'border-4 border-white/30'
-                      }`}
-                      width="440"
-                      height="330"
-                    />
-                    {/* Navigation arrows - only show if multiple images */}
-                    {imageHistory.length > 1 && (
-                      <>
-                        <button
-                          onClick={() => setCurrentImageIndex(prev => (prev > 0 ? prev - 1 : imageHistory.length - 1))}
-                          className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-lg"
-                          title="Previous image"
-                        >
-                          ‹
-                        </button>
-                        <button
-                          onClick={() => setCurrentImageIndex(prev => (prev < imageHistory.length - 1 ? prev + 1 : 0))}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-lg"
-                          title="Next image"
-                        >
-                          ›
-                        </button>
-                        {/* Image counter */}
-                        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                          {currentImageIndex + 1} / {imageHistory.length}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                  {/* Below image row: Rating (left) | CB | UN (centered) | + Add Note (right) */}
-                  <div className="flex items-center justify-between w-[440px] mt-1.5">
-                    {/* Rating - left side */}
-                    <div className="flex items-center gap-1">
-                      <StarRating
-                        rating={rating}
-                        onChange={handleRatingChange}
-                        size="sm"
-                        showLabel={true}
-                      />
-                    </div>
-
-                    {/* CB/UN external links - centered */}
-                    <div className="flex gap-1.5">
-                      <a
-                        href={`https://chaturbate.com/${profileData.person.username}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-0.5 bg-orange-500/30 text-orange-200 hover:bg-orange-500/50 hover:text-white rounded transition-colors font-medium text-xs min-w-[36px] text-center"
-                        title="View on Chaturbate"
-                      >
-                        CB
-                      </a>
-                      <a
-                        href={`https://uncams.com/${profileData.person.username}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-0.5 bg-cyan-500/30 text-cyan-200 hover:bg-cyan-500/50 hover:text-white rounded transition-colors font-medium text-xs min-w-[36px] text-center"
-                        title="View on UN Cams"
-                      >
-                        UN
-                      </a>
-                    </div>
-
-                    {/* Add Note button - right side */}
-                    <button
-                      onClick={() => setShowAddNoteModal(true)}
-                      className="px-2.5 py-0.5 bg-mhc-primary hover:bg-mhc-primary/80 text-white text-xs font-medium rounded transition-colors flex items-center gap-1"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Add Note
-                    </button>
-                  </div>
+                          minute: '2-digit',
+                        }
+                      )}
+                    </span>
+                  )}
                 </div>
+                {/* Image with navigation arrows - 440x330 */}
+                <div className="relative group">
+                  <img
+                    src={
+                      imageHistory.length > 0
+                        ? `/images/${imageHistory[currentImageIndex]?.image_url}`
+                        : currentProfileImage
+                          ? getProfileImageUrl(currentProfileImage)
+                          : getSessionImageUrl(
+                              profileData.latestSession,
+                              isSessionLive(profileData.latestSession)
+                            ) ||
+                            profileData.profile.photos?.find((p: any) => p.isPrimary)?.url ||
+                            profileData.profile.photos?.[0]?.url ||
+                            getPlaceholderImage(profileData.person.role)
+                    }
+                    alt={profileData.person.username}
+                    className={`w-[440px] h-[330px] rounded-lg object-cover shadow-lg ${
+                      isSessionLive(profileData.latestSession)
+                        ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-mhc-surface border-2 border-red-400'
+                        : 'border-4 border-white/30'
+                    }`}
+                    width="440"
+                    height="330"
+                  />
+                  {/* Navigation arrows - only show if multiple images */}
+                  {imageHistory.length > 1 && (
+                    <>
+                      <button
+                        onClick={() =>
+                          setCurrentImageIndex((prev) =>
+                            prev > 0 ? prev - 1 : imageHistory.length - 1
+                          )
+                        }
+                        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-lg"
+                        title="Previous image"
+                      >
+                        ‹
+                      </button>
+                      <button
+                        onClick={() =>
+                          setCurrentImageIndex((prev) =>
+                            prev < imageHistory.length - 1 ? prev + 1 : 0
+                          )
+                        }
+                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-lg"
+                        title="Next image"
+                      >
+                        ›
+                      </button>
+                      {/* Image counter */}
+                      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                        {currentImageIndex + 1} / {imageHistory.length}
+                      </div>
+                    </>
+                  )}
+                </div>
+                {/* Below image row: Rating (left) | CB | UN (centered) | + Add Note (right) */}
+                <div className="flex items-center justify-between w-[440px] mt-1.5">
+                  {/* Rating - left side */}
+                  <div className="flex items-center gap-1">
+                    <StarRating
+                      rating={rating}
+                      onChange={handleRatingChange}
+                      size="sm"
+                      showLabel={true}
+                    />
+                  </div>
+
+                  {/* CB/UN external links - centered */}
+                  <div className="flex gap-1.5">
+                    <a
+                      href={`https://chaturbate.com/${profileData.person.username}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-0.5 bg-orange-500/30 text-orange-200 hover:bg-orange-500/50 hover:text-white rounded transition-colors font-medium text-xs min-w-[36px] text-center"
+                      title="View on Chaturbate"
+                    >
+                      CB
+                    </a>
+                    <a
+                      href={`https://uncams.com/${profileData.person.username}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-0.5 bg-cyan-500/30 text-cyan-200 hover:bg-cyan-500/50 hover:text-white rounded transition-colors font-medium text-xs min-w-[36px] text-center"
+                      title="View on UN Cams"
+                    >
+                      UN
+                    </a>
+                  </div>
+
+                  {/* Add Note button - right side */}
+                  <button
+                    onClick={() => setShowAddNoteModal(true)}
+                    className="px-2.5 py-0.5 bg-mhc-primary hover:bg-mhc-primary/80 text-white text-xs font-medium rounded transition-colors flex items-center gap-1"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    Add Note
+                  </button>
+                </div>
+              </div>
 
               {/* Right column - top-aligned with normal spacing */}
               <div className="flex-1 flex flex-col items-start gap-3">
                 {/* Row 1: Relationship Status Badges */}
                 <div className="flex items-center gap-2.5 flex-wrap">
                   {/* Unified relationship status badge (takes precedence) */}
-                  {relationship && ['Active', 'Occasional', 'Potential'].includes(relationship.status) && (
-                    <span className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold ${
-                      relationship.status === 'Active' ? 'bg-emerald-500/30 border border-emerald-500/50' :
-                      relationship.status === 'Occasional' ? 'bg-blue-500/30 border border-blue-500/50' :
-                      'bg-gray-500/30 border border-gray-500/50'
-                    }`} title={`Status: ${relationship.status}`}>
-                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
-                      </svg>
-                      {relationship.status}
-                    </span>
-                  )}
+                  {relationship &&
+                    ['Active', 'Occasional', 'Potential'].includes(relationship.status) && (
+                      <span
+                        className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold ${
+                          relationship.status === 'Active'
+                            ? 'bg-emerald-500/30 border border-emerald-500/50'
+                            : relationship.status === 'Occasional'
+                              ? 'bg-blue-500/30 border border-blue-500/50'
+                              : 'bg-gray-500/30 border border-gray-500/50'
+                        }`}
+                        title={`Status: ${relationship.status}`}
+                      >
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                          <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        {relationship.status}
+                      </span>
+                    )}
                   {/* Role badges from unified relationship */}
                   {relationship?.roles.includes('Sub') && (
-                    <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-emerald-500/30 border border-emerald-500/50" title="Sub role">
+                    <span
+                      className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-emerald-500/30 border border-emerald-500/50"
+                      title="Sub role"
+                    >
                       Sub
                     </span>
                   )}
                   {relationship?.roles.includes('Dom') && (
-                    <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-purple-500/30 border border-purple-500/50" title="Dom role">
+                    <span
+                      className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-purple-500/30 border border-purple-500/50"
+                      title="Dom role"
+                    >
                       Dom
                     </span>
                   )}
                   {relationship?.roles.includes('Friend') && (
-                    <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-blue-500/30 border border-blue-500/50" title="Friend role">
+                    <span
+                      className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-blue-500/30 border border-blue-500/50"
+                      title="Friend role"
+                    >
                       Friend
                     </span>
                   )}
                   {relationship?.roles.includes('Custom') && relationship.custom_role_label && (
-                    <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-gray-500/30 border border-gray-500/50" title={`Custom: ${relationship.custom_role_label}`}>
+                    <span
+                      className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-gray-500/30 border border-gray-500/50"
+                      title={`Custom: ${relationship.custom_role_label}`}
+                    >
                       {relationship.custom_role_label}
                     </span>
                   )}
                   {/* Banished status with red emphasis */}
                   {relationship?.status === 'Banished' && (
-                    <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-red-500/40 border border-red-500/60 text-red-300" title="Banished">
+                    <span
+                      className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-red-500/40 border border-red-500/60 text-red-300"
+                      title="Banished"
+                    >
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clipRule="evenodd"/>
+                        <path
+                          fillRule="evenodd"
+                          d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                       Banished
                     </span>
                   )}
                   {bannedMe && (
-                    <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-red-500/30 border border-red-500/50" title="This user has banned you">
+                    <span
+                      className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-red-500/30 border border-red-500/50"
+                      title="This user has banned you"
+                    >
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clipRule="evenodd"/>
+                        <path
+                          fillRule="evenodd"
+                          d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                       Banned Me
                     </span>
                   )}
                   {topMoverStatus === 'gainer' && (
-                    <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-emerald-500/30 border border-emerald-500/50 animate-pulse" title="Top Gainer (7 day)">
+                    <span
+                      className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-emerald-500/30 border border-emerald-500/50 animate-pulse"
+                      title="Top Gainer (7 day)"
+                    >
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clipRule="evenodd"/>
+                        <path
+                          fillRule="evenodd"
+                          d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                       Top Gainer
                     </span>
                   )}
                   {topMoverStatus === 'loser' && (
-                    <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-red-500/30 border border-red-500/50 animate-pulse" title="Top Loser (7 day)">
+                    <span
+                      className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-base font-semibold bg-red-500/30 border border-red-500/50 animate-pulse"
+                      title="Top Loser (7 day)"
+                    >
                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M12 13a1 1 0 100 2h5a1 1 0 001-1V9a1 1 0 10-2 0v2.586l-4.293-4.293a1 1 0 00-1.414 0L8 9.586 3.707 5.293a1 1 0 00-1.414 1.414l5 5a1 1 0 001.414 0L11 9.414 14.586 13H12z" clipRule="evenodd"/>
+                        <path
+                          fillRule="evenodd"
+                          d="M12 13a1 1 0 100 2h5a1 1 0 001-1V9a1 1 0 10-2 0v2.586l-4.293-4.293a1 1 0 00-1.414 0L8 9.586 3.707 5.293a1 1 0 00-1.414 1.414l5 5a1 1 0 001.414 0L11 9.414 14.586 13H12z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                       Top Loser
                     </span>
@@ -1481,9 +1701,16 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 {/* Row 2: Stats row - Followers, Sessions, Images, Visits */}
                 <div className="flex gap-5 text-white/90 text-base flex-wrap">
                   {/* Followers */}
-                  {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers) && (
+                  {(profileData.latestSession?.num_followers ||
+                    profileData.latestSnapshot?.normalized_metrics?.followers) && (
                     <span title="Follower count">
-                      ❤️ {(profileData.latestSession?.num_followers || profileData.latestSnapshot?.normalized_metrics?.followers || 0).toLocaleString()} followers
+                      ❤️{' '}
+                      {(
+                        profileData.latestSession?.num_followers ||
+                        profileData.latestSnapshot?.normalized_metrics?.followers ||
+                        0
+                      ).toLocaleString()}{' '}
+                      followers
                     </span>
                   )}
                   {profileData.sessionStats?.totalSessions > 0 && (
@@ -1492,18 +1719,20 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     </span>
                   )}
                   {imageHistory.length > 0 && (
-                    <span title="Total images captured">
-                      🖼️ {imageHistory.length} images
-                    </span>
+                    <span title="Total images captured">🖼️ {imageHistory.length} images</span>
                   )}
                   {/* MHC-1103: Renamed to "Visits to Me" for clarity */}
                   {roomVisitStats && roomVisitStats.total_visits > 0 && (
-                    <span title={`Count of times they appeared in your context (entered your room or viewed your profile). Total: ${roomVisitStats.total_visits}${roomVisitStats.last_visit ? `. Last visit: ${new Date(roomVisitStats.last_visit).toLocaleDateString()}` : ''}`}>
+                    <span
+                      title={`Count of times they appeared in your context (entered your room or viewed your profile). Total: ${roomVisitStats.total_visits}${roomVisitStats.last_visit ? `. Last visit: ${new Date(roomVisitStats.last_visit).toLocaleDateString()}` : ''}`}
+                    >
                       👋 {roomVisitStats.total_visits.toLocaleString()} visits to me
                     </span>
                   )}
                   {myVisitStats && myVisitStats.total_visits > 0 && (
-                    <span title={`You visited their room ${myVisitStats.total_visits} times${myVisitStats.last_visit ? `. Last visit: ${new Date(myVisitStats.last_visit).toLocaleDateString()}` : ''}`}>
+                    <span
+                      title={`You visited their room ${myVisitStats.total_visits} times${myVisitStats.last_visit ? `. Last visit: ${new Date(myVisitStats.last_visit).toLocaleDateString()}` : ''}`}
+                    >
                       🚀 {myVisitStats.total_visits.toLocaleString()} visits by you
                     </span>
                   )}
@@ -1512,17 +1741,31 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 {/* Row 3: Profile stats - Gender, Age, Location, Rank */}
                 <div className="flex gap-2.5 flex-wrap">
                   {/* Gender */}
-                  {(profileData.profile?.gender || profileData.latestSession?.gender || profileData.latestSnapshot?.normalized_metrics?.gender) && (
-                    <span className={`px-3 py-1 rounded text-sm font-medium ${
-                      (() => {
-                        const gender = (profileData.profile?.gender || profileData.latestSession?.gender || profileData.latestSnapshot?.normalized_metrics?.gender || '').toLowerCase();
-                        if (gender === 'f' || gender === 'female') return 'bg-pink-500/20 text-pink-200';
-                        if (gender === 't' || gender === 'trans') return 'bg-purple-500/20 text-purple-200';
-                        if (gender === 'c' || gender === 'couple') return 'bg-teal-500/20 text-teal-200';
+                  {(profileData.profile?.gender ||
+                    profileData.latestSession?.gender ||
+                    profileData.latestSnapshot?.normalized_metrics?.gender) && (
+                    <span
+                      className={`px-3 py-1 rounded text-sm font-medium ${(() => {
+                        const gender = (
+                          profileData.profile?.gender ||
+                          profileData.latestSession?.gender ||
+                          profileData.latestSnapshot?.normalized_metrics?.gender ||
+                          ''
+                        ).toLowerCase();
+                        if (gender === 'f' || gender === 'female')
+                          return 'bg-pink-500/20 text-pink-200';
+                        if (gender === 't' || gender === 'trans')
+                          return 'bg-purple-500/20 text-purple-200';
+                        if (gender === 'c' || gender === 'couple')
+                          return 'bg-teal-500/20 text-teal-200';
                         return 'bg-white/10 text-white/80';
-                      })()
-                    }`}>
-                      {formatGender(profileData.profile?.gender || profileData.latestSession?.gender || profileData.latestSnapshot?.normalized_metrics?.gender)}
+                      })()}`}
+                    >
+                      {formatGender(
+                        profileData.profile?.gender ||
+                          profileData.latestSession?.gender ||
+                          profileData.latestSnapshot?.normalized_metrics?.gender
+                      )}
                     </span>
                   )}
 
@@ -1543,7 +1786,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   {/* Rank */}
                   {profileData.latestSnapshot?.normalized_metrics?.rank && (
                     <span className="px-3 py-1 rounded text-sm font-medium bg-white/10 text-white/80">
-                      Rank #{Math.round(profileData.latestSnapshot.normalized_metrics.rank).toLocaleString()}
+                      Rank #
+                      {Math.round(
+                        profileData.latestSnapshot.normalized_metrics.rank
+                      ).toLocaleString()}
                     </span>
                   )}
                 </div>
@@ -1632,7 +1878,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
                   {/* Profile Smoke indicator (read-only) */}
                   {profileSmoke && (
-                    <span className="px-2.5 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-200 border border-amber-500/30" title="Profile indicates smoker">
+                    <span
+                      className="px-2.5 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-200 border border-amber-500/30"
+                      title="Profile indicates smoker"
+                    >
                       🚬 Profile Smoke
                     </span>
                   )}
@@ -1640,10 +1889,22 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
                 {/* Row 6: Promoted Tags - only show specific important tags */}
                 {(() => {
-                  const promotedTagPatterns = ['smoke', 'master', 'kinky', 'fetish', 'bdsm', 'dirty', 'daddy', 'alpha', 'dom', 'slave', 'bulge'];
+                  const promotedTagPatterns = [
+                    'smoke',
+                    'master',
+                    'kinky',
+                    'fetish',
+                    'bdsm',
+                    'dirty',
+                    'daddy',
+                    'alpha',
+                    'dom',
+                    'slave',
+                    'bulge',
+                  ];
                   const allHashtags = profileData.latestSession?.room_subject?.match(/#\w+/g) || [];
                   const promotedTags = allHashtags.filter((tag: string) =>
-                    promotedTagPatterns.some(pattern => tag.toLowerCase().includes(pattern))
+                    promotedTagPatterns.some((pattern) => tag.toLowerCase().includes(pattern))
                   );
 
                   if (promotedTags.length === 0) return null;
@@ -1672,10 +1933,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       key={entry.id}
                       className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-500/20 text-blue-300 rounded text-sm"
                     >
-                      <a
-                        href={`/profile/${entry.username}`}
-                        className="hover:underline"
-                      >
+                      <a href={`/profile/${entry.username}`} className="hover:underline">
                         {entry.username}
                       </a>
                       <button
@@ -1717,9 +1975,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       </div>
                     )}
                   </div>
-                  {seenWithLoading && (
-                    <span className="text-white/40 text-sm">Loading...</span>
-                  )}
+                  {seenWithLoading && <span className="text-white/40 text-sm">Loading...</span>}
                 </div>
 
                 {/* Row 8: Profile Details link - opens modal */}
@@ -1728,14 +1984,17 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   className="text-sm text-white/60 hover:text-white transition-colors flex items-center gap-1 mt-1"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
                   </svg>
                   Profile Details...
                 </button>
-
               </div>
             </div>
-
           </div>
 
           {/* Media Section (Collapsible) - Expanded by default */}
@@ -1744,7 +2003,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
               title={
                 <div className="flex items-center gap-2 flex-1">
                   <span>Media</span>
-                  <span className="text-xs text-white/50 font-normal">({uploadedImages.length})</span>
+                  <span className="text-xs text-white/50 font-normal">
+                    ({uploadedImages.length})
+                  </span>
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1753,7 +2014,12 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     className="ml-auto mr-2 text-xs text-mhc-primary hover:text-mhc-primary/80 transition-colors flex items-center gap-1"
                   >
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                      />
                     </svg>
                     Upload
                   </button>
@@ -1764,29 +2030,35 @@ const Profile: React.FC<ProfilePageProps> = () => {
             >
               {/* Media Section with Tabs - Now at top */}
               {(() => {
-                const allImages = uploadedImages.filter(img => img.media_type !== 'video');
-                const videos = uploadedImages.filter(img => img.media_type === 'video');
+                const allImages = uploadedImages.filter((img) => img.media_type !== 'video');
+                const videos = uploadedImages.filter((img) => img.media_type === 'video');
 
                 // Count images by source for filter chips
                 const sourceCountsMap: Record<string, number> = {};
-                allImages.forEach(img => {
+                allImages.forEach((img) => {
                   const src = img.source || 'unknown';
                   sourceCountsMap[src] = (sourceCountsMap[src] || 0) + 1;
                 });
 
-                // Filter images based on selected source filter
-                const images = imageSourceFilter
-                  ? allImages.filter(img => img.source === imageSourceFilter)
+                // Filter and sort images
+                const filteredImages = imageSourceFilter
+                  ? allImages.filter((img) => img.source === imageSourceFilter)
                   : allImages;
 
-                // Source filter chip config
-                const sourceFilters: { key: string | null; label: string; color: string }[] = [
+                const images = [...filteredImages].sort((a, b) => {
+                  const dateA = new Date(a.captured_at || a.uploaded_at).getTime();
+                  const dateB = new Date(b.captured_at || b.uploaded_at).getTime();
+                  return imageSortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+                });
+
+                // Source filter chip config - uses SOURCE_LABELS for consistency
+                const sourceFilters = [
                   { key: null, label: 'All', color: 'bg-mhc-primary' },
-                  { key: 'affiliate_api', label: 'Auto', color: 'bg-blue-500' },
-                  { key: 'profile', label: 'Profile', color: 'bg-cyan-500' },
-                  { key: 'screensnap', label: 'Snap', color: 'bg-purple-500' },
-                  { key: 'external', label: 'Ext', color: 'bg-orange-500' },
-                  { key: 'manual_upload', label: 'Upload', color: 'bg-green-500' },
+                  ...Object.entries(SOURCE_LABELS).map(([key, info]) => ({
+                    key,
+                    label: info.label,
+                    color: info.color,
+                  })),
                 ];
 
                 return (
@@ -1813,13 +2085,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       >
                         Videos ({videos.length})
                       </button>
-                      {/* Image Source Filter Chips - inline with tabs */}
+                      {/* Image Source Filter Chips and Sort - inline with tabs */}
                       {mediaSubTab === 'images' && (
-                        <div className="flex flex-wrap gap-1.5 ml-4 py-1">
-                          {sourceFilters.map(filter => {
-                            const count = filter.key === null
-                              ? allImages.length
-                              : (sourceCountsMap[filter.key] || 0);
+                        <div className="flex flex-wrap items-center gap-1.5 ml-4 py-1 flex-1">
+                          {sourceFilters.map((filter) => {
+                            const count =
+                              filter.key === null
+                                ? allImages.length
+                                : sourceCountsMap[filter.key] || 0;
                             const isActive = imageSourceFilter === filter.key;
                             return (
                               <button
@@ -1841,6 +2114,23 @@ const Profile: React.FC<ProfilePageProps> = () => {
                               </button>
                             );
                           })}
+                          {/* Sort control */}
+                          <div className="ml-auto flex items-center gap-1">
+                            <span className="text-xs text-mhc-text-muted">Sort:</span>
+                            <button
+                              onClick={() => setImageSortOrder(imageSortOrder === 'newest' ? 'oldest' : 'newest')}
+                              className="px-2 py-0.5 text-xs font-medium rounded bg-white/10 hover:bg-white/20 text-white/80 transition-colors flex items-center gap-1"
+                            >
+                              {imageSortOrder === 'newest' ? 'Newest' : 'Oldest'}
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                {imageSortOrder === 'newest' ? (
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                ) : (
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                )}
+                              </svg>
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1850,129 +2140,161 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       <div>
                         {images.length > 0 ? (
                           <>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
-                            {(showAllImages ? images : images.slice(0, 12)).map((image, index) => {
-                              const imageUrl = getProfileImageUrl(image);
-                              const imageDate = image.captured_at || image.uploaded_at;
-                              const isProfileSource = image.source === 'profile';
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                              {(showAllImages ? images : images.slice(0, 12)).map(
+                                (image, index) => {
+                                  const imageUrl = getProfileImageUrl(image);
+                                  const imageDate = image.captured_at || image.uploaded_at;
+                                  const isProfileSource = image.source === 'profile';
 
-                              return (
-                                <div
-                                  key={image.id}
-                                  className={`group relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer hover:border-mhc-primary hover:-translate-y-1 hover:shadow-lg ${
-                                    currentImageIndex === index ? 'border-mhc-primary ring-2 ring-mhc-primary/50' : 'border-white/10'
-                                  }`}
-                                  onClick={() => setCurrentImageIndex(index)}
-                                  onMouseEnter={() => setPreviewImageUrl(imageUrl)}
-                                  onMouseLeave={() => setPreviewImageUrl(null)}
-                                >
-                                  <div className="aspect-[4/3]">
-                                    <img
-                                      src={imageUrl}
-                                      alt={image.title || `${profileData.person.username} - ${new Date(imageDate).toLocaleDateString()}`}
-                                      className="w-full h-full object-cover"
-                                      loading="lazy"
-                                    />
-                                  </div>
-                                  {/* Overlay with info */}
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <div className="absolute bottom-0 left-0 right-0 p-2 text-white text-xs">
-                                      {isProfileSource && image.title ? (
-                                        <>
-                                          <div className="font-semibold truncate">{image.title}</div>
-                                          {image.photoset_id && (
-                                            <div className="text-white/70 text-[10px]">Photoset #{image.photoset_id}</div>
+                                  return (
+                                    <div
+                                      key={image.id}
+                                      className={`group relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer hover:border-mhc-primary hover:-translate-y-1 hover:shadow-lg ${
+                                        currentImageIndex === index
+                                          ? 'border-mhc-primary ring-2 ring-mhc-primary/50'
+                                          : 'border-white/10'
+                                      }`}
+                                      onClick={() => setCurrentImageIndex(index)}
+                                      onMouseEnter={() => setPreviewImageUrl(imageUrl)}
+                                      onMouseLeave={() => setPreviewImageUrl(null)}
+                                    >
+                                      <div className="aspect-[4/3]">
+                                        <img
+                                          src={imageUrl}
+                                          alt={
+                                            image.title ||
+                                            `${profileData.person.username} - ${new Date(imageDate).toLocaleDateString()}`
+                                          }
+                                          className="w-full h-full object-cover"
+                                          loading="lazy"
+                                        />
+                                      </div>
+                                      {/* Overlay with info */}
+                                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <div className="absolute bottom-0 left-0 right-0 p-2 text-white text-xs">
+                                          {isProfileSource && image.title ? (
+                                            <>
+                                              <div className="font-semibold truncate">
+                                                {image.title}
+                                              </div>
+                                              <div className="flex justify-between items-center text-white/70 text-[10px]">
+                                                <span>
+                                                  {image.photoset_id ? `Photoset #${image.photoset_id}` : new Date(imageDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                                </span>
+                                                <span>{formatTimeET(imageDate)}</span>
+                                              </div>
+                                            </>
+                                          ) : (
+                                            <div className="flex justify-between items-center font-semibold">
+                                              <span>
+                                                {new Date(imageDate).toLocaleDateString('en-US', {
+                                                  month: 'short',
+                                                  day: 'numeric',
+                                                })}
+                                              </span>
+                                              <span className="font-normal text-white/80">{formatTimeET(imageDate)}</span>
+                                            </div>
                                           )}
-                                        </>
-                                      ) : (
-                                        <div className="font-semibold">
-                                          {new Date(imageDate).toLocaleDateString('en-US', {
-                                            month: 'short',
-                                            day: 'numeric'
-                                          })}
+                                        </div>
+                                      </div>
+                                      {/* Source badge */}
+                                      <div
+                                        className={`absolute top-1 left-1 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold ${getSourceInfo(image.source).color}/80`}
+                                      >
+                                        {getSourceInfo(image.source).shortLabel}
+                                      </div>
+                                      {/* Action buttons */}
+                                      <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        {!image.is_primary && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              const isAffiliate = image.source === 'affiliate_api';
+                                              handleSetAsCurrent(
+                                                image.id,
+                                                isAffiliate,
+                                                isAffiliate
+                                                  ? {
+                                                      imageUrl: getProfileImageUrl(image),
+                                                      capturedAt:
+                                                        image.captured_at || image.uploaded_at,
+                                                      viewers: image.viewers,
+                                                    }
+                                                  : undefined
+                                              );
+                                            }}
+                                            className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded shadow-lg border border-white/30"
+                                            title="Set as primary"
+                                          >
+                                            <svg
+                                              className="w-3 h-3"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M5 13l4 4L19 7"
+                                              />
+                                            </svg>
+                                          </button>
+                                        )}
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDeleteImage(image.id);
+                                          }}
+                                          className="p-1 bg-red-500/80 hover:bg-red-500 text-white rounded"
+                                          title="Delete"
+                                        >
+                                          <svg
+                                            className="w-3 h-3"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M6 18L18 6M6 6l12 12"
+                                            />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                      {image.is_primary && (
+                                        <div className="absolute bottom-1 right-1 bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
+                                          Primary
                                         </div>
                                       )}
                                     </div>
-                                  </div>
-                                  {/* Source badge */}
-                                  <div className={`absolute top-1 left-1 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold ${
-                                    image.source === 'affiliate_api' ? 'bg-blue-500/80' :
-                                    image.source === 'profile' ? 'bg-cyan-500/80' :
-                                    image.source === 'screensnap' ? 'bg-purple-500/80' :
-                                    image.source === 'external' ? 'bg-orange-500/80' :
-                                    'bg-green-500/80'
-                                  }`}>
-                                    {image.source === 'affiliate_api' ? 'Auto' :
-                                     image.source === 'profile' ? 'Profile' :
-                                     image.source === 'screensnap' ? 'Snap' :
-                                     image.source === 'external' ? 'Ext' :
-                                     'Upload'}
-                                  </div>
-                                  {/* Action buttons */}
-                                  <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    {!image.is_current && (
-                                      <button
-                                        onClick={e => {
-                                          e.stopPropagation();
-                                          const isAffiliate = image.source === 'affiliate_api';
-                                          handleSetAsCurrent(
-                                            image.id,
-                                            isAffiliate,
-                                            isAffiliate ? {
-                                              imageUrl: getProfileImageUrl(image),
-                                              capturedAt: image.captured_at || image.uploaded_at,
-                                              viewers: image.viewers,
-                                            } : undefined
-                                          );
-                                        }}
-                                        className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded shadow-lg border border-white/30"
-                                        title="Set as current"
-                                      >
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                        </svg>
-                                      </button>
-                                    )}
-                                    <button
-                                      onClick={e => {
-                                        e.stopPropagation();
-                                        handleDeleteImage(image.id);
-                                      }}
-                                      className="p-1 bg-red-500/80 hover:bg-red-500 text-white rounded"
-                                      title="Delete"
-                                    >
-                                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                      </svg>
-                                    </button>
-                                  </div>
-                                  {image.is_current && (
-                                    <div className="absolute bottom-1 right-1 bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
-                                      Current
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                          {/* Show More button */}
-                          {images.length > 12 && (
-                            <div className="mt-4 text-center">
-                              <button
-                                onClick={() => setShowAllImages(!showAllImages)}
-                                className="px-4 py-2 text-sm font-medium text-mhc-primary hover:text-white hover:bg-mhc-primary/20 rounded-lg transition-colors"
-                              >
-                                {showAllImages ? `Show Less` : `Show All (${images.length})`}
-                              </button>
+                                  );
+                                }
+                              )}
                             </div>
-                          )}
+                            {/* Show More button */}
+                            {images.length > 12 && (
+                              <div className="mt-4 text-center">
+                                <button
+                                  onClick={() => setShowAllImages(!showAllImages)}
+                                  className="px-4 py-2 text-sm font-medium text-mhc-primary hover:text-white hover:bg-mhc-primary/20 rounded-lg transition-colors"
+                                >
+                                  {showAllImages ? `Show Less` : `Show All (${images.length})`}
+                                </button>
+                              </div>
+                            )}
                           </>
                         ) : imageUploadLoading ? (
                           <div className="flex items-center justify-center py-8">
                             <div className="text-mhc-text-muted text-sm">Loading images...</div>
                           </div>
                         ) : (
-                          <p className="text-mhc-text-muted text-sm py-4 text-center">No images saved yet.</p>
+                          <p className="text-mhc-text-muted text-sm py-4 text-center">
+                            No images saved yet.
+                          </p>
                         )}
                       </div>
                     )}
@@ -1985,7 +2307,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
                             {videos.map((video) => {
                               const videoUrl = getProfileImageUrl(video);
                               const videoDate = video.captured_at || video.uploaded_at;
-                              const fileSizeMB = video.file_size ? (video.file_size / (1024 * 1024)).toFixed(1) : null;
+                              const fileSizeMB = video.file_size
+                                ? (video.file_size / (1024 * 1024)).toFixed(1)
+                                : null;
 
                               return (
                                 <div
@@ -2008,13 +2332,15 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                         {new Date(videoDate).toLocaleDateString('en-US', {
                                           month: 'short',
                                           day: 'numeric',
-                                          year: 'numeric'
+                                          year: 'numeric',
                                         })}
                                       </span>
                                       {fileSizeMB && <span>{fileSizeMB} MB</span>}
                                     </div>
                                     {video.title && (
-                                      <div className="text-sm text-mhc-text mt-1 truncate">{video.title}</div>
+                                      <div className="text-sm text-mhc-text mt-1 truncate">
+                                        {video.title}
+                                      </div>
                                     )}
                                   </div>
                                   <div className="absolute top-2 left-2 bg-cyan-500/80 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
@@ -2025,8 +2351,18 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                     className="absolute top-2 right-2 p-1 bg-red-500/80 hover:bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
                                     title="Delete video"
                                   >
-                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    <svg
+                                      className="w-3 h-3"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M6 18L18 6M6 6l12 12"
+                                      />
                                     </svg>
                                   </button>
                                 </div>
@@ -2034,14 +2370,15 @@ const Profile: React.FC<ProfilePageProps> = () => {
                             })}
                           </div>
                         ) : (
-                          <p className="text-mhc-text-muted text-sm py-4 text-center">No videos saved yet.</p>
+                          <p className="text-mhc-text-muted text-sm py-4 text-center">
+                            No videos saved yet.
+                          </p>
                         )}
                       </div>
                     )}
                   </div>
                 );
               })()}
-
             </CollapsibleSection>
           </div>
 
@@ -2060,7 +2397,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   {/* Show relationship status if set */}
                   {relationship && relationship.roles.length > 0 && (
                     <span className="text-xs text-mhc-primary font-normal">
-                      {relationship.roles.join(', ')}{relationship.status !== 'Potential' ? ` - ${relationship.status}` : ''}
+                      {relationship.roles.join(', ')}
+                      {relationship.status !== 'Potential' ? ` - ${relationship.status}` : ''}
                     </span>
                   )}
                 </div>
@@ -2085,9 +2423,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                         onSave={handleSaveRelationship}
                       />
                       {relationship && profileData?.person?.username && (
-                        <RelationshipHistoryViewer
-                          username={profileData.person.username}
-                        />
+                        <RelationshipHistoryViewer username={profileData.person.username} />
                       )}
                     </div>
                   )}
@@ -2100,9 +2436,13 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   title={
                     <div className="flex items-center gap-2">
                       <span>Names</span>
-                      {(profileNames?.irl_name || profileNames?.identity_name || (profileNames?.address_as && profileNames.address_as.length > 0)) && (
+                      {(profileNames?.irl_name ||
+                        profileNames?.identity_name ||
+                        (profileNames?.address_as && profileNames.address_as.length > 0)) && (
                         <span className="text-xs text-white/50 font-normal">
-                          {profileNames?.address_as?.length ? `${profileNames.address_as.length} terms` : ''}
+                          {profileNames?.address_as?.length
+                            ? `${profileNames.address_as.length} terms`
+                            : ''}
                         </span>
                       )}
                     </div>
@@ -2136,22 +2476,26 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     className="bg-mhc-surface-light opacity-60"
                   >
                     <div className="space-y-4">
-                      {serviceRelationships.filter(r => r.service_role === 'sub').length > 0 && (
+                      {serviceRelationships.filter((r) => r.service_role === 'sub').length > 0 && (
                         <div>
                           <h4 className="text-sm text-white/60 mb-2">Sub</h4>
                           <ServiceRelationshipEditor
-                            relationships={serviceRelationships.filter(r => r.service_role === 'sub')}
+                            relationships={serviceRelationships.filter(
+                              (r) => r.service_role === 'sub'
+                            )}
                             onSave={handleSaveServiceRelationship}
                             onRemove={handleRemoveServiceRelationship}
                             defaultRole="sub"
                           />
                         </div>
                       )}
-                      {serviceRelationships.filter(r => r.service_role === 'dom').length > 0 && (
+                      {serviceRelationships.filter((r) => r.service_role === 'dom').length > 0 && (
                         <div>
                           <h4 className="text-sm text-white/60 mb-2">Dom</h4>
                           <ServiceRelationshipEditor
-                            relationships={serviceRelationships.filter(r => r.service_role === 'dom')}
+                            relationships={serviceRelationships.filter(
+                              (r) => r.service_role === 'dom'
+                            )}
                             onSave={handleSaveServiceRelationship}
                             onRemove={handleRemoveServiceRelationship}
                             defaultRole="dom"
@@ -2172,7 +2516,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 <div className="flex items-center gap-2">
                   <span>Notes</span>
                   {profileNotes.length > 0 && (
-                    <span className="text-xs text-white/50 font-normal">({profileNotes.length})</span>
+                    <span className="text-xs text-white/50 font-normal">
+                      ({profileNotes.length})
+                    </span>
                   )}
                 </div>
               }
@@ -2183,122 +2529,136 @@ const Profile: React.FC<ProfilePageProps> = () => {
               {notesLoading ? (
                 <div className="text-white/50 text-sm py-4 text-center">Loading notes...</div>
               ) : profileNotes.length === 0 ? (
-                <div className="text-white/50 text-sm py-4 text-center">No notes yet. Use the "Add Note" section to create one.</div>
+                <div className="text-white/50 text-sm py-4 text-center">
+                  No notes yet. Use the "Add Note" section to create one.
+                </div>
               ) : (
                 <div className="space-y-3">
-                  {(showAllNotes ? profileNotes : profileNotes.slice(0, 2)).map((note, noteIndex) => (
-                    <div key={note.id} className="bg-mhc-surface-light rounded-md p-4 border border-white/10">
-                      {editingNoteId === note.id ? (
-                        /* Editing Mode */
-                        <div className="space-y-3">
-                          <textarea
-                            value={editingNoteContent}
-                            onChange={(e) => setEditingNoteContent(e.target.value)}
-                            rows={3}
-                            className="w-full px-4 py-2.5 bg-mhc-surface border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
-                            autoFocus
-                          />
-                          <div className="flex items-center gap-3">
-                            <label className="text-white/60 text-sm">Date:</label>
-                            <input
-                              type="datetime-local"
-                              value={editingNoteDate}
-                              onChange={(e) => setEditingNoteDate(e.target.value)}
-                              className="px-3 py-1.5 bg-mhc-surface border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                  {(showAllNotes ? profileNotes : profileNotes.slice(0, 2)).map(
+                    (note, noteIndex) => (
+                      <div
+                        key={note.id}
+                        className="bg-mhc-surface-light rounded-md p-4 border border-white/10"
+                      >
+                        {editingNoteId === note.id ? (
+                          /* Editing Mode */
+                          <div className="space-y-3">
+                            <textarea
+                              value={editingNoteContent}
+                              onChange={(e) => setEditingNoteContent(e.target.value)}
+                              rows={3}
+                              className="w-full px-4 py-2.5 bg-mhc-surface border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                              autoFocus
                             />
-                          </div>
-                          <div className="flex gap-2 justify-end">
-                            <button
-                              onClick={cancelEditingNote}
-                              className="px-4 py-1.5 text-white/70 hover:text-white text-sm transition-colors"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() => handleUpdateNote(note.id)}
-                              disabled={notesSaving || !editingNoteContent.trim()}
-                              className="px-4 py-1.5 bg-mhc-primary text-white rounded text-sm font-medium hover:opacity-90 disabled:opacity-50"
-                            >
-                              {notesSaving ? 'Saving...' : 'Save'}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        /* Display Mode */
-                        <>
-                          <div className="flex justify-between items-start mb-2">
-                            <span className="text-xs text-white/40">
-                              {new Date(note.created_at).toLocaleString('en-US', {
-                                weekday: 'short',
-                                year: 'numeric',
-                                month: 'short',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
-                              {note.updated_at !== note.created_at && (
-                                <span className="ml-2 italic">(edited)</span>
-                              )}
-                            </span>
-                            <div className="flex gap-2">
+                            <div className="flex items-center gap-3">
+                              <label className="text-white/60 text-sm">Date:</label>
+                              <input
+                                type="datetime-local"
+                                value={editingNoteDate}
+                                onChange={(e) => setEditingNoteDate(e.target.value)}
+                                className="px-3 py-1.5 bg-mhc-surface border border-gray-600 rounded-md text-mhc-text text-sm focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+                              />
+                            </div>
+                            <div className="flex gap-2 justify-end">
                               <button
-                                onClick={() => startEditingNote(note)}
-                                className="text-white/40 hover:text-white/80 text-xs transition-colors"
-                                title="Edit note"
+                                onClick={cancelEditingNote}
+                                className="px-4 py-1.5 text-white/70 hover:text-white text-sm transition-colors"
                               >
-                                Edit
+                                Cancel
                               </button>
                               <button
-                                onClick={() => handleDeleteNote(note.id)}
-                                className="text-red-400/60 hover:text-red-400 text-xs transition-colors"
-                                title="Delete note"
+                                onClick={() => handleUpdateNote(note.id)}
+                                disabled={notesSaving || !editingNoteContent.trim()}
+                                className="px-4 py-1.5 bg-mhc-primary text-white rounded text-sm font-medium hover:opacity-90 disabled:opacity-50"
                               >
-                                Delete
+                                {notesSaving ? 'Saving...' : 'Save'}
                               </button>
                             </div>
                           </div>
-                          {(() => {
-                            const lines = note.content.split('\n');
-                            const isLong = lines.length > noteLineLimit;
-                            const isExpanded = expandedNoteIds.has(note.id);
-                            const displayContent = isLong && !isExpanded
-                              ? lines.slice(0, noteLineLimit).join('\n')
-                              : note.content;
+                        ) : (
+                          /* Display Mode */
+                          <>
+                            <div className="flex justify-between items-start mb-2">
+                              <span className="text-xs text-white/40">
+                                {new Date(note.created_at).toLocaleString('en-US', {
+                                  weekday: 'short',
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                                {note.updated_at !== note.created_at && (
+                                  <span className="ml-2 italic">(edited)</span>
+                                )}
+                              </span>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => startEditingNote(note)}
+                                  className="text-white/40 hover:text-white/80 text-xs transition-colors"
+                                  title="Edit note"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteNote(note.id)}
+                                  className="text-red-400/60 hover:text-red-400 text-xs transition-colors"
+                                  title="Delete note"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            </div>
+                            {(() => {
+                              const lines = note.content.split('\n');
+                              const isLong = lines.length > noteLineLimit;
+                              const isExpanded = expandedNoteIds.has(note.id);
+                              const displayContent =
+                                isLong && !isExpanded
+                                  ? lines.slice(0, noteLineLimit).join('\n')
+                                  : note.content;
 
-                            return (
-                              <>
-                                <p className="text-mhc-text text-sm whitespace-pre-wrap m-0">{displayContent}</p>
-                                {isLong && !isExpanded && (
-                                  <button
-                                    onClick={() => setExpandedNoteIds(prev => {
-                                      const next = new Set(Array.from(prev));
-                                      next.add(note.id);
-                                      return next;
-                                    })}
-                                    className="text-mhc-primary hover:text-mhc-primary-light text-sm mt-2 transition-colors"
-                                  >
-                                    Read More...
-                                  </button>
-                                )}
-                                {isLong && isExpanded && (
-                                  <button
-                                    onClick={() => setExpandedNoteIds(prev => {
-                                      const next = new Set(Array.from(prev));
-                                      next.delete(note.id);
-                                      return next;
-                                    })}
-                                    className="text-mhc-primary hover:text-mhc-primary-light text-sm mt-2 transition-colors"
-                                  >
-                                    Show Less
-                                  </button>
-                                )}
-                              </>
-                            );
-                          })()}
-                        </>
-                      )}
-                    </div>
-                  ))}
+                              return (
+                                <>
+                                  <p className="text-mhc-text text-sm whitespace-pre-wrap m-0">
+                                    {displayContent}
+                                  </p>
+                                  {isLong && !isExpanded && (
+                                    <button
+                                      onClick={() =>
+                                        setExpandedNoteIds((prev) => {
+                                          const next = new Set(Array.from(prev));
+                                          next.add(note.id);
+                                          return next;
+                                        })
+                                      }
+                                      className="text-mhc-primary hover:text-mhc-primary-light text-sm mt-2 transition-colors"
+                                    >
+                                      Read More...
+                                    </button>
+                                  )}
+                                  {isLong && isExpanded && (
+                                    <button
+                                      onClick={() =>
+                                        setExpandedNoteIds((prev) => {
+                                          const next = new Set(Array.from(prev));
+                                          next.delete(note.id);
+                                          return next;
+                                        })
+                                      }
+                                      className="text-mhc-primary hover:text-mhc-primary-light text-sm mt-2 transition-colors"
+                                    >
+                                      Show Less
+                                    </button>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </>
+                        )}
+                      </div>
+                    )
+                  )}
                   {/* Show More Notes button */}
                   {profileNotes.length > 2 && (
                     <div className="mt-4 text-center">
@@ -2317,7 +2677,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
           {/* Communications Section (Collapsible) */}
           <div className="mb-5">
-            <CollapsibleSection title="Communications" defaultCollapsed={true} className="bg-mhc-surface">
+            <CollapsibleSection
+              title="Communications"
+              defaultCollapsed={true}
+              className="bg-mhc-surface"
+            >
               <CommsSection username={profileData.person.username} />
             </CollapsibleSection>
           </div>
@@ -2385,11 +2749,13 @@ const Profile: React.FC<ProfilePageProps> = () => {
             {activeTab === 'snapshot' && (
               <div>
                 <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Latest Snapshot</h3>
-                {(profileData.latestSession || profileData.latestSnapshot) ? (
+                {profileData.latestSession || profileData.latestSnapshot ? (
                   <div className="space-y-6">
                     {/* Basic Info Section */}
                     <CollapsibleSection
-                      title={isSessionLive(profileData.latestSession) ? 'Live Session' : 'Last Session'}
+                      title={
+                        isSessionLive(profileData.latestSession) ? 'Live Session' : 'Last Session'
+                      }
                       defaultCollapsed={false}
                       className="bg-mhc-surface-light"
                     >
@@ -2397,20 +2763,38 @@ const Profile: React.FC<ProfilePageProps> = () => {
                         {profileData.latestSession && (
                           <>
                             <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
-                              <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Viewers:</span>
-                              <span className="block text-mhc-text text-lg font-semibold">{(profileData.latestSession.num_users || 0).toLocaleString()}</span>
+                              <span className="block font-semibold text-mhc-text-muted text-sm mb-1">
+                                Viewers:
+                              </span>
+                              <span className="block text-mhc-text text-lg font-semibold">
+                                {(profileData.latestSession.num_users || 0).toLocaleString()}
+                              </span>
                             </div>
                             <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
-                              <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Followers:</span>
-                              <span className="block text-mhc-text text-lg font-semibold">{(profileData.latestSession.num_followers || 0).toLocaleString()}</span>
+                              <span className="block font-semibold text-mhc-text-muted text-sm mb-1">
+                                Followers:
+                              </span>
+                              <span className="block text-mhc-text text-lg font-semibold">
+                                {(profileData.latestSession.num_followers || 0).toLocaleString()}
+                              </span>
                             </div>
                             <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
-                              <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Current Show:</span>
-                              <span className="block text-mhc-text text-base">{profileData.latestSession.current_show || 'Public'}</span>
+                              <span className="block font-semibold text-mhc-text-muted text-sm mb-1">
+                                Current Show:
+                              </span>
+                              <span className="block text-mhc-text text-base">
+                                {profileData.latestSession.current_show || 'Public'}
+                              </span>
                             </div>
                             <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
-                              <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Online Duration:</span>
-                              <span className="block text-mhc-text text-base">{formatDuration(Math.floor(profileData.latestSession.seconds_online / 60))}</span>
+                              <span className="block font-semibold text-mhc-text-muted text-sm mb-1">
+                                Online Duration:
+                              </span>
+                              <span className="block text-mhc-text text-base">
+                                {formatDuration(
+                                  Math.floor(profileData.latestSession.seconds_online / 60)
+                                )}
+                              </span>
                             </div>
                           </>
                         )}
@@ -2418,96 +2802,171 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       {/* Room Subject - Full Width */}
                       {profileData.latestSession?.room_subject && (
                         <div className="mt-4 p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
-                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Room Subject:</span>
-                          <span className="block text-mhc-text text-base">{profileData.latestSession.room_subject}</span>
+                          <span className="block font-semibold text-mhc-text-muted text-sm mb-1">
+                            Room Subject:
+                          </span>
+                          <span className="block text-mhc-text text-base">
+                            {profileData.latestSession.room_subject}
+                          </span>
                         </div>
                       )}
                     </CollapsibleSection>
 
                     {/* Financial Section */}
-                    {profileData.latestSnapshot?.normalized_metrics && (
+                    {profileData.latestSnapshot?.normalized_metrics &&
                       (profileData.latestSnapshot.normalized_metrics.income_usd !== undefined ||
-                       profileData.latestSnapshot.normalized_metrics.income_tokens !== undefined) && (
-                        <CollapsibleSection title="Financial" defaultCollapsed={true} className="bg-mhc-surface-light">
+                        profileData.latestSnapshot.normalized_metrics.income_tokens !==
+                          undefined) && (
+                        <CollapsibleSection
+                          title="Financial"
+                          defaultCollapsed={true}
+                          className="bg-mhc-surface-light"
+                        >
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {profileData.latestSnapshot.normalized_metrics.income_usd !== undefined && (
+                            {profileData.latestSnapshot.normalized_metrics.income_usd !==
+                              undefined && (
                               <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-emerald-500">
-                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Income (USD):</span>
-                                <span className="block text-emerald-400 text-xl font-bold">${profileData.latestSnapshot.normalized_metrics.income_usd.toLocaleString()}</span>
+                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">
+                                  Income (USD):
+                                </span>
+                                <span className="block text-emerald-400 text-xl font-bold">
+                                  $
+                                  {profileData.latestSnapshot.normalized_metrics.income_usd.toLocaleString()}
+                                </span>
                               </div>
                             )}
-                            {profileData.latestSnapshot.normalized_metrics.income_tokens !== undefined && (
+                            {profileData.latestSnapshot.normalized_metrics.income_tokens !==
+                              undefined && (
                               <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-yellow-500">
-                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Income (Tokens):</span>
-                                <span className="block text-yellow-400 text-xl font-bold">{profileData.latestSnapshot.normalized_metrics.income_tokens.toLocaleString()}</span>
+                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">
+                                  Income (Tokens):
+                                </span>
+                                <span className="block text-yellow-400 text-xl font-bold">
+                                  {profileData.latestSnapshot.normalized_metrics.income_tokens.toLocaleString()}
+                                </span>
                               </div>
                             )}
                           </div>
                         </CollapsibleSection>
-                      )
-                    )}
+                      )}
 
                     {/* Session Statistics Section */}
-                    {profileData.latestSnapshot?.normalized_metrics && (
+                    {profileData.latestSnapshot?.normalized_metrics &&
                       (profileData.latestSnapshot.normalized_metrics.session_count !== undefined ||
-                       profileData.latestSnapshot.normalized_metrics.total_duration_minutes !== undefined ||
-                       profileData.latestSnapshot.normalized_metrics.average_duration_minutes !== undefined) && (
-                        <CollapsibleSection title="Session Statistics" defaultCollapsed={true} className="bg-mhc-surface-light">
+                        profileData.latestSnapshot.normalized_metrics.total_duration_minutes !==
+                          undefined ||
+                        profileData.latestSnapshot.normalized_metrics.average_duration_minutes !==
+                          undefined) && (
+                        <CollapsibleSection
+                          title="Session Statistics"
+                          defaultCollapsed={true}
+                          className="bg-mhc-surface-light"
+                        >
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {profileData.latestSnapshot.normalized_metrics.session_count !== undefined && (
+                            {profileData.latestSnapshot.normalized_metrics.session_count !==
+                              undefined && (
                               <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
-                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Session Count:</span>
-                                <span className="block text-mhc-text text-lg font-semibold">{profileData.latestSnapshot.normalized_metrics.session_count}</span>
+                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">
+                                  Session Count:
+                                </span>
+                                <span className="block text-mhc-text text-lg font-semibold">
+                                  {profileData.latestSnapshot.normalized_metrics.session_count}
+                                </span>
                               </div>
                             )}
-                            {profileData.latestSnapshot.normalized_metrics.total_duration_minutes !== undefined && (
+                            {profileData.latestSnapshot.normalized_metrics
+                              .total_duration_minutes !== undefined && (
                               <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
-                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Total Duration:</span>
-                                <span className="block text-mhc-text text-lg font-semibold">{formatDuration(profileData.latestSnapshot.normalized_metrics.total_duration_minutes)}</span>
+                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">
+                                  Total Duration:
+                                </span>
+                                <span className="block text-mhc-text text-lg font-semibold">
+                                  {formatDuration(
+                                    profileData.latestSnapshot.normalized_metrics
+                                      .total_duration_minutes
+                                  )}
+                                </span>
                               </div>
                             )}
-                            {profileData.latestSnapshot.normalized_metrics.average_duration_minutes !== undefined && (
+                            {profileData.latestSnapshot.normalized_metrics
+                              .average_duration_minutes !== undefined && (
                               <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-mhc-primary">
-                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Avg Duration:</span>
-                                <span className="block text-mhc-text text-lg font-semibold">{formatDuration(profileData.latestSnapshot.normalized_metrics.average_duration_minutes)}</span>
+                                <span className="block font-semibold text-mhc-text-muted text-sm mb-1">
+                                  Avg Duration:
+                                </span>
+                                <span className="block text-mhc-text text-lg font-semibold">
+                                  {formatDuration(
+                                    profileData.latestSnapshot.normalized_metrics
+                                      .average_duration_minutes
+                                  )}
+                                </span>
                               </div>
                             )}
                           </div>
                         </CollapsibleSection>
-                      )
-                    )}
+                      )}
 
                     {/* Tags Section */}
-                    {((profileData.latestSession?.tags && profileData.latestSession.tags.length > 0) ||
+                    {((profileData.latestSession?.tags &&
+                      profileData.latestSession.tags.length > 0) ||
                       (profileData.profile?.tags && profileData.profile.tags.length > 0)) && (
-                      <CollapsibleSection title="Tags" defaultCollapsed={true} className="bg-mhc-surface-light">
+                      <CollapsibleSection
+                        title="Tags"
+                        defaultCollapsed={true}
+                        className="bg-mhc-surface-light"
+                      >
                         <div className="flex flex-wrap gap-2">
-                          {(profileData.latestSession?.tags || profileData.profile?.tags || []).map((tag: string, idx: number) => (
-                            <span key={idx} className="px-3 py-1 bg-mhc-primary/20 text-mhc-primary border border-mhc-primary/30 rounded-full text-sm">{tag}</span>
-                          ))}
+                          {(profileData.latestSession?.tags || profileData.profile?.tags || []).map(
+                            (tag: string, idx: number) => (
+                              <span
+                                key={idx}
+                                className="px-3 py-1 bg-mhc-primary/20 text-mhc-primary border border-mhc-primary/30 rounded-full text-sm"
+                              >
+                                {tag}
+                              </span>
+                            )
+                          )}
                         </div>
                       </CollapsibleSection>
                     )}
 
                     {/* Data Sources Section */}
-                    <CollapsibleSection title="Data Sources" defaultCollapsed={true} className="bg-mhc-surface-light">
+                    <CollapsibleSection
+                      title="Data Sources"
+                      defaultCollapsed={true}
+                      className="bg-mhc-surface-light"
+                    >
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {profileData.latestSession && (
                           <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-gray-500">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Affiliate API:</span>
-                            <span className="block text-mhc-text text-sm">{new Date(profileData.latestSession.observed_at).toLocaleString()}</span>
+                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">
+                              Affiliate API:
+                            </span>
+                            <span className="block text-mhc-text text-sm">
+                              {new Date(profileData.latestSession.observed_at).toLocaleString()}
+                            </span>
                           </div>
                         )}
                         {profileData.latestSnapshot && (
                           <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-gray-500">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Statbate:</span>
-                            <span className="block text-mhc-text text-sm">{new Date(profileData.latestSnapshot.captured_at).toLocaleDateString()}</span>
+                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">
+                              Statbate:
+                            </span>
+                            <span className="block text-mhc-text text-sm">
+                              {new Date(
+                                profileData.latestSnapshot.captured_at
+                              ).toLocaleDateString()}
+                            </span>
                           </div>
                         )}
                         {profileData.profile?.scraped_at && (
                           <div className="p-4 bg-mhc-surface rounded-md border-l-4 border-gray-500">
-                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">Profile Scraper:</span>
-                            <span className="block text-mhc-text text-sm">{new Date(profileData.profile.scraped_at).toLocaleString()}</span>
+                            <span className="block font-semibold text-mhc-text-muted text-sm mb-1">
+                              Profile Scraper:
+                            </span>
+                            <span className="block text-mhc-text text-sm">
+                              {new Date(profileData.profile.scraped_at).toLocaleString()}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -2547,7 +3006,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     {/* Raw Data Display */}
                     {showRawData && (
                       <div>
-                        <h4 className="text-mhc-text-muted text-xl font-semibold mb-4">Raw Profile Data</h4>
+                        <h4 className="text-mhc-text-muted text-xl font-semibold mb-4">
+                          Raw Profile Data
+                        </h4>
                         <pre className="bg-black text-emerald-400 p-4 rounded-md overflow-auto text-sm leading-relaxed min-h-[600px] whitespace-pre-wrap break-words border border-gray-700">
                           {JSON.stringify(profileData, null, 2)}
                         </pre>
@@ -2562,50 +3023,90 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
             {activeTab === 'sessions' && (
               <div>
-                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">Broadcast Sessions</h3>
+                <h3 className="m-0 mb-5 text-mhc-text text-2xl font-semibold">
+                  Broadcast Sessions
+                </h3>
                 {profileData.sessionStats ? (
                   <div className="flex flex-col gap-8">
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                       <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                        <div className="text-3xl font-bold mb-2">{profileData.sessionStats.totalSessions.toLocaleString()}</div>
-                        <div className="text-sm opacity-90 uppercase tracking-wider">Total Sessions</div>
+                        <div className="text-3xl font-bold mb-2">
+                          {profileData.sessionStats.totalSessions.toLocaleString()}
+                        </div>
+                        <div className="text-sm opacity-90 uppercase tracking-wider">
+                          Total Sessions
+                        </div>
                       </div>
                       <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                        <div className="text-3xl font-bold mb-2">{Math.round(profileData.sessionStats.avgViewersPerSession || 0).toLocaleString()}</div>
-                        <div className="text-sm opacity-90 uppercase tracking-wider">Avg Viewers</div>
+                        <div className="text-3xl font-bold mb-2">
+                          {Math.round(
+                            profileData.sessionStats.avgViewersPerSession || 0
+                          ).toLocaleString()}
+                        </div>
+                        <div className="text-sm opacity-90 uppercase tracking-wider">
+                          Avg Viewers
+                        </div>
                       </div>
                       <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                        <div className="text-3xl font-bold mb-2">{(profileData.sessionStats.peakViewers || 0).toLocaleString()}</div>
-                        <div className="text-sm opacity-90 uppercase tracking-wider">Max Viewers</div>
+                        <div className="text-3xl font-bold mb-2">
+                          {(profileData.sessionStats.peakViewers || 0).toLocaleString()}
+                        </div>
+                        <div className="text-sm opacity-90 uppercase tracking-wider">
+                          Max Viewers
+                        </div>
                       </div>
                       <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                        <div className="text-3xl font-bold mb-2">{Math.round(profileData.sessionStats.avgFollowersGained || 0).toLocaleString()}</div>
-                        <div className="text-sm opacity-90 uppercase tracking-wider">Avg Followers Gained</div>
+                        <div className="text-3xl font-bold mb-2">
+                          {Math.round(
+                            profileData.sessionStats.avgFollowersGained || 0
+                          ).toLocaleString()}
+                        </div>
+                        <div className="text-sm opacity-90 uppercase tracking-wider">
+                          Avg Followers Gained
+                        </div>
                       </div>
                       <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
-                        <div className="text-3xl font-bold mb-2">{formatDuration(profileData.sessionStats.totalMinutesOnline || 0)}</div>
-                        <div className="text-sm opacity-90 uppercase tracking-wider">Total Time Online</div>
+                        <div className="text-3xl font-bold mb-2">
+                          {formatDuration(profileData.sessionStats.totalMinutesOnline || 0)}
+                        </div>
+                        <div className="text-sm opacity-90 uppercase tracking-wider">
+                          Total Time Online
+                        </div>
                       </div>
                       <div className="text-center p-5 bg-gradient-primary rounded-lg text-white">
                         <div className="text-3xl font-bold mb-2">
                           {formatDuration(
                             profileData.sessionStats.totalSessions > 0
-                              ? Math.round((profileData.sessionStats.totalMinutesOnline || 0) / profileData.sessionStats.totalSessions)
+                              ? Math.round(
+                                  (profileData.sessionStats.totalMinutesOnline || 0) /
+                                    profileData.sessionStats.totalSessions
+                                )
                               : 0
                           )}
                         </div>
-                        <div className="text-sm opacity-90 uppercase tracking-wider">Avg Duration</div>
+                        <div className="text-sm opacity-90 uppercase tracking-wider">
+                          Avg Duration
+                        </div>
                       </div>
                     </div>
 
                     {profileData.sessions && profileData.sessions.length > 0 ? (
                       <div className="flex flex-col gap-4">
-                        <h4 className="mt-5 mb-4 text-mhc-text-muted text-xl font-semibold">Recent Sessions ({profileData.sessions.length})</h4>
+                        <h4 className="mt-5 mb-4 text-mhc-text-muted text-xl font-semibold">
+                          Recent Sessions ({profileData.sessions.length})
+                        </h4>
                         {profileData.sessions.map((session: any) => (
-                          <div key={session.id} className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary">
+                          <div
+                            key={session.id}
+                            className="p-4 bg-mhc-surface-light rounded-md border-l-4 border-mhc-primary"
+                          >
                             <div className="flex justify-between items-center mb-3">
-                              <span className="font-semibold text-mhc-text">{new Date(session.observed_at).toLocaleString()}</span>
-                              <span className="text-mhc-text-muted text-sm">{formatDuration(Math.floor(session.seconds_online / 60))} online</span>
+                              <span className="font-semibold text-mhc-text">
+                                {new Date(session.observed_at).toLocaleString()}
+                              </span>
+                              <span className="text-mhc-text-muted text-sm">
+                                {formatDuration(Math.floor(session.seconds_online / 60))} online
+                              </span>
                             </div>
                             <div className="flex gap-4 mb-3 text-sm text-mhc-text-muted">
                               <span>👥 {session.num_users.toLocaleString()} viewers</span>
@@ -2613,7 +3114,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
                               {session.is_hd && <span>🎥 HD</span>}
                             </div>
                             {session.room_subject && (
-                              <div className="p-3 bg-mhc-surface rounded-md italic text-mhc-text">{session.room_subject}</div>
+                              <div className="p-3 bg-mhc-surface rounded-md italic text-mhc-text">
+                                {session.room_subject}
+                              </div>
                             )}
                           </div>
                         ))}
@@ -2638,22 +3141,34 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 <TimelineTab username={profileData.person.username} />
               </div>
             )}
-
           </div>
         </div>
       )}
 
-      {/* Full-size Image Preview - Fixed position on right side */}
+      {/* Full-size Image Preview - Draggable position */}
       {previewImageUrl && (
         <div
-          className="fixed top-20 right-4 z-50 pointer-events-none"
+          className="fixed z-50"
+          style={{ left: previewPosition.x, top: previewPosition.y }}
         >
-          <div className="bg-black/95 rounded-lg shadow-2xl border border-white/20 p-2">
-            <img
-              src={previewImageUrl}
-              alt="Full size preview"
-              className="max-w-[600px] max-h-[80vh] object-contain rounded-lg"
-            />
+          <div className="bg-black/95 rounded-lg shadow-2xl border border-white/20 overflow-hidden">
+            {/* Drag handle */}
+            <div
+              className="flex items-center justify-center gap-1 py-1 px-2 bg-white/10 cursor-move hover:bg-white/20 transition-colors select-none"
+              onMouseDown={handlePreviewMouseDown}
+            >
+              <svg className="w-4 h-4 text-white/50" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
+              </svg>
+              <span className="text-white/50 text-xs">Drag to move</span>
+            </div>
+            <div className="p-2">
+              <img
+                src={previewImageUrl}
+                alt="Full size preview"
+                className="max-w-[600px] max-h-[80vh] object-contain rounded-lg"
+              />
+            </div>
           </div>
         </div>
       )}
@@ -2678,11 +3193,13 @@ const Profile: React.FC<ProfilePageProps> = () => {
             autoFocus
           />
           {notesMessage && (
-            <div className={`text-sm px-3 py-2 rounded ${
-              notesMessage.includes('Error')
-                ? 'bg-red-500/20 text-red-400'
-                : 'bg-emerald-500/20 text-emerald-400'
-            }`}>
+            <div
+              className={`text-sm px-3 py-2 rounded ${
+                notesMessage.includes('Error')
+                  ? 'bg-red-500/20 text-red-400'
+                  : 'bg-emerald-500/20 text-emerald-400'
+              }`}
+            >
               {notesMessage}
             </div>
           )}
@@ -2731,7 +3248,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
           {/* Room Subject / Goal */}
           {profileData?.latestSession?.room_subject && (
             <div>
-              <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Room Subject / Goal</h5>
+              <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">
+                Room Subject / Goal
+              </h5>
               <div className="px-4 py-3 bg-white/10 rounded-lg text-base leading-relaxed border-l-4 border-mhc-primary/50">
                 {profileData.latestSession.room_subject.replace(/#\w+/g, '').trim()}
               </div>
@@ -2760,40 +3279,46 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
           {/* Session Info - Type, Last Seen, Session Started */}
           <div className="p-4 bg-mhc-surface-light rounded-md">
-            <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Session Info</h5>
+            <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">
+              Session Info
+            </h5>
             <div className="space-y-3">
               <div className="flex justify-between items-center">
                 <span className="text-mhc-text-muted text-sm">Type:</span>
-                <span className={`px-3 py-1 rounded text-sm font-semibold uppercase tracking-wider ${
-                  profileData?.person?.role === 'MODEL'
-                    ? 'bg-pink-500/40 text-pink-200'
-                    : 'bg-gray-500/40 text-gray-200'
-                }`}>
+                <span
+                  className={`px-3 py-1 rounded text-sm font-semibold uppercase tracking-wider ${
+                    profileData?.person?.role === 'MODEL'
+                      ? 'bg-pink-500/40 text-pink-200'
+                      : 'bg-gray-500/40 text-gray-200'
+                  }`}
+                >
                   {profileData?.person?.role}
                 </span>
               </div>
-              {profileData && !isSessionLive(profileData.latestSession) &&
+              {profileData &&
+                !isSessionLive(profileData.latestSession) &&
                 (profileData.latestSession?.observed_at ||
-                 profileData.profile?.last_seen_online ||
-                 profileData.person?.last_seen_at) && (
-                <div className="flex justify-between">
-                  <span className="text-mhc-text-muted text-sm">Last Seen:</span>
-                  <span className="text-mhc-text text-sm">
-                    {new Date(
-                      profileData.latestSession?.observed_at ||
-                      profileData.profile?.last_seen_online ||
-                      profileData.person?.last_seen_at
-                    ).toLocaleString('en-US', {
-                      timeZone: 'America/New_York',
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: 'numeric',
-                      minute: '2-digit'
-                    })} ET
-                  </span>
-                </div>
-              )}
+                  profileData.profile?.last_seen_online ||
+                  profileData.person?.last_seen_at) && (
+                  <div className="flex justify-between">
+                    <span className="text-mhc-text-muted text-sm">Last Seen:</span>
+                    <span className="text-mhc-text text-sm">
+                      {new Date(
+                        profileData.latestSession?.observed_at ||
+                          profileData.profile?.last_seen_online ||
+                          profileData.person?.last_seen_at
+                      ).toLocaleString('en-US', {
+                        timeZone: 'America/New_York',
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                      })}{' '}
+                      ET
+                    </span>
+                  </div>
+                )}
               {profileData && isSessionLive(profileData.latestSession) && (
                 <div className="flex justify-between">
                   <span className="text-mhc-text-muted text-sm">Session Started:</span>
@@ -2802,8 +3327,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       timeZone: 'America/New_York',
                       hour: '2-digit',
                       minute: '2-digit',
-                      hour12: false
-                    })} ET
+                      hour12: false,
+                    })}{' '}
+                    ET
                   </span>
                 </div>
               )}
@@ -2815,35 +3341,49 @@ const Profile: React.FC<ProfilePageProps> = () => {
             {/* Left Column - Basic Info */}
             <div className="space-y-4">
               <div className="p-4 bg-mhc-surface-light rounded-md">
-                <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Basic Info</h5>
+                <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">
+                  Basic Info
+                </h5>
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-mhc-text-muted text-sm">Real Name:</span>
-                    <span className={`text-sm ${profileData?.profile?.display_name ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                    <span
+                      className={`text-sm ${profileData?.profile?.display_name ? 'text-mhc-text' : 'text-white/30 italic'}`}
+                    >
                       {profileData?.profile?.display_name || 'Not set'}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-mhc-text-muted text-sm">Age:</span>
-                    <span className={`text-sm ${profileData?.profile?.age ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                    <span
+                      className={`text-sm ${profileData?.profile?.age ? 'text-mhc-text' : 'text-white/30 italic'}`}
+                    >
                       {profileData?.profile?.age || 'Not set'}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-mhc-text-muted text-sm">Birthday:</span>
-                    <span className={`text-sm ${profileData?.profile?.birthday_public ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                    <span
+                      className={`text-sm ${profileData?.profile?.birthday_public ? 'text-mhc-text' : 'text-white/30 italic'}`}
+                    >
                       {profileData?.profile?.birthday_public || 'Not set'}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-mhc-text-muted text-sm">Gender:</span>
-                    <span className={`text-sm ${profileData?.profile?.gender ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                      {profileData?.profile?.gender ? formatGender(profileData.profile.gender) : 'Not set'}
+                    <span
+                      className={`text-sm ${profileData?.profile?.gender ? 'text-mhc-text' : 'text-white/30 italic'}`}
+                    >
+                      {profileData?.profile?.gender
+                        ? formatGender(profileData.profile.gender)
+                        : 'Not set'}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-mhc-text-muted text-sm">Interested In:</span>
-                    <span className={`text-sm ${profileData?.profile?.interested_in ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                    <span
+                      className={`text-sm ${profileData?.profile?.interested_in ? 'text-mhc-text' : 'text-white/30 italic'}`}
+                    >
                       {profileData?.profile?.interested_in || 'Not set'}
                     </span>
                   </div>
@@ -2851,23 +3391,31 @@ const Profile: React.FC<ProfilePageProps> = () => {
               </div>
 
               <div className="p-4 bg-mhc-surface-light rounded-md">
-                <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Location</h5>
+                <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">
+                  Location
+                </h5>
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-mhc-text-muted text-sm">Location:</span>
-                    <span className={`text-sm ${profileData?.profile?.location ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                    <span
+                      className={`text-sm ${profileData?.profile?.location ? 'text-mhc-text' : 'text-white/30 italic'}`}
+                    >
                       {profileData?.profile?.location || 'Not set'}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-mhc-text-muted text-sm">Country:</span>
-                    <span className={`text-sm ${profileData?.profile?.country ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                    <span
+                      className={`text-sm ${profileData?.profile?.country ? 'text-mhc-text' : 'text-white/30 italic'}`}
+                    >
                       {profileData?.profile?.country || 'Not set'}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-mhc-text-muted text-sm">Languages:</span>
-                    <span className={`text-sm ${profileData?.profile?.spoken_languages ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                    <span
+                      className={`text-sm ${profileData?.profile?.spoken_languages ? 'text-mhc-text' : 'text-white/30 italic'}`}
+                    >
                       {profileData?.profile?.spoken_languages || 'Not set'}
                     </span>
                   </div>
@@ -2878,23 +3426,31 @@ const Profile: React.FC<ProfilePageProps> = () => {
             {/* Right Column - Physical & Status */}
             <div className="space-y-4">
               <div className="p-4 bg-mhc-surface-light rounded-md">
-                <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Physical</h5>
+                <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">
+                  Physical
+                </h5>
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-mhc-text-muted text-sm">Body Type:</span>
-                    <span className={`text-sm ${profileData?.profile?.body_type ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                    <span
+                      className={`text-sm ${profileData?.profile?.body_type ? 'text-mhc-text' : 'text-white/30 italic'}`}
+                    >
                       {profileData?.profile?.body_type || 'Not set'}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-mhc-text-muted text-sm">Body Decorations:</span>
-                    <span className={`text-sm ${profileData?.profile?.body_decorations ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                    <span
+                      className={`text-sm ${profileData?.profile?.body_decorations ? 'text-mhc-text' : 'text-white/30 italic'}`}
+                    >
                       {profileData?.profile?.body_decorations || 'Not set'}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-mhc-text-muted text-sm">Smoke/Drink:</span>
-                    <span className={`text-sm ${profileData?.profile?.smoke_drink ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                    <span
+                      className={`text-sm ${profileData?.profile?.smoke_drink ? 'text-mhc-text' : 'text-white/30 italic'}`}
+                    >
                       {profileData?.profile?.smoke_drink || 'Not set'}
                     </span>
                   </div>
@@ -2902,19 +3458,28 @@ const Profile: React.FC<ProfilePageProps> = () => {
               </div>
 
               <div className="p-4 bg-mhc-surface-light rounded-md">
-                <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Status</h5>
+                <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">
+                  Status
+                </h5>
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-mhc-text-muted text-sm">New Model:</span>
-                    <span className={`text-sm ${profileData?.profile?.is_new !== null && profileData?.profile?.is_new !== undefined ? 'text-mhc-text' : 'text-white/30 italic'}`}>
-                      {profileData?.profile?.is_new !== null && profileData?.profile?.is_new !== undefined
-                        ? (profileData.profile.is_new ? 'Yes' : 'No')
+                    <span
+                      className={`text-sm ${profileData?.profile?.is_new !== null && profileData?.profile?.is_new !== undefined ? 'text-mhc-text' : 'text-white/30 italic'}`}
+                    >
+                      {profileData?.profile?.is_new !== null &&
+                      profileData?.profile?.is_new !== undefined
+                        ? profileData.profile.is_new
+                          ? 'Yes'
+                          : 'No'
                         : 'Unknown'}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-mhc-text-muted text-sm">Last Broadcast:</span>
-                    <span className={`text-sm ${profileData?.profile?.last_broadcast ? 'text-mhc-text' : 'text-white/30 italic'}`}>
+                    <span
+                      className={`text-sm ${profileData?.profile?.last_broadcast ? 'text-mhc-text' : 'text-white/30 italic'}`}
+                    >
                       {profileData?.profile?.last_broadcast
                         ? new Date(profileData.profile.last_broadcast).toLocaleDateString()
                         : 'Not set'}
@@ -2928,7 +3493,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
           {/* Bio - full width */}
           {profileData?.profile?.bio && (
             <div className="p-4 bg-mhc-surface-light rounded-md">
-              <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">Bio</h5>
+              <h5 className="text-mhc-text-muted text-sm font-semibold uppercase tracking-wider mb-3 border-b border-white/10 pb-2">
+                Bio
+              </h5>
               <p className="mt-2 mb-0 leading-relaxed text-mhc-text whitespace-pre-wrap">
                 {profileData.profile.bio}
               </p>
@@ -2970,7 +3537,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
               type="file"
               accept="image/jpeg,image/png,image/gif,image/webp"
               multiple
-              onChange={e => {
+              onChange={(e) => {
                 const files = Array.from(e.target.files || []);
                 if (files.length > 0) handleImageUpload(files);
               }}
@@ -2978,28 +3545,41 @@ const Profile: React.FC<ProfilePageProps> = () => {
               className="hidden"
             />
             <div className="flex flex-col items-center gap-2">
-              <svg className={`w-8 h-8 ${isDragging ? 'text-mhc-primary' : 'text-white/40'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              <svg
+                className={`w-8 h-8 ${isDragging ? 'text-mhc-primary' : 'text-white/40'}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
               </svg>
               <div className="text-white/70 text-sm">
                 {isDragging ? (
                   <span className="text-mhc-primary font-medium">Drop images here</span>
                 ) : (
                   <>
-                    <span className="text-mhc-primary font-medium">Click to upload</span> or drag and drop
+                    <span className="text-mhc-primary font-medium">Click to upload</span> or drag
+                    and drop
                   </>
                 )}
               </div>
-              <div className="text-white/40 text-xs">
-                JPEG, PNG, GIF, or WebP (max 10MB each)
-              </div>
+              <div className="text-white/40 text-xs">JPEG, PNG, GIF, or WebP (max 10MB each)</div>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
             <select
               value={selectedImageSource}
-              onChange={e => setSelectedImageSource(e.target.value as 'manual_upload' | 'screensnap' | 'external')}
+              onChange={(e) =>
+                setSelectedImageSource(
+                  e.target.value as 'manual_upload' | 'screensnap' | 'external'
+                )
+              }
               className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-mhc-primary"
             >
               <option value="manual_upload">Manual Upload</option>
@@ -3009,7 +3589,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
             <input
               type="text"
               value={imageDescription}
-              onChange={e => setImageDescription(e.target.value)}
+              onChange={(e) => setImageDescription(e.target.value)}
               placeholder="Description (optional)"
               className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 focus:outline-none focus:border-mhc-primary"
             />
@@ -3018,11 +3598,25 @@ const Profile: React.FC<ProfilePageProps> = () => {
           {imageUploadLoading && (
             <div className="flex items-center gap-3 text-mhc-text-muted text-sm">
               <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
               </svg>
               {uploadProgress ? (
-                <span>Uploading {uploadProgress.current} of {uploadProgress.total}...</span>
+                <span>
+                  Uploading {uploadProgress.current} of {uploadProgress.total}...
+                </span>
               ) : (
                 <span>Uploading...</span>
               )}

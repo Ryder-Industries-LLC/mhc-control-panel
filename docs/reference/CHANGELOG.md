@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.34.3] - 2026-01-14
+
+### Added
+
+- **Draggable Image Preview**: Hover preview panel on Profile media section is now draggable
+  - Position persists to localStorage and restores on page load
+  - Visual drag handle with grip icon and "Drag to move" hint
+  - Preview constrained to stay within browser viewport
+
+- **Sort Controls**: Added "Sort: Newest/Oldest" toggle button in media filter bar
+  - Click to toggle between newest-first and oldest-first ordering
+  - Visual arrow indicator shows current sort direction
+
+- **Thumbnail Time Display**: Hover overlay now shows date AND time
+  - Format: `MMM DD` left-aligned, `HH:MM:SS` right-aligned
+  - Time displayed in 24-hour format, ET timezone
+  - New `formatTimeET()` helper function for consistent timezone formatting
+
+### Changed
+
+- **Image Source Labels**: Renamed for clarity
+  - `affiliate_api`: "Auto" → "Live" (live broadcast thumbnails)
+  - `external`: "Ext" → "Link" (external URL imports)
+  - Added `imported` source type with "Import" label
+  - Created centralized `SOURCE_LABELS` mapping for UI consistency
+
+### Technical
+
+- Updated: `client/src/pages/Profile.tsx` - All media section enhancements
+- New state: `previewPosition`, `isDraggingPreview`, `imageSortOrder`
+- New helpers: `formatTimeET()`, `SOURCE_LABELS`, `getSourceInfo()`
+
+---
+
 ## [1.34.2] - 2026-01-13
 
 ### Added
