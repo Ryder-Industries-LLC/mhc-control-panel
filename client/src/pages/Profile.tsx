@@ -229,6 +229,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [showAllImages, setShowAllImages] = useState(false);
   const [imageSourceFilter, setImageSourceFilter] = useState<string | null>(null); // null = 'All'
   const [imageSortOrder, setImageSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [mediaCollapsed, setMediaCollapsed] = useState(false);
 
   // Social links state
   const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
@@ -1205,7 +1206,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
   // MHC-1102/MHC-1110: T2 section removed - content merged into T1 and Profile Details section
 
   return (
-    <div className="max-w-7xl mx-auto px-5 pt-2 pb-5">
+    <div className="max-w-7xl mx-auto px-5 pt-0 pb-5">
       {error && (
         <div className="bg-red-500/20 border-l-4 border-red-500 text-red-300 px-4 py-3 rounded-md mb-5">
           <strong className="font-bold mr-1">Error:</strong> {error}
@@ -1216,8 +1217,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
       {profileData && (
         <div>
           {/* MHC-1101: Page title with username and status - sticky header (transparent) */}
-          <div className="sticky top-0 z-40 py-2 mb-2 flex items-center gap-3">
-            <h1 className="text-3xl font-bold text-white">
+          <div className="sticky top-0 z-40 py-1 mb-1 flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-white">
               <a
                 href={`https://chaturbate.com/${profileData.person.username}`}
                 target="_blank"
@@ -1229,43 +1230,45 @@ const Profile: React.FC<ProfilePageProps> = () => {
             </h1>
             {/* Online/Offline status indicator - to the right of username */}
             {isSessionLive(profileData.latestSession) ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-red-500/30 border border-red-500/50 text-red-300 animate-pulse">
-                <span className="w-2 h-2 bg-red-400 rounded-full"></span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-500/30 border border-red-500/50 text-red-300 animate-pulse">
+                <span className="w-1.5 h-1.5 bg-red-400 rounded-full"></span>
                 Live
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold bg-gray-500/30 border border-gray-500/50 text-white/70">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-gray-500/30 border border-gray-500/50 text-white/70">
                 Offline
               </span>
             )}
           </div>
 
           {/* Profile Overview Card - Option B Layout (MHC-1102) */}
-          <div className="bg-gradient-primary text-white rounded-lg p-6 mb-5 shadow-lg">
+          <div className="bg-gradient-primary text-white rounded-lg px-6 py-4 mb-0 shadow-lg">
             <div className="flex gap-5 items-start flex-wrap md:flex-nowrap">
               {/* Profile image section - always show with placeholder fallback */}
               <div className="flex-shrink-0 flex flex-col items-start">
-                {/* Above image row: Following | Follows Me (compact, centered) */}
-                <div className="flex items-center justify-center gap-2 w-[440px] mb-1.5">
-                  {profileData.profile?.following && (
-                    <span
-                      className="px-2.5 py-0.5 rounded text-xs font-medium bg-emerald-500/20 text-emerald-200 border border-emerald-500/30"
-                      title="You follow this user"
-                    >
-                      Following
-                    </span>
-                  )}
-                  {profileData.profile?.follower && (
-                    <span
-                      className="px-2.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-200 border border-blue-500/30"
-                      title="Follows you"
-                    >
-                      Follows Me
-                    </span>
-                  )}
-                  {/* Show timestamp when primary image exists */}
+                {/* Above image row: Following | Follows Me (left) | Timestamp (right) */}
+                <div className="flex items-center w-[440px] mb-1">
+                  <div className="flex items-center gap-2">
+                    {profileData.profile?.following && (
+                      <span
+                        className="px-2.5 py-0.5 rounded text-xs font-semibold bg-emerald-500/40 text-emerald-100 border border-emerald-400/50"
+                        title="You follow this user"
+                      >
+                        Following
+                      </span>
+                    )}
+                    {profileData.profile?.follower && (
+                      <span
+                        className="px-2.5 py-0.5 rounded text-xs font-semibold bg-blue-500/40 text-blue-100 border border-blue-400/50"
+                        title="Follows you"
+                      >
+                        Follows Me
+                      </span>
+                    )}
+                  </div>
+                  {/* Show timestamp when primary image exists - right aligned */}
                   {currentProfileImage?.captured_at && (
-                    <span className="text-xs text-white/50 ml-auto">
+                    <span className="text-xs text-white/60 ml-auto">
                       {new Date(currentProfileImage.captured_at).toLocaleString(
                         'en-US',
                         {
@@ -1302,19 +1305,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     height="330"
                   />
                 </div>
-                {/* Below image row: Rating (left) | CB | UN (centered) | + Add Note (right) */}
-                <div className="flex items-center justify-between w-[440px] mt-1.5">
-                  {/* Rating - left side */}
-                  <div className="flex items-center gap-1">
-                    <StarRating
-                      rating={rating}
-                      onChange={handleRatingChange}
-                      size="sm"
-                      showLabel={true}
-                    />
-                  </div>
-
-                  {/* CB/UN external links - centered */}
+                {/* Below image row: CB | UN (left) | Rating (centered) | Add Note | Profile Details (right) */}
+                <div className="flex items-center justify-between w-[440px] mt-1">
+                  {/* CB/UN external links - left side */}
                   <div className="flex gap-1.5">
                     <a
                       href={`https://chaturbate.com/${profileData.person.username}`}
@@ -1336,26 +1329,53 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     </a>
                   </div>
 
-                  {/* Add Note button - right side */}
-                  <button
-                    onClick={() => setShowAddNoteModal(true)}
-                    className="px-2.5 py-0.5 bg-mhc-primary hover:bg-mhc-primary/80 text-white text-xs font-medium rounded transition-colors flex items-center gap-1"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 4v16m8-8H4"
-                      />
-                    </svg>
-                    Add Note
-                  </button>
+                  {/* Rating - centered */}
+                  <div className="flex items-center gap-1">
+                    <StarRating
+                      rating={rating}
+                      onChange={handleRatingChange}
+                      size="sm"
+                      showLabel={true}
+                    />
+                  </div>
+
+                  {/* Right side buttons: Add Note | Profile Details */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowAddNoteModal(true)}
+                      className="px-2.5 py-0.5 bg-mhc-primary hover:bg-mhc-primary/80 text-white text-xs font-medium rounded transition-colors flex items-center gap-1"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 4v16m8-8H4"
+                        />
+                      </svg>
+                      Add Note
+                    </button>
+                    <button
+                      onClick={() => setShowProfileDetailsModal(true)}
+                      className="text-xs text-white/50 hover:text-white transition-colors flex items-center gap-0.5"
+                      title="View profile details"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      Details
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Right column - top-aligned with normal spacing */}
-              <div className="flex-1 flex flex-col items-start gap-3">
+              {/* Right column - top-aligned */}
+              <div className="flex-1 flex flex-col items-start gap-2.5">
                 {/* Row 1: Relationship Status Badges */}
                 <div className="flex items-center gap-2.5 flex-wrap">
                   {/* Unified relationship status badge (takes precedence) */}
@@ -1757,145 +1777,153 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   {seenWithLoading && <span className="text-white/40 text-sm">Loading...</span>}
                 </div>
 
-                {/* Row 8: Profile Details link - opens modal */}
-                <button
-                  onClick={() => setShowProfileDetailsModal(true)}
-                  className="text-sm text-white/60 hover:text-white transition-colors flex items-center gap-1 mt-1"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Profile Details...
-                </button>
               </div>
             </div>
           </div>
 
-          {/* Media Section (Collapsible) - Expanded by default */}
-          <div className="mb-5">
-            <CollapsibleSection
-              title={
-                <div className="flex items-center gap-2 flex-1">
-                  <span>Media</span>
-                  <span className="text-xs text-white/50 font-normal">
-                    ({uploadedImages.length})
-                  </span>
-                </div>
-              }
-              defaultCollapsed={false}
-              className="bg-mhc-surface"
-            >
-              {/* Media Section with Tabs - Now at top */}
-              {(() => {
-                const allImages = uploadedImages.filter((img) => img.media_type !== 'video');
-                const videos = uploadedImages.filter((img) => img.media_type === 'video');
+          {/* Media Section (Custom Collapsible) - Tabs in header when expanded */}
+          <div className="mb-2">
+            {(() => {
+              const allImages = uploadedImages.filter((img) => img.media_type !== 'video');
+              const videos = uploadedImages.filter((img) => img.media_type === 'video');
 
-                // Count images by source for filter chips
-                const sourceCountsMap: Record<string, number> = {};
-                allImages.forEach((img) => {
-                  const src = img.source || 'unknown';
-                  sourceCountsMap[src] = (sourceCountsMap[src] || 0) + 1;
-                });
+              // Count images by source for filter chips
+              const sourceCountsMap: Record<string, number> = {};
+              allImages.forEach((img) => {
+                const src = img.source || 'unknown';
+                sourceCountsMap[src] = (sourceCountsMap[src] || 0) + 1;
+              });
 
-                // Filter and sort images
-                const filteredImages = imageSourceFilter
-                  ? allImages.filter((img) => img.source === imageSourceFilter)
-                  : allImages;
+              // Filter and sort images
+              const filteredImages = imageSourceFilter
+                ? allImages.filter((img) => img.source === imageSourceFilter)
+                : allImages;
 
-                const images = [...filteredImages].sort((a, b) => {
-                  const dateA = new Date(a.captured_at || a.uploaded_at).getTime();
-                  const dateB = new Date(b.captured_at || b.uploaded_at).getTime();
-                  return imageSortOrder === 'newest' ? dateB - dateA : dateA - dateB;
-                });
+              const images = [...filteredImages].sort((a, b) => {
+                const dateA = new Date(a.captured_at || a.uploaded_at).getTime();
+                const dateB = new Date(b.captured_at || b.uploaded_at).getTime();
+                return imageSortOrder === 'newest' ? dateB - dateA : dateA - dateB;
+              });
 
-                // Source filter chip config - uses SOURCE_LABELS for consistency
-                const sourceFilters = [
-                  { key: null, label: 'All', color: 'bg-mhc-primary' },
-                  ...Object.entries(SOURCE_LABELS).map(([key, info]) => ({
-                    key,
-                    label: info.label,
-                    color: info.color,
-                  })),
-                ];
+              // Source filter chip config - uses SOURCE_LABELS for consistency
+              const sourceFilters = [
+                { key: null, label: 'All', color: 'bg-mhc-primary' },
+                ...Object.entries(SOURCE_LABELS).map(([key, info]) => ({
+                  key,
+                  label: info.label,
+                  color: info.color,
+                })),
+              ];
 
-                return (
-                  <div>
-                    {/* Media Type Tabs with Source Filters */}
-                    <div className="flex items-center border-b border-white/10 mb-4">
-                      <button
-                        onClick={() => setMediaSubTab('images')}
-                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                          mediaSubTab === 'images'
-                            ? 'border-mhc-primary text-mhc-primary'
-                            : 'border-transparent text-mhc-text-muted hover:text-mhc-text hover:border-white/30'
-                        }`}
-                      >
-                        Images ({allImages.length})
-                      </button>
-                      <button
-                        onClick={() => setMediaSubTab('videos')}
-                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                          mediaSubTab === 'videos'
-                            ? 'border-mhc-primary text-mhc-primary'
-                            : 'border-transparent text-mhc-text-muted hover:text-mhc-text hover:border-white/30'
-                        }`}
-                      >
-                        Videos ({videos.length})
-                      </button>
-                      {/* Image Source Filter Chips and Sort - inline with tabs */}
-                      {mediaSubTab === 'images' && (
-                        <div className="flex flex-wrap items-center gap-1.5 ml-4 py-1 flex-1">
-                          {sourceFilters.map((filter) => {
-                            const count =
-                              filter.key === null
-                                ? allImages.length
-                                : sourceCountsMap[filter.key] || 0;
-                            const isActive = imageSourceFilter === filter.key;
-                            return (
+              return (
+                <div className="border border-white/10 rounded-lg overflow-hidden bg-mhc-surface">
+                  {/* Custom header - shows tabs when expanded, "Media" when collapsed */}
+                  <div
+                    className="w-full px-3 py-2 flex items-center bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
+                    onClick={() => setMediaCollapsed(!mediaCollapsed)}
+                  >
+                    {mediaCollapsed ? (
+                      /* Collapsed: show "Media (count)" */
+                      <h3 className="text-lg font-semibold text-white m-0 flex items-center gap-2">
+                        <span>Media</span>
+                        <span className="text-xs text-white/50 font-normal">
+                          ({uploadedImages.length})
+                        </span>
+                      </h3>
+                    ) : (
+                      /* Expanded: show tabs and filters inline */
+                      <div className="flex items-center flex-1 min-w-0">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setMediaSubTab('images'); }}
+                          className={`px-3 py-1 text-sm font-medium border-b-2 transition-colors ${
+                            mediaSubTab === 'images'
+                              ? 'border-mhc-primary text-mhc-primary'
+                              : 'border-transparent text-mhc-text-muted hover:text-mhc-text'
+                          }`}
+                        >
+                          Images ({allImages.length})
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setMediaSubTab('videos'); }}
+                          className={`px-3 py-1 text-sm font-medium border-b-2 transition-colors ${
+                            mediaSubTab === 'videos'
+                              ? 'border-mhc-primary text-mhc-primary'
+                              : 'border-transparent text-mhc-text-muted hover:text-mhc-text'
+                          }`}
+                        >
+                          Videos ({videos.length})
+                        </button>
+                        {/* Quick filters inline - only when Images tab active */}
+                        {mediaSubTab === 'images' && (
+                          <div className="flex flex-wrap items-center gap-1 ml-2 flex-1 min-w-0">
+                            {sourceFilters.map((filter) => {
+                              const count =
+                                filter.key === null
+                                  ? allImages.length
+                                  : sourceCountsMap[filter.key] || 0;
+                              const isActive = imageSourceFilter === filter.key;
+                              return (
+                                <button
+                                  key={filter.key || 'all'}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setImageSourceFilter(filter.key);
+                                    setShowAllImages(false);
+                                  }}
+                                  className={`px-1.5 py-0 text-[10px] font-medium rounded-full transition-all ${
+                                    isActive
+                                      ? `${filter.color} text-white`
+                                      : count === 0
+                                        ? 'bg-white/5 text-white/30'
+                                        : `${filter.color}/20 text-white/70 hover:${filter.color}/40 hover:text-white`
+                                  }`}
+                                  disabled={count === 0 && filter.key !== null}
+                                >
+                                  {filter.label} ({count})
+                                </button>
+                              );
+                            })}
+                            {/* Sort control */}
+                            <div className="ml-auto flex items-center gap-1">
                               <button
-                                key={filter.key || 'all'}
-                                onClick={() => {
-                                  setImageSourceFilter(filter.key);
-                                  setShowAllImages(false); // Reset pagination when filter changes
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setImageSortOrder(imageSortOrder === 'newest' ? 'oldest' : 'newest');
                                 }}
-                                className={`px-2 py-0.5 text-xs font-medium rounded-full transition-all ${
-                                  isActive
-                                    ? `${filter.color} text-white`
-                                    : count === 0
-                                      ? 'bg-white/5 text-white/30'
-                                      : `${filter.color}/20 text-white/70 hover:${filter.color}/40 hover:text-white`
-                                }`}
-                                disabled={count === 0 && filter.key !== null}
+                                className="px-1.5 py-0 text-[10px] font-medium rounded bg-white/10 hover:bg-white/20 text-white/80 transition-colors flex items-center gap-0.5"
                               >
-                                {filter.label} ({count})
+                                {imageSortOrder === 'newest' ? 'Newest' : 'Oldest'}
+                                <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  {imageSortOrder === 'newest' ? (
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  ) : (
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                  )}
+                                </svg>
                               </button>
-                            );
-                          })}
-                          {/* Sort control */}
-                          <div className="ml-auto flex items-center gap-1">
-                            <span className="text-xs text-mhc-text-muted">Sort:</span>
-                            <button
-                              onClick={() => setImageSortOrder(imageSortOrder === 'newest' ? 'oldest' : 'newest')}
-                              className="px-2 py-0.5 text-xs font-medium rounded bg-white/10 hover:bg-white/20 text-white/80 transition-colors flex items-center gap-1"
-                            >
-                              {imageSortOrder === 'newest' ? 'Newest' : 'Oldest'}
-                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                {imageSortOrder === 'newest' ? (
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                ) : (
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                                )}
-                              </svg>
-                            </button>
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                    )}
+                    {/* Chevron */}
+                    <svg
+                      className={`w-5 h-5 text-white/60 transition-transform duration-200 ml-2 flex-shrink-0 ${mediaCollapsed ? '' : 'rotate-180'}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+
+                  {/* Collapsible content */}
+                  <div
+                    className={`transition-all duration-200 ease-in-out ${
+                      mediaCollapsed ? 'max-h-0 opacity-0' : 'max-h-[20000px] opacity-100'
+                    } overflow-hidden`}
+                  >
+                    <div className="p-3">
 
                     {/* Images Tab Content */}
                     {mediaSubTab === 'images' && (
@@ -2138,10 +2166,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
                         )}
                       </div>
                     )}
+                    </div>
                   </div>
-                );
-              })()}
-            </CollapsibleSection>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Relationship & Names Section (Collapsible) - Combined */}

@@ -117,6 +117,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [ ] Investigate empty Events for recent sessions
 - [ ] Investigate missing January 1 session data
 - [ ] Fix Priority Lookup Queue always showing 0 (table may not exist/be populated)
+- [ ] Investigate duplicate affiliate images (4+ copies of same image appearing)
 - [ ] Investigate statbate_model not increasing
 - [ ] Add search/watchlist prioritization for scraping jobs (needs requirements)
 
@@ -188,7 +189,11 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 
 ### /profile - UI/UX
 
-- [ ] Profile page UI theming - swap rating/CB links, brighten pills, move Profile Details, sticky header
+- [x] Profile page UI theming - swap rating/CB links, brighten pills, move Profile Details _(v1.34.5)_
+- [ ] Tighten space between username and top navigation
+- [ ] Fix rounded corners gap between profile card and media section
+- [ ] Add image timestamp for uploaded images used as primary
+- [ ] Brighten CB/UN buttons and filled rating stars (contrast issue)
 - [ ] Fix hover image endless loop - add delay on disappear or hover start
 
 ### Code Refactoring
