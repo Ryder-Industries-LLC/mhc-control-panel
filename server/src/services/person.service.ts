@@ -235,6 +235,10 @@ export class PersonService {
           (SELECT file_path FROM profile_images WHERE person_id = p.id AND is_primary = true LIMIT 1),
           (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1)
         ) as image_url,
+        COALESCE(
+          (SELECT COALESCE(captured_at, uploaded_at) FROM profile_images WHERE person_id = p.id AND is_primary = true LIMIT 1),
+          (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1)
+        ) as image_captured_at,
         (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
         (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
         (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags,

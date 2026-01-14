@@ -165,6 +165,8 @@ interface SystemStats {
     bySource: Record<string, number>;
     imagesStored: number;
     imageSizeBytes: number;
+    imagesBySource?: Record<string, number>;
+    imagesByStorage?: Record<string, number>;
     videosStored: number;
     videoSizeBytes: number;
     usersWithVideos: number;
@@ -3051,7 +3053,41 @@ const Admin: React.FC = () => {
               </div>
             </div>
 
-            {/* Source breakdown */}
+            {/* Images by Source breakdown */}
+            {systemStats.database.imagesBySource && Object.keys(systemStats.database.imagesBySource).length > 0 && (
+              <div className="mb-5">
+                <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Images by Source</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {Object.entries(systemStats.database.imagesBySource)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([source, count]) => (
+                    <div key={source} className="flex justify-between items-center p-2 bg-white/5 rounded-md border border-white/10 text-sm">
+                      <span className="font-semibold text-white/70">{source}:</span>
+                      <span className="text-white font-medium">{count.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Images by Storage Provider breakdown */}
+            {systemStats.database.imagesByStorage && Object.keys(systemStats.database.imagesByStorage).length > 0 && (
+              <div className="mb-5">
+                <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Images by Storage</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {Object.entries(systemStats.database.imagesByStorage)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([provider, count]) => (
+                    <div key={provider} className="flex justify-between items-center p-2 bg-white/5 rounded-md border border-white/10 text-sm">
+                      <span className="font-semibold text-white/70">{provider.toUpperCase()}:</span>
+                      <span className="text-white font-medium">{count.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Snapshots by Source breakdown */}
             {Object.keys(systemStats.database.bySource).length > 0 && (
               <div>
                 <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Snapshots by Source</h4>

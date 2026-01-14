@@ -77,6 +77,8 @@ router.get('/stats', async (_req: Request, res: Response) => {
     let videoCount = 0;
     let videoTotalSizeBytes = 0;
     let usersWithVideos = 0;
+    let imagesBySource: Record<string, number> = {};
+    let imagesByStorage: Record<string, number> = {};
     try {
       // Get count and total size from profile_images (images with known file sizes)
       const profileImagesResult = await query(`
@@ -104,6 +106,30 @@ router.get('/stats', async (_req: Request, res: Response) => {
       const affiliateCount = parseInt(affiliateImagesResult.rows[0]?.count || '0');
 
       imageCount = uploadedImageCount + affiliateCount;
+
+      // Get image counts by source
+      const sourceCountsResult = await query(`
+        SELECT source, COUNT(*) as count
+        FROM profile_images
+        WHERE media_type = 'image' OR media_type IS NULL
+        GROUP BY source
+      `);
+      for (const row of sourceCountsResult.rows) {
+        imagesBySource[row.source || 'unknown'] = parseInt(row.count);
+      }
+      // Add affiliate_api count from affiliate_api_snapshots table
+      imagesBySource['affiliate_api_snapshots'] = affiliateCount;
+
+      // Get image counts by storage provider
+      const storageCountsResult = await query(`
+        SELECT storage_provider, COUNT(*) as count
+        FROM profile_images
+        WHERE media_type = 'image' OR media_type IS NULL
+        GROUP BY storage_provider
+      `);
+      for (const row of storageCountsResult.rows) {
+        imagesByStorage[row.storage_provider || 's3'] = parseInt(row.count);
+      }
     } catch (e) {
       // Tables might not exist
     }
@@ -173,6 +199,8 @@ router.get('/stats', async (_req: Request, res: Response) => {
         bySource,
         imagesStored: imageCount,
         imageSizeBytes: imageTotalSizeBytes,
+        imagesBySource,
+        imagesByStorage,
         videosStored: videoCount,
         videoSizeBytes: videoTotalSizeBytes,
         usersWithVideos: usersWithVideos,

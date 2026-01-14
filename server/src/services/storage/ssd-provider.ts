@@ -29,12 +29,13 @@ export interface DiskSpaceInfo {
 }
 
 // Source types mapped to folder names
-export type MediaSource = 'affiliate_api' | 'manual_upload' | 'screensnap' | 'profile' | 'external' | 'imported';
+export type MediaSource = 'affiliate_api' | 'manual_upload' | 'screensnap' | 'following_snap' | 'profile' | 'external' | 'imported';
 
 const SOURCE_TO_FOLDER: Record<string, string> = {
   'affiliate_api': 'auto',
   'manual_upload': 'uploads',
   'screensnap': 'snaps',
+  'following_snap': 'following',
   'profile': 'profile',
   'external': 'uploads',
   'imported': 'uploads',

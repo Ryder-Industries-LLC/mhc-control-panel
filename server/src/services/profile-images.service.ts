@@ -6,7 +6,7 @@ import { logger } from '../config/logger.js';
 import { storageService } from './storage/storage.service.js';
 
 export type MediaType = 'image' | 'video';
-export type MediaSource = 'manual_upload' | 'screensnap' | 'external' | 'imported' | 'profile';
+export type MediaSource = 'manual_upload' | 'screensnap' | 'following_snap' | 'affiliate_api' | 'external' | 'imported' | 'profile';
 
 export interface ProfileImage {
   id: string;

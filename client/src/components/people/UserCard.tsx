@@ -66,6 +66,7 @@ export const UserCard: React.FC<UserCardProps> = ({
           <img
             src={imageUrl}
             alt={person.username}
+            title={person.image_captured_at ? formatDate(person.image_captured_at) : undefined}
             loading="lazy"
             className="w-full h-full object-cover transition-transform hover:scale-105"
           />

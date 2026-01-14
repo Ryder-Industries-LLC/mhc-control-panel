@@ -97,11 +97,12 @@ const formatTimeET = (dateStr: string): string => {
 
 // Source label mapping for consistency
 const SOURCE_LABELS: Record<string, { label: string; shortLabel: string; color: string }> = {
-  affiliate_api: { label: 'Live', shortLabel: 'Live', color: 'bg-blue-500' },
+  affiliate_api: { label: 'Affiliate', shortLabel: 'Affiliate', color: 'bg-blue-500' },
   profile: { label: 'Profile', shortLabel: 'Profile', color: 'bg-cyan-500' },
-  screensnap: { label: 'Screenshot', shortLabel: 'Snap', color: 'bg-purple-500' },
+  screensnap: { label: 'Snap', shortLabel: 'Snap', color: 'bg-purple-500' },
+  following_snap: { label: 'Follow', shortLabel: 'Follow', color: 'bg-green-500' },
   external: { label: 'Link', shortLabel: 'Link', color: 'bg-orange-500' },
-  manual_upload: { label: 'Upload', shortLabel: 'Upload', color: 'bg-green-500' },
+  manual_upload: { label: 'Upload', shortLabel: 'Upload', color: 'bg-amber-500' },
   imported: { label: 'Import', shortLabel: 'Import', color: 'bg-gray-500' },
 };
 
@@ -140,15 +141,6 @@ const getPlaceholderImage = (role: string): string => {
   return role === 'MODEL' ? MODEL_PLACEHOLDER : VIEWER_PLACEHOLDER;
 };
 
-interface ImageHistoryItem {
-  image_url: string;
-  observed_at: string;
-  session_start: string;
-  current_show: string;
-  num_users: number;
-  room_subject: string;
-}
-
 const Profile: React.FC<ProfilePageProps> = () => {
   const { username: urlUsername } = useParams<{ username: string }>();
   const navigate = useNavigate();
@@ -165,9 +157,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [error, setError] = useState<string | null>(null);
   const [showRawData, setShowRawData] = useState(false);
 
-  // Image history state
-  const [imageHistory, setImageHistory] = useState<ImageHistoryItem[]>([]);
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   // Notes and status state
   const [profileNotes, setProfileNotes] = useState<ProfileNote[]>([]);
@@ -182,7 +171,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [noteLineLimit, setNoteLineLimit] = useState(6); // Configurable line limit for Read More
   const [showAllNotes, setShowAllNotes] = useState(false); // Show all notes vs first 2
   const [showAddNoteModal, setShowAddNoteModal] = useState(false);
-  const [showUploadMediaModal, setShowUploadMediaModal] = useState(false);
   const [showProfileDetailsModal, setShowProfileDetailsModal] = useState(false);
 
   // Profile attributes state
@@ -230,26 +218,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [isDraggingPreview, setIsDraggingPreview] = useState(false);
   const dragStartRef = useRef<{ x: number; y: number; posX: number; posY: number } | null>(null);
 
-  // Image upload state
+  // Image state (display only - uploads via Admin Bulk Uploader)
   const [uploadedImages, setUploadedImages] = useState<any[]>([]);
   const [currentProfileImage, setCurrentProfileImage] = useState<any | null>(null);
-  const [imageUploadLoading, setImageUploadLoading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(
-    null
-  );
-  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
-  const [selectedImageSource, setSelectedImageSource] = useState<
-    'manual_upload' | 'screensnap' | 'external'
-  >('manual_upload');
-  const [imageDescription, setImageDescription] = useState('');
-  const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const dropZoneRef = useRef<HTMLDivElement>(null);
-  const [imageUploadLimits, setImageUploadLimits] = useState<{
-    manual: number;
-    external: number;
-    screenshot: number;
-  } | null>(null);
+  const [imagesLoading, setImagesLoading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   // Media subtab state (images vs videos)
   const [mediaSubTab, setMediaSubTab] = useState<'images' | 'videos'>('images');
@@ -329,21 +302,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, [isDraggingPreview, previewPosition]);
-
-  // Load image upload limits on mount
-  useEffect(() => {
-    fetch('/api/settings/image-upload/config')
-      .then((response) => (response.ok ? response.json() : null))
-      .then((config) => {
-        if (config?.limits) {
-          setImageUploadLimits(config.limits);
-        }
-      })
-      .catch(() => {
-        // Use defaults if settings fail to load (20MB)
-        setImageUploadLimits({ manual: 20971520, external: 20971520, screenshot: 20971520 });
-      });
-  }, []);
 
   // Auto-load profile if username in URL
   useEffect(() => {
@@ -584,20 +542,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
     }
   }, [profileData?.person?.username]);
 
-  // Fetch image history and current profile image when profile loads
+  // Fetch current primary profile image when profile loads
   useEffect(() => {
-    if (profileData?.person?.id) {
-      fetch(`/api/person/${profileData.person.id}/images?limit=10`)
-        .then((response) => response.json())
-        .then((data) => {
-          setImageHistory(data.images || []);
-          setCurrentImageIndex(0);
-        })
-        .catch((err) => {
-          console.error('Failed to fetch image history', err);
-          setImageHistory([]);
-        });
-    }
     if (profileData?.person?.username) {
       fetch(`/api/profile/${profileData.person.username}/images/current`)
         .then((response) => response.json())
@@ -609,7 +555,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
           setCurrentProfileImage(null);
         });
     }
-  }, [profileData?.person?.id, profileData?.person?.username]);
+  }, [profileData?.person?.username]);
 
   // Extract social links from profile data
   // Handle various formats: array [{platform, url}], object {platform: url}, or object {platform: {url, platform}}
@@ -647,7 +593,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
   // Fetch uploaded images when profile loads
   useEffect(() => {
     if (profileData?.person?.username) {
-      setImageUploadLoading(true);
+      setImagesLoading(true);
       fetch(`/api/profile/${profileData.person.username}/images`)
         .then((response) => response.json())
         .then((data) => {
@@ -658,7 +604,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
           setUploadedImages([]);
         })
         .finally(() => {
-          setImageUploadLoading(false);
+          setImagesLoading(false);
         });
     }
   }, [profileData?.person?.username]);
@@ -762,153 +708,19 @@ const Profile: React.FC<ProfilePageProps> = () => {
     setEditingNoteDate('');
   };
 
-  // Helper to format bytes as human-readable size
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  // Get the current upload limit based on selected source
-  const getCurrentUploadLimit = (): number => {
-    if (!imageUploadLimits) return 20 * 1024 * 1024; // Default 20MB
-    switch (selectedImageSource) {
-      case 'manual_upload':
-        return imageUploadLimits.manual;
-      case 'screensnap':
-        return imageUploadLimits.screenshot;
-      case 'external':
-        return imageUploadLimits.external;
-      default:
-        return imageUploadLimits.manual;
-    }
-  };
-
-  // Image upload handler - supports multiple files
-  const handleImageUpload = async (files: File[]) => {
-    if (!profileData?.person?.username || files.length === 0) return;
-
-    setImageUploadLoading(true);
-    setImageUploadError(null);
-    setUploadProgress({ current: 0, total: files.length });
-
-    const uploadedSuccessfully: any[] = [];
-    const errors: string[] = [];
-
-    // Get the size limit for the current source type
-    const sizeLimit = getCurrentUploadLimit();
-    const sourceName =
-      selectedImageSource === 'manual_upload'
-        ? 'manual upload'
-        : selectedImageSource === 'screensnap'
-          ? 'screenshot'
-          : 'external';
-
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      setUploadProgress({ current: i + 1, total: files.length });
-
-      // Client-side size validation
-      if (file.size > sizeLimit) {
-        errors.push(
-          `${file.name}: File size (${formatFileSize(file.size)}) exceeds the ${formatFileSize(sizeLimit)} limit for ${sourceName} uploads`
-        );
-        continue;
-      }
-
-      try {
-        const formData = new FormData();
-        formData.append('image', file);
-        formData.append('source', selectedImageSource);
-        if (imageDescription.trim()) {
-          formData.append('description', imageDescription.trim());
-        }
-
-        const response = await fetch(`/api/profile/${profileData.person.username}/images`, {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error || `Failed to upload ${file.name}`);
-        }
-
-        const newImage = await response.json();
-        uploadedSuccessfully.push(newImage);
-      } catch (err: any) {
-        errors.push(`${file.name}: ${err.message}`);
-      }
-    }
-
-    // Add all successfully uploaded images to state
-    if (uploadedSuccessfully.length > 0) {
-      setUploadedImages((prev) => [...uploadedSuccessfully, ...prev]);
-    }
-
-    // Show errors if any
-    if (errors.length > 0) {
-      setImageUploadError(errors.join('\n'));
-    }
-
-    setImageDescription('');
-    setUploadProgress(null);
-    setImageUploadLoading(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  // Drag and drop handlers
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    // Only set dragging to false if we're leaving the drop zone entirely
-    if (dropZoneRef.current && !dropZoneRef.current.contains(e.relatedTarget as Node)) {
-      setIsDragging(false);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-
-    const files = Array.from(e.dataTransfer.files).filter((file) =>
-      ['image/jpeg', 'image/png', 'image/gif', 'image/webp'].includes(file.type)
-    );
-
-    if (files.length > 0) {
-      handleImageUpload(files);
-    } else if (e.dataTransfer.files.length > 0) {
-      setImageUploadError('Please drop valid image files (JPEG, PNG, GIF, or WebP)');
-    }
-  };
-
   // Set image as current/primary
-  // For affiliate images, first import them to profile_images, then set as current
+  // For affiliate images, first promote them to profile_images, then set as current
   const handleSetAsCurrent = async (
     imageId: string,
     isAffiliateImage: boolean = false,
-    affiliateData?: { imageUrl: string; capturedAt: string; viewers?: number }
+    affiliateData?: { filePath: string; capturedAt: string; viewers?: number }
   ) => {
     if (!profileData?.person?.username) return;
 
     try {
       let targetImageId = imageId;
 
-      // If this is an affiliate image, import it first
+      // If this is an affiliate image, promote it to profile_images first
       if (isAffiliateImage && affiliateData) {
         const importResponse = await fetch(
           `/api/profile/${profileData.person.username}/images/import-affiliate`,
@@ -916,7 +728,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              imageUrl: affiliateData.imageUrl,
+              filePath: affiliateData.filePath,
               capturedAt: affiliateData.capturedAt,
               viewers: affiliateData.viewers,
             }),
@@ -945,14 +757,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
         throw new Error(data.error || 'Failed to set image as current');
       }
 
-      // Refresh the images list and current profile image
+      // Refresh uploaded images list and current profile image
       const imagesResponse = await fetch(`/api/profile/${profileData.person.username}/images`);
       if (imagesResponse.ok) {
         const data = await imagesResponse.json();
         setUploadedImages(data.images || []);
       }
 
-      // Refresh the current profile image for the overview
+      // Refresh the current profile image (shown at top of profile)
       const currentResponse = await fetch(
         `/api/profile/${profileData.person.username}/images/current`
       );
@@ -961,7 +773,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
         setCurrentProfileImage(data.image || null);
       }
     } catch (err: any) {
-      setImageUploadError(err.message || 'Failed to set image as current');
+      setImageError(err.message || 'Failed to set image as current');
     }
   };
 
@@ -1451,10 +1263,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       Follows Me
                     </span>
                   )}
-                  {/* Show timestamp when image history exists */}
-                  {imageHistory.length > 0 && imageHistory[currentImageIndex] && (
+                  {/* Show timestamp when primary image exists */}
+                  {currentProfileImage?.captured_at && (
                     <span className="text-xs text-white/50 ml-auto">
-                      {new Date(imageHistory[currentImageIndex].observed_at).toLocaleString(
+                      {new Date(currentProfileImage.captured_at).toLocaleString(
                         'en-US',
                         {
                           month: 'short',
@@ -1466,21 +1278,19 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     </span>
                   )}
                 </div>
-                {/* Image with navigation arrows - 440x330 */}
+                {/* Main profile image - 440x330 */}
                 <div className="relative group">
                   <img
                     src={
-                      imageHistory.length > 0
-                        ? `/images/${imageHistory[currentImageIndex]?.image_url}`
-                        : currentProfileImage
-                          ? getProfileImageUrl(currentProfileImage)
-                          : getSessionImageUrl(
-                              profileData.latestSession,
-                              isSessionLive(profileData.latestSession)
-                            ) ||
-                            profileData.profile.photos?.find((p: any) => p.isPrimary)?.url ||
-                            profileData.profile.photos?.[0]?.url ||
-                            getPlaceholderImage(profileData.person.role)
+                      currentProfileImage
+                        ? getProfileImageUrl(currentProfileImage)
+                        : getSessionImageUrl(
+                            profileData.latestSession,
+                            isSessionLive(profileData.latestSession)
+                          ) ||
+                          profileData.profile.photos?.find((p: any) => p.isPrimary)?.url ||
+                          profileData.profile.photos?.[0]?.url ||
+                          getPlaceholderImage(profileData.person.role)
                     }
                     alt={profileData.person.username}
                     className={`w-[440px] h-[330px] rounded-lg object-cover shadow-lg ${
@@ -1491,37 +1301,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     width="440"
                     height="330"
                   />
-                  {/* Navigation arrows - only show if multiple images */}
-                  {imageHistory.length > 1 && (
-                    <>
-                      <button
-                        onClick={() =>
-                          setCurrentImageIndex((prev) =>
-                            prev > 0 ? prev - 1 : imageHistory.length - 1
-                          )
-                        }
-                        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-lg"
-                        title="Previous image"
-                      >
-                        ‹
-                      </button>
-                      <button
-                        onClick={() =>
-                          setCurrentImageIndex((prev) =>
-                            prev < imageHistory.length - 1 ? prev + 1 : 0
-                          )
-                        }
-                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80 text-white w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-lg"
-                        title="Next image"
-                      >
-                        ›
-                      </button>
-                      {/* Image counter */}
-                      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                        {currentImageIndex + 1} / {imageHistory.length}
-                      </div>
-                    </>
-                  )}
                 </div>
                 {/* Below image row: Rating (left) | CB | UN (centered) | + Add Note (right) */}
                 <div className="flex items-center justify-between w-[440px] mt-1.5">
@@ -1718,8 +1497,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       📺 {profileData.sessionStats.totalSessions.toLocaleString()} sessions
                     </span>
                   )}
-                  {imageHistory.length > 0 && (
-                    <span title="Total images captured">🖼️ {imageHistory.length} images</span>
+                  {uploadedImages.length > 0 && (
+                    <span title="Total images in Media section">🖼️ {uploadedImages.filter(img => img.media_type !== 'video').length} images</span>
                   )}
                   {/* MHC-1103: Renamed to "Visits to Me" for clarity */}
                   {roomVisitStats && roomVisitStats.total_visits > 0 && (
@@ -2006,23 +1785,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   <span className="text-xs text-white/50 font-normal">
                     ({uploadedImages.length})
                   </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowUploadMediaModal(true);
-                    }}
-                    className="ml-auto mr-2 text-xs text-mhc-primary hover:text-mhc-primary/80 transition-colors flex items-center gap-1"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-                      />
-                    </svg>
-                    Upload
-                  </button>
                 </div>
               }
               defaultCollapsed={false}
@@ -2151,11 +1913,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                     <div
                                       key={image.id}
                                       className={`group relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer hover:border-mhc-primary hover:-translate-y-1 hover:shadow-lg ${
-                                        currentImageIndex === index
+                                        image.is_primary
                                           ? 'border-mhc-primary ring-2 ring-mhc-primary/50'
                                           : 'border-white/10'
                                       }`}
-                                      onClick={() => setCurrentImageIndex(index)}
                                       onMouseEnter={() => setPreviewImageUrl(imageUrl)}
                                       onMouseLeave={() => setPreviewImageUrl(null)}
                                     >
@@ -2200,7 +1961,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                       </div>
                                       {/* Source badge */}
                                       <div
-                                        className={`absolute top-1 left-1 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold ${getSourceInfo(image.source).color}/80`}
+                                        className={`absolute top-1 left-1 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold shadow-sm ${getSourceInfo(image.source).color}`}
                                       >
                                         {getSourceInfo(image.source).shortLabel}
                                       </div>
@@ -2216,7 +1977,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                                 isAffiliate,
                                                 isAffiliate
                                                   ? {
-                                                      imageUrl: getProfileImageUrl(image),
+                                                      // Use local file_path for affiliate images (already stored)
+                                                      filePath: image.file_path,
                                                       capturedAt:
                                                         image.captured_at || image.uploaded_at,
                                                       viewers: image.viewers,
@@ -2287,7 +2049,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                               </div>
                             )}
                           </>
-                        ) : imageUploadLoading ? (
+                        ) : imagesLoading ? (
                           <div className="flex items-center justify-center py-8">
                             <div className="text-mhc-text-muted text-sm">Loading images...</div>
                           </div>
@@ -3504,126 +3266,6 @@ const Profile: React.FC<ProfilePageProps> = () => {
         </div>
       </Modal>
 
-      {/* Upload Media Modal */}
-      <Modal
-        isOpen={showUploadMediaModal}
-        title="Upload Media"
-        onClose={() => setShowUploadMediaModal(false)}
-        size="md"
-      >
-        <div className="space-y-4">
-          {imageUploadError && (
-            <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 text-sm whitespace-pre-line">
-              {imageUploadError}
-            </div>
-          )}
-
-          {/* Drag & Drop Zone */}
-          <div
-            ref={dropZoneRef}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            onClick={() => !imageUploadLoading && fileInputRef.current?.click()}
-            className={`relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-all ${
-              isDragging
-                ? 'border-mhc-primary bg-mhc-primary/10'
-                : 'border-white/20 hover:border-mhc-primary/50 hover:bg-white/5'
-            } ${imageUploadLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/gif,image/webp"
-              multiple
-              onChange={(e) => {
-                const files = Array.from(e.target.files || []);
-                if (files.length > 0) handleImageUpload(files);
-              }}
-              disabled={imageUploadLoading}
-              className="hidden"
-            />
-            <div className="flex flex-col items-center gap-2">
-              <svg
-                className={`w-8 h-8 ${isDragging ? 'text-mhc-primary' : 'text-white/40'}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                />
-              </svg>
-              <div className="text-white/70 text-sm">
-                {isDragging ? (
-                  <span className="text-mhc-primary font-medium">Drop images here</span>
-                ) : (
-                  <>
-                    <span className="text-mhc-primary font-medium">Click to upload</span> or drag
-                    and drop
-                  </>
-                )}
-              </div>
-              <div className="text-white/40 text-xs">JPEG, PNG, GIF, or WebP (max 10MB each)</div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            <select
-              value={selectedImageSource}
-              onChange={(e) =>
-                setSelectedImageSource(
-                  e.target.value as 'manual_upload' | 'screensnap' | 'external'
-                )
-              }
-              className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-mhc-primary"
-            >
-              <option value="manual_upload">Manual Upload</option>
-              <option value="screensnap">Screen Capture</option>
-              <option value="external">External Source</option>
-            </select>
-            <input
-              type="text"
-              value={imageDescription}
-              onChange={(e) => setImageDescription(e.target.value)}
-              placeholder="Description (optional)"
-              className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 focus:outline-none focus:border-mhc-primary"
-            />
-          </div>
-
-          {imageUploadLoading && (
-            <div className="flex items-center gap-3 text-mhc-text-muted text-sm">
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                  fill="none"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                />
-              </svg>
-              {uploadProgress ? (
-                <span>
-                  Uploading {uploadProgress.current} of {uploadProgress.total}...
-                </span>
-              ) : (
-                <span>Uploading...</span>
-              )}
-            </div>
-          )}
-        </div>
-      </Modal>
     </div>
   );
 };

@@ -328,18 +328,18 @@ export class LiveScreenshotJob {
           // Save using new storage service with username-based path
           const result = await storageService.writeWithUsername(
             username,
-            'screensnap',
+            'following_snap',
             filename,
             Buffer.from(response.data),
             mimeType
           );
 
           if (result.success) {
-            // Create profile_images record with source='screensnap'
+            // Create profile_images record with source='following_snap'
             await ProfileImagesService.create({
               personId: person.person_id,
               filePath: result.relativePath,
-              source: 'screensnap',
+              source: 'following_snap',
               capturedAt: new Date(),
               fileSize: result.size,
               mimeType,

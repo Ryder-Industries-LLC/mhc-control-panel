@@ -128,12 +128,10 @@ export class BroadcastSessionService {
     const existingResult = await query(existingSessionSql, [personId, sessionStart]);
     const existingSession = existingResult.rows[0];
 
-    // Download and save images using new storage service (skips placeholder images)
-    const [thumbnailPath, fullPath] = await Promise.all([
-      this.downloadAndSaveImage(roomData.image_url, roomData.username, 'thumbnail'),
-      this.downloadAndSaveImage(roomData.image_url_360x270, roomData.username, 'full'),
-    ]);
-    const imagePaths = { thumbnail: thumbnailPath, full: fullPath };
+    // Download image once (image_url and image_url_360x270 are identical from CB API)
+    const imagePath = await this.downloadAndSaveImage(roomData.image_url, roomData.username, 'thumbnail');
+    // Use same path for both columns for backward compatibility
+    const imagePaths = { thumbnail: imagePath, full: imagePath };
 
     // If we got a valid new image, use it; otherwise keep as null (don't use placeholder URLs)
     const shouldClearOldImage = imagePaths.full !== null;

@@ -545,6 +545,7 @@ class StorageService {
       'affiliate_api': 'auto',
       'manual_upload': 'uploads',
       'screensnap': 'snaps',
+      'following_snap': 'following',
       'profile': 'profile',
       'external': 'uploads',
       'imported': 'uploads',

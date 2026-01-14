@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-14 (v1.34.3)
+**Last Updated**: 2026-01-14 (v1.34.4)
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -44,6 +44,9 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Change "With Images" label to "With Media" _(v1.23.0)_
 - [x] Add CB Profile Link to List view, Grid view _(v1.28.0 - CB and UN Cams links added)_
 - [x] Rename "People" to "Directory" in navigation _(v1.28.0)_
+- [x] Add image timestamp on hover for People listing _(v1.34.4)_
+- [ ] Fix rating not working on Directory/People page
+- [ ] Add sort controls to People Grid view
 
 ### /admin
 
@@ -60,6 +63,9 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 
 - [x] Move Media to own collapsible section at top, collapsed by default _(v1.23.0)_
 - [x] Fix doubled image count (was showing 18 instead of 9) _(v1.23.0)_
+- [x] Fix main photo not updating after setting primary _(v1.34.4 - removed carousel, use primary directly)_
+- [x] Fix affiliate image set-as-primary not working _(v1.34.4 - use local file instead of re-download)_
+- [ ] Fix quick labels on Media section - reflect new source values, hide 0-count for unused sources
 
 ### /profile - Notes
 
@@ -102,6 +108,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Merge By Role and Snapshots by Source on same row _(v1.23.0)_
 - [x] Simplify job controls to Start/Stop only _(v1.25.0 - removed Pause/Resume)_
 - [x] Add clearer job status states _(v1.25.0 - Stopped/Starting/Processing/Waiting)_
+- [x] Add image source summary to Admin System Stats _(v1.34.4 - by source and storage provider)_
 
 ---
 

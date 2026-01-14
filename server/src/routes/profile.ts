@@ -1506,10 +1506,12 @@ router.get('/:username/images', async (req: Request, res: Response) => {
     );
 
     // Get affiliate API images from affiliate_api_snapshots
+    // Include original_url for import functionality
     const affiliateImagesSql = `
       SELECT DISTINCT ON (image_path)
         id,
         image_path as file_path,
+        image_url as original_url,
         'affiliate_api' as source,
         observed_at as captured_at,
         num_users as viewers
@@ -1524,6 +1526,7 @@ router.get('/:username/images', async (req: Request, res: Response) => {
       id: row.id,
       person_id: person.id,
       file_path: row.file_path,
+      original_url: row.original_url, // Original CB URL for import
       original_filename: null,
       source: 'affiliate_api',
       description: null,
@@ -1709,19 +1712,20 @@ router.delete('/:username/images/:imageId', async (req: Request, res: Response) 
 
 /**
  * POST /api/profile/:username/images/import-affiliate
- * Import an affiliate API image into profile_images so it can be set as current
+ * Import an affiliate API image into profile_images so it can be set as current.
+ * Uses the existing local file path instead of re-downloading from CB.
  */
 router.post('/:username/images/import-affiliate', async (req: Request, res: Response) => {
   try {
     const { username } = req.params;
-    const { snapshotId, imageUrl, capturedAt, viewers } = req.body;
+    const { filePath, capturedAt, viewers } = req.body;
 
     if (!username) {
       return res.status(400).json({ error: 'Username is required' });
     }
 
-    if (!imageUrl) {
-      return res.status(400).json({ error: 'Image URL is required' });
+    if (!filePath) {
+      return res.status(400).json({ error: 'File path is required' });
     }
 
     // Get person
@@ -1730,73 +1734,24 @@ router.post('/:username/images/import-affiliate', async (req: Request, res: Resp
       return res.status(404).json({ error: 'Person not found' });
     }
 
-    // Initialize storage if needed
-    await ProfileImagesService.init();
-
-    // Download the image and save it
-    const https = await import('https');
-    const http = await import('http');
-    const path = await import('path');
-    const fs = await import('fs/promises');
-    const crypto = await import('crypto');
-
-    // Determine protocol
-    const protocol = imageUrl.startsWith('https') ? https : http;
-
-    // Download image
-    const imageBuffer = await new Promise<Buffer>((resolve, reject) => {
-      const request = protocol.get(imageUrl, (response) => {
-        if (response.statusCode === 301 || response.statusCode === 302) {
-          // Handle redirect
-          const redirectUrl = response.headers.location;
-          if (redirectUrl) {
-            const redirectProtocol = redirectUrl.startsWith('https') ? https : http;
-            redirectProtocol
-              .get(redirectUrl, (redirectResponse) => {
-                const chunks: Buffer[] = [];
-                redirectResponse.on('data', (chunk) => chunks.push(chunk));
-                redirectResponse.on('end', () => resolve(Buffer.concat(chunks)));
-                redirectResponse.on('error', reject);
-              })
-              .on('error', reject);
-          } else {
-            reject(new Error('Redirect without location'));
-          }
-        } else if (response.statusCode !== 200) {
-          reject(new Error(`Failed to download image: ${response.statusCode}`));
-        } else {
-          const chunks: Buffer[] = [];
-          response.on('data', (chunk) => chunks.push(chunk));
-          response.on('end', () => resolve(Buffer.concat(chunks)));
-          response.on('error', reject);
-        }
-      });
-      request.on('error', reject);
+    // Create a profile_images record pointing to the existing affiliate file
+    // The file is already stored - we just need a record in profile_images to make it "promotable" to primary
+    const image = await ProfileImagesService.create({
+      personId: person.id,
+      filePath: filePath,
+      source: 'affiliate_api',
+      capturedAt: capturedAt ? new Date(capturedAt) : new Date(),
+      description: viewers
+        ? `Promoted from broadcast (${viewers} viewers)`
+        : 'Promoted from affiliate API',
+      username,
+      storageProvider: 's3', // Affiliate images are stored in S3
     });
 
-    // Save to profile_images using the service
-    const image = await ProfileImagesService.saveUploadedFile(
-      {
-        buffer: imageBuffer,
-        originalname: path.basename(imageUrl) || 'imported-image.jpg',
-        mimetype: 'image/jpeg',
-        size: imageBuffer.length,
-      },
-      person.id,
-      {
-        source: 'imported',
-        description: viewers
-          ? `Imported from broadcast (${viewers} viewers)`
-          : 'Imported from affiliate API',
-        capturedAt: capturedAt ? new Date(capturedAt) : undefined,
-        username, // Use S3 storage with username-based paths
-      }
-    );
-
-    logger.info('Affiliate image imported', { username, imageId: image.id, originalUrl: imageUrl });
+    logger.info('Affiliate image promoted to profile_images', { username, imageId: image.id, filePath });
     res.status(201).json(image);
   } catch (error: any) {
-    logger.error('Error importing affiliate image', { error, username: req.params.username });
+    logger.error('Error promoting affiliate image', { error, username: req.params.username });
     res.status(500).json({ error: error.message || 'Internal server error' });
   }
 });

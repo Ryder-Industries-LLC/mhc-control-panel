@@ -80,6 +80,51 @@ docker-compose exec web npm run migrate
 docker-compose exec db psql -U mhc_user -d mhc_control_panel
 ```
 
+### Quick Diagnostics
+
+When troubleshooting, use these commands to check system health:
+
+```bash
+# Check container status
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" | grep mhc
+
+# Test API health (through frontend proxy)
+curl -s "http://localhost:8080/api/system/stats" | python3 -c "import json,sys; d=json.load(sys.stdin); db=d.get('database',{}); print(f'Persons: {db.get(\"totalPersons\"):,}'); print(f'Images: {db.get(\"imagesStored\"):,}')"
+
+# Check for errors in web container logs
+docker logs mhc-web --tail 50 2>&1 | grep -E "error|Error"
+
+# Database quick stats
+docker exec mhc-db psql -U mhc_user -d mhc_control_panel -c "SELECT COUNT(*) as persons FROM persons; SELECT COUNT(*) as images FROM profile_images;"
+
+# Check recent migrations
+docker exec mhc-db psql -U mhc_user -d mhc_control_panel -c "SELECT * FROM migrations ORDER BY id DESC LIMIT 10;"
+
+# Verify table schema (useful for debugging column issues)
+docker exec mhc-db psql -U mhc_user -d mhc_control_panel -c "\d profile_images"
+```
+
+### Docker Architecture
+
+| Container      | Port  | Purpose                              |
+| -------------- | ----- | ------------------------------------ |
+| `mhc-frontend` | 8080  | Nginx serving React app, proxies /api |
+| `mhc-web`      | 3002  | Express API server (RUN_MODE=web)    |
+| `mhc-worker`   | -     | Background jobs (RUN_MODE=worker)    |
+| `mhc-db`       | 5433  | PostgreSQL database                  |
+
+**API Access**: Always use port 8080 (frontend proxy) for API calls, not 3002 directly.
+
+### Storage Architecture
+
+| Provider | Purpose                | Path/Location                           |
+| -------- | ---------------------- | --------------------------------------- |
+| S3       | Primary storage        | `mhc-media-prod` bucket (us-east-2)     |
+| SSD      | Local cache/fallback   | `/Volumes/Imago/MHC-Control_Panel/media` |
+| Docker   | Legacy (deprecated)    | Internal volume                         |
+
+Images are stored with paths like `people/{username}/auto/{timestamp}_{hash}.jpg`
+
 ### Important Files to Read
 
 Claude must only auto-read the following documents during /hydrate:
