@@ -31,6 +31,35 @@ import { GatedRoute } from './components/auth/GatedRoute';
 function UserMenu() {
   const { isAuthenticated, isLoading, user, logout } = useAuth();
   const [showDropdown, setShowDropdown] = React.useState(false);
+  const [avatarError, setAvatarError] = React.useState(false);
+  const [cachedAvatarUrl, setCachedAvatarUrl] = React.useState<string | null>(null);
+
+  // Load cached avatar on mount
+  React.useEffect(() => {
+    const cached = localStorage.getItem('mhc_cached_avatar');
+    if (cached) {
+      setCachedAvatarUrl(cached);
+    }
+  }, []);
+
+  // Cache avatar URL when it successfully loads
+  const handleAvatarLoad = React.useCallback(() => {
+    if (user?.avatarUrl) {
+      localStorage.setItem('mhc_cached_avatar', user.avatarUrl);
+      setCachedAvatarUrl(user.avatarUrl);
+    }
+  }, [user?.avatarUrl]);
+
+  // Handle avatar error - try cached version first
+  const handleAvatarError = React.useCallback(() => {
+    if (!avatarError && cachedAvatarUrl && cachedAvatarUrl !== user?.avatarUrl) {
+      // Try cached version - don't set error yet
+      setAvatarError(true);
+    } else {
+      // Cached version also failed or doesn't exist
+      setAvatarError(true);
+    }
+  }, [avatarError, cachedAvatarUrl, user?.avatarUrl]);
 
   if (isLoading) {
     return (
@@ -54,17 +83,23 @@ function UserMenu() {
     setShowDropdown(false);
   };
 
+  // Determine which avatar URL to use
+  const effectiveAvatarUrl = avatarError && cachedAvatarUrl ? cachedAvatarUrl : user?.avatarUrl;
+  const showAvatar = effectiveAvatarUrl && !(avatarError && (!cachedAvatarUrl || cachedAvatarUrl === user?.avatarUrl));
+
   return (
     <div className="relative">
       <button
         onClick={() => setShowDropdown(!showDropdown)}
         className="flex items-center gap-2 text-sm font-medium px-2 py-1 rounded-md hover:bg-mhc-surface-light transition-colors"
       >
-        {user?.avatarUrl ? (
+        {showAvatar ? (
           <img
-            src={user.avatarUrl}
-            alt={user.displayName || 'User'}
+            src={effectiveAvatarUrl}
+            alt={user?.displayName || 'User'}
             className="w-6 h-6 rounded-full object-cover"
+            onLoad={handleAvatarLoad}
+            onError={handleAvatarError}
           />
         ) : (
           <div className="w-6 h-6 rounded-full bg-mhc-primary/20 flex items-center justify-center text-mhc-primary text-xs font-bold">

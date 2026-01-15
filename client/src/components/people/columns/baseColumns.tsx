@@ -1,11 +1,77 @@
-import React from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { BasePerson, ColumnConfig } from '../../../types/people';
+import { StarRating } from '../../StarRating';
 
 /**
  * Base column definitions shared across all tabs
  * Standard order: Username | Image | Age | Tags | Images | Last Active | [Segment Specific] | Actions
  */
+
+// Image cell component with delayed hover preview
+interface HoverImageCellProps {
+  imageUrl: string;
+  username: string;
+  isLive: boolean;
+}
+
+export const HoverImageCell: React.FC<HoverImageCellProps> = ({ imageUrl, username, isLive }) => {
+  const [showPreview, setShowPreview] = useState(false);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnter = useCallback(() => {
+    hoverTimeoutRef.current = setTimeout(() => {
+      setShowPreview(true);
+    }, 400); // 400ms delay before showing preview
+  }, []);
+
+  const handleMouseLeave = useCallback(() => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setShowPreview(false);
+  }, []);
+
+  return (
+    <div
+      className="relative w-[120px] h-[90px]"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <img
+        src={imageUrl}
+        alt={username}
+        className={`w-full h-full object-cover rounded-md border-2 transition-all ${
+          showPreview
+            ? 'border-mhc-primary scale-105 shadow-lg shadow-mhc-primary/40'
+            : 'border-white/10'
+        }`}
+      />
+      {isLive && (
+        <span className="absolute top-1 right-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold animate-pulse">
+          LIVE
+        </span>
+      )}
+      {/* Hover preview with delay */}
+      {showPreview && (
+        <div
+          className="fixed z-[9999] pointer-events-none"
+          style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}
+        >
+          <div className="bg-black/95 border-2 border-white/30 rounded-lg p-2 shadow-2xl">
+            <img src={imageUrl} alt={username} className="w-[400px] h-[300px] object-cover rounded" />
+            {isLive && (
+              <div className="absolute top-4 left-4 bg-red-500 text-white px-3 py-1 rounded text-sm font-semibold animate-pulse">
+                LIVE
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Username column - standard across all tabs
 export function getUsernameColumn<T extends BasePerson>(): ColumnConfig<T> {
@@ -42,7 +108,7 @@ export function getUsernameColumn<T extends BasePerson>(): ColumnConfig<T> {
   };
 }
 
-// Image column with hover preview
+// Image column with hover preview (uses HoverImageCell component with 400ms delay)
 export function getImageColumn<T extends BasePerson>(): ColumnConfig<T> {
   return {
     id: 'image',
@@ -53,29 +119,7 @@ export function getImageColumn<T extends BasePerson>(): ColumnConfig<T> {
       const isLive = isPersonLive(person);
 
       return imageUrl ? (
-        <div className="relative w-[120px] h-[90px] group">
-          <img
-            src={imageUrl}
-            alt={person.username}
-            className="w-full h-full object-cover rounded-md border-2 border-white/10 transition-all group-hover:border-mhc-primary group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-mhc-primary/40"
-          />
-          {isLive && (
-            <span className="absolute top-1 right-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold animate-pulse">
-              LIVE
-            </span>
-          )}
-          {/* Hover preview */}
-          <div className="hidden group-hover:block fixed z-[9999] pointer-events-none" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
-            <div className="bg-black/95 border-2 border-white/30 rounded-lg p-2 shadow-2xl">
-              <img src={imageUrl} alt={person.username} className="w-[400px] h-[300px] object-cover rounded" />
-              {isLive && (
-                <div className="absolute top-4 left-4 bg-red-500 text-white px-3 py-1 rounded text-sm font-semibold animate-pulse">
-                  LIVE
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <HoverImageCell imageUrl={imageUrl} username={person.username} isLive={isLive} />
       ) : (
         <span className="text-white/30">&mdash;</span>
       );
@@ -156,6 +200,28 @@ export function getLastActiveColumn<T extends BasePerson>(): ColumnConfig<T> {
       const lastActive = getLastActiveTime(person);
       return <span>{lastActive ? formatDate(lastActive, { relative: true }) : '\u2014'}</span>;
     },
+  };
+}
+
+// Rating column
+export function getRatingColumn<T extends BasePerson>(
+  onRatingChange?: (username: string, rating: number) => void
+): ColumnConfig<T> {
+  return {
+    id: 'rating',
+    header: 'Rating',
+    width: '130px',
+    sortable: true,
+    sortField: 'rating' as keyof T,
+    render: (person) => (
+      <div onClick={(e) => e.stopPropagation()}>
+        <StarRating
+          rating={person.rating || 0}
+          onChange={onRatingChange ? (r) => onRatingChange(person.username, r) : undefined}
+          size="sm"
+        />
+      </div>
+    ),
   };
 }
 

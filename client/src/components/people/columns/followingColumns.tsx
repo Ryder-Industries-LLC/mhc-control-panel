@@ -11,6 +11,7 @@ import {
 import {
   getUsernameColumn,
   getImageColumn,
+  getRatingColumn,
   getAgeColumn,
   getTagsColumn,
   getImagesCountColumn,
@@ -19,13 +20,15 @@ import {
 
 /**
  * All tab columns follow the standard structure:
- * Username | Image | Age | Tags | Images | Last Active | [Segment Specific] | Actions
+ * Username | Image | Rating | Age | Tags | Images | Last Active | [Segment Specific]
  *
- * Segment-specific columns are inserted between Last Active and Actions
+ * Segment-specific columns are appended after Last Active
  */
 
 // Following tab columns
-export function getFollowingColumns(): ColumnConfig<FollowingPerson>[] {
+export function getFollowingColumns(
+  onRatingChange?: (username: string, rating: number) => void
+): ColumnConfig<FollowingPerson>[] {
   const followingSinceColumn: ColumnConfig<FollowingPerson> = {
     id: 'following_since',
     header: 'Following Since',
@@ -40,6 +43,7 @@ export function getFollowingColumns(): ColumnConfig<FollowingPerson>[] {
   return [
     getUsernameColumn<FollowingPerson>(),
     getImageColumn<FollowingPerson>(),
+    getRatingColumn<FollowingPerson>(onRatingChange),
     getAgeColumn<FollowingPerson>(),
     getTagsColumn<FollowingPerson>(),
     getImagesCountColumn<FollowingPerson>(),
@@ -49,7 +53,9 @@ export function getFollowingColumns(): ColumnConfig<FollowingPerson>[] {
 }
 
 // Followers tab columns
-export function getFollowersColumns(): ColumnConfig<FollowerPerson>[] {
+export function getFollowersColumns(
+  onRatingChange?: (username: string, rating: number) => void
+): ColumnConfig<FollowerPerson>[] {
   const followerSinceColumn: ColumnConfig<FollowerPerson> = {
     id: 'follower_since',
     header: 'Follower Since',
@@ -64,6 +70,7 @@ export function getFollowersColumns(): ColumnConfig<FollowerPerson>[] {
   return [
     getUsernameColumn<FollowerPerson>(),
     getImageColumn<FollowerPerson>(),
+    getRatingColumn<FollowerPerson>(onRatingChange),
     getAgeColumn<FollowerPerson>(),
     getTagsColumn<FollowerPerson>(),
     getImagesCountColumn<FollowerPerson>(),
@@ -73,7 +80,9 @@ export function getFollowersColumns(): ColumnConfig<FollowerPerson>[] {
 }
 
 // Unfollowed tab columns
-export function getUnfollowedColumns(): ColumnConfig<UnfollowedPerson>[] {
+export function getUnfollowedColumns(
+  onRatingChange?: (username: string, rating: number) => void
+): ColumnConfig<UnfollowedPerson>[] {
   const unfollowedAtColumn: ColumnConfig<UnfollowedPerson> = {
     id: 'unfollower_at',
     header: 'Unfollowed At',
@@ -99,6 +108,7 @@ export function getUnfollowedColumns(): ColumnConfig<UnfollowedPerson>[] {
   return [
     getUsernameColumn<UnfollowedPerson>(),
     getImageColumn<UnfollowedPerson>(),
+    getRatingColumn<UnfollowedPerson>(onRatingChange),
     getAgeColumn<UnfollowedPerson>(),
     getTagsColumn<UnfollowedPerson>(),
     getImagesCountColumn<UnfollowedPerson>(),
@@ -109,7 +119,9 @@ export function getUnfollowedColumns(): ColumnConfig<UnfollowedPerson>[] {
 }
 
 // Bans tab columns
-export function getBansColumns(): ColumnConfig<BannedPerson>[] {
+export function getBansColumns(
+  onRatingChange?: (username: string, rating: number) => void
+): ColumnConfig<BannedPerson>[] {
   const bannedAtColumn: ColumnConfig<BannedPerson> = {
     id: 'banned_at',
     header: 'Banned At',
@@ -124,6 +136,7 @@ export function getBansColumns(): ColumnConfig<BannedPerson>[] {
   return [
     getUsernameColumn<BannedPerson>(),
     getImageColumn<BannedPerson>(),
+    getRatingColumn<BannedPerson>(onRatingChange),
     getAgeColumn<BannedPerson>(),
     getTagsColumn<BannedPerson>(),
     getImagesCountColumn<BannedPerson>(),
@@ -133,7 +146,9 @@ export function getBansColumns(): ColumnConfig<BannedPerson>[] {
 }
 
 // Watchlist tab columns
-export function getWatchlistColumns(): ColumnConfig<BasePerson>[] {
+export function getWatchlistColumns(
+  onRatingChange?: (username: string, rating: number) => void
+): ColumnConfig<BasePerson>[] {
   // Watchlist badge is shown in username column via banned_me/watch_list logic
   // Add a watch indicator column
   const watchBadgeColumn: ColumnConfig<BasePerson> = {
@@ -150,6 +165,7 @@ export function getWatchlistColumns(): ColumnConfig<BasePerson>[] {
   return [
     getUsernameColumn<BasePerson>(),
     getImageColumn<BasePerson>(),
+    getRatingColumn<BasePerson>(onRatingChange),
     getAgeColumn<BasePerson>(),
     getTagsColumn<BasePerson>(),
     getImagesCountColumn<BasePerson>(),
@@ -159,7 +175,9 @@ export function getWatchlistColumns(): ColumnConfig<BasePerson>[] {
 }
 
 // Tipped By Me tab columns
-export function getTippedByMeColumns(): ColumnConfig<TipperPerson>[] {
+export function getTippedByMeColumns(
+  onRatingChange?: (username: string, rating: number) => void
+): ColumnConfig<TipperPerson>[] {
   const totalTokensColumn: ColumnConfig<TipperPerson> = {
     id: 'total_tokens',
     header: 'Total Tokens',
@@ -196,6 +214,7 @@ export function getTippedByMeColumns(): ColumnConfig<TipperPerson>[] {
   return [
     getUsernameColumn<TipperPerson>(),
     getImageColumn<TipperPerson>(),
+    getRatingColumn<TipperPerson>(onRatingChange),
     getAgeColumn<TipperPerson>(),
     getTagsColumn<TipperPerson>(),
     getImagesCountColumn<TipperPerson>(),
@@ -207,7 +226,9 @@ export function getTippedByMeColumns(): ColumnConfig<TipperPerson>[] {
 }
 
 // Tipped Me tab columns
-export function getTippedMeColumns(): ColumnConfig<TipperPerson>[] {
+export function getTippedMeColumns(
+  onRatingChange?: (username: string, rating: number) => void
+): ColumnConfig<TipperPerson>[] {
   const totalTokensColumn: ColumnConfig<TipperPerson> = {
     id: 'total_tokens',
     header: 'Total Tokens',
@@ -244,6 +265,7 @@ export function getTippedMeColumns(): ColumnConfig<TipperPerson>[] {
   return [
     getUsernameColumn<TipperPerson>(),
     getImageColumn<TipperPerson>(),
+    getRatingColumn<TipperPerson>(onRatingChange),
     getAgeColumn<TipperPerson>(),
     getTagsColumn<TipperPerson>(),
     getImagesCountColumn<TipperPerson>(),

@@ -167,6 +167,8 @@ interface SystemStats {
     imageSizeBytes: number;
     imagesBySource?: Record<string, number>;
     imagesByStorage?: Record<string, number>;
+    imageSummaryBySource?: Record<string, { count: number; sizeBytes: number }>;
+    imageDetails?: Array<{ source: string; storage: string; count: number; sizeBytes: number }>;
     videosStored: number;
     videoSizeBytes: number;
     usersWithVideos: number;
@@ -3106,36 +3108,161 @@ const Admin: React.FC = () => {
               </div>
             </div>
 
-            {/* Images by Source breakdown */}
-            {systemStats.database.imagesBySource && Object.keys(systemStats.database.imagesBySource).length > 0 && (
+            {/* Images Summary Table - by Source with Size */}
+            {systemStats.database.imageSummaryBySource && Object.keys(systemStats.database.imageSummaryBySource).length > 0 && (
               <div className="mb-5">
-                <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Images by Source</h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                  {Object.entries(systemStats.database.imagesBySource)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([source, count]) => (
-                    <div key={source} className="flex justify-between items-center p-2 bg-white/5 rounded-md border border-white/10 text-sm">
-                      <span className="font-semibold text-white/70">{source}:</span>
-                      <span className="text-white font-medium">{count.toLocaleString()}</span>
-                    </div>
-                  ))}
+                <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Summary</h4>
+                <div className="bg-white/5 rounded-lg border border-white/10 overflow-hidden inline-block min-w-[400px]">
+                  <table className="text-sm">
+                    <thead>
+                      <tr className="bg-white/5 border-b border-white/10">
+                        <th className="text-left py-2 px-3 text-white/70 font-semibold">Image Label</th>
+                        <th className="text-right py-2 px-3 text-white/70 font-semibold"># of Images</th>
+                        <th className="text-right py-2 px-3 text-white/70 font-semibold">Total Size</th>
+                        <th className="text-right py-2 px-3 text-white/70 font-semibold">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        // Map source codes to friendly labels (matching Profile.tsx SOURCE_LABELS)
+                        const sourceLabels: Record<string, string> = {
+                          'affiliate_api': 'Affiliate',
+                          'profile': 'Profile',
+                          'screensnap': 'Snap',
+                          'following_snap': 'Follow',
+                          'external': 'Link',
+                          'manual_upload': 'Upload',
+                          'imported': 'Import',
+                          'unknown': 'Unknown',
+                        };
+
+                        // Define display order
+                        const labelOrder = ['Affiliate', 'Snap', 'Follow', 'Profile', 'Upload', 'Import', 'Link', 'Unknown'];
+
+                        const entries = Object.entries(systemStats.database.imageSummaryBySource)
+                          .map(([source, data]) => ({
+                            source,
+                            label: sourceLabels[source] || source,
+                            ...data
+                          }))
+                          .sort((a, b) => {
+                            const aIdx = labelOrder.indexOf(a.label);
+                            const bIdx = labelOrder.indexOf(b.label);
+                            if (aIdx === -1 && bIdx === -1) return 0;
+                            if (aIdx === -1) return 1;
+                            if (bIdx === -1) return -1;
+                            return aIdx - bIdx;
+                          });
+
+                        const totalCount = entries.reduce((sum, data) => sum + data.count, 0);
+                        const totalSize = entries.reduce((sum, data) => sum + data.sizeBytes, 0);
+
+                        return (
+                          <>
+                            {entries.map((data) => (
+                              <tr key={data.source} className="border-b border-white/5 hover:bg-white/5">
+                                <td className="py-2 px-3 text-white/90">{data.label}</td>
+                                <td className="py-2 px-3 text-right text-white font-medium">{data.count.toLocaleString()}</td>
+                                <td className="py-2 px-3 text-right text-white/70">{formatBytes(data.sizeBytes)}</td>
+                                <td className="py-2 px-3 text-right text-white/50">{totalSize > 0 ? ((data.sizeBytes / totalSize) * 100).toFixed(1) : '0'}%</td>
+                              </tr>
+                            ))}
+                            {/* Total row */}
+                            <tr className="bg-white/5 font-semibold">
+                              <td className="py-2 px-3 text-white">Total</td>
+                              <td className="py-2 px-3 text-right text-white">{totalCount.toLocaleString()}</td>
+                              <td className="py-2 px-3 text-right text-white">{formatBytes(totalSize)}</td>
+                              <td className="py-2 px-3 text-right text-white">100%</td>
+                            </tr>
+                          </>
+                        );
+                      })()}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
 
-            {/* Images by Storage Provider breakdown */}
-            {systemStats.database.imagesByStorage && Object.keys(systemStats.database.imagesByStorage).length > 0 && (
+            {/* Images Details Table - Pivoted by Source with SSD/S3 columns */}
+            {systemStats.database.imageDetails && systemStats.database.imageDetails.length > 0 && (
               <div className="mb-5">
-                <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Images by Storage</h4>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                  {Object.entries(systemStats.database.imagesByStorage)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([provider, count]) => (
-                    <div key={provider} className="flex justify-between items-center p-2 bg-white/5 rounded-md border border-white/10 text-sm">
-                      <span className="font-semibold text-white/70">{provider.toUpperCase()}:</span>
-                      <span className="text-white font-medium">{count.toLocaleString()}</span>
-                    </div>
-                  ))}
+                <h4 className="text-sm font-semibold text-white/70 mb-3 uppercase tracking-wide">Details</h4>
+                <div className="bg-white/5 rounded-lg border border-white/10 overflow-hidden inline-block min-w-[500px]">
+                  <table className="text-sm">
+                    <thead>
+                      <tr className="bg-white/5 border-b border-white/10">
+                        <th rowSpan={2} className="text-left py-2 px-3 text-white/70 font-semibold align-bottom">Image Label</th>
+                        <th colSpan={2} className="text-center py-1 px-3 text-white/70 font-semibold border-b border-white/10">IMAGES</th>
+                        <th colSpan={2} className="text-center py-1 px-3 text-white/70 font-semibold border-b border-white/10">SIZE</th>
+                      </tr>
+                      <tr className="bg-white/5 border-b border-white/10">
+                        <th className="text-right py-1 px-3 text-white/50 font-medium text-xs">SSD</th>
+                        <th className="text-right py-1 px-3 text-white/50 font-medium text-xs">S3</th>
+                        <th className="text-right py-1 px-3 text-white/50 font-medium text-xs">SSD</th>
+                        <th className="text-right py-1 px-3 text-white/50 font-medium text-xs">S3</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        // Map source codes to friendly labels
+                        const sourceLabels: Record<string, string> = {
+                          'affiliate_api': 'Affiliate',
+                          'profile': 'Profile',
+                          'screensnap': 'Snap',
+                          'following_snap': 'Follow',
+                          'external': 'Link',
+                          'manual_upload': 'Upload',
+                          'imported': 'Import',
+                          'unknown': 'Unknown',
+                        };
+
+                        // Define display order
+                        const labelOrder = ['Affiliate', 'Snap', 'Follow', 'Profile', 'Upload', 'Import', 'Link', 'Unknown'];
+
+                        // Pivot the data: group by source, with SSD and S3 values
+                        const pivoted: Record<string, { ssdCount: number; s3Count: number; ssdSize: number; s3Size: number }> = {};
+
+                        systemStats.database.imageDetails.forEach(row => {
+                          const label = sourceLabels[row.source] || row.source;
+                          if (!pivoted[label]) {
+                            pivoted[label] = { ssdCount: 0, s3Count: 0, ssdSize: 0, s3Size: 0 };
+                          }
+                          const storage = row.storage?.toLowerCase() || '';
+                          if (storage === 's3') {
+                            pivoted[label].s3Count += row.count;
+                            pivoted[label].s3Size += row.sizeBytes;
+                          } else {
+                            // local, ssd, or anything else goes to SSD
+                            pivoted[label].ssdCount += row.count;
+                            pivoted[label].ssdSize += row.sizeBytes;
+                          }
+                        });
+
+                        // Sort by defined order
+                        const sortedLabels = Object.keys(pivoted).sort((a, b) => {
+                          const aIdx = labelOrder.indexOf(a);
+                          const bIdx = labelOrder.indexOf(b);
+                          if (aIdx === -1 && bIdx === -1) return 0;
+                          if (aIdx === -1) return 1;
+                          if (bIdx === -1) return -1;
+                          return aIdx - bIdx;
+                        });
+
+                        return sortedLabels.map((label) => {
+                          const data = pivoted[label];
+                          return (
+                            <tr key={label} className="border-b border-white/5 hover:bg-white/5">
+                              <td className="py-2 px-3 text-white/90">{label}</td>
+                              <td className="py-2 px-3 text-right text-white font-medium">{data.ssdCount > 0 ? data.ssdCount.toLocaleString() : '\u2014'}</td>
+                              <td className="py-2 px-3 text-right text-white font-medium">{data.s3Count > 0 ? data.s3Count.toLocaleString() : '\u2014'}</td>
+                              <td className="py-2 px-3 text-right text-white/70">{data.ssdSize > 0 ? formatBytes(data.ssdSize) : '\u2014'}</td>
+                              <td className="py-2 px-3 text-right text-white/70">{data.s3Size > 0 ? formatBytes(data.s3Size) : '\u2014'}</td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}

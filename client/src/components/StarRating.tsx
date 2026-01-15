@@ -27,9 +27,9 @@ const RATING_COLORS: Record<number, string> = {
 };
 
 const SIZE_CLASSES: Record<string, string> = {
-  sm: 'text-base gap-0.5',
-  md: 'text-xl gap-1',
-  lg: 'text-3xl gap-1.5',
+  sm: 'text-base gap-1',
+  md: 'text-xl gap-2',
+  lg: 'text-3xl gap-3',
 };
 
 export const StarRating: React.FC<StarRatingProps> = ({
@@ -61,7 +61,7 @@ export const StarRating: React.FC<StarRatingProps> = ({
               key={starIndex}
               className={`
                 ${isFilled ? activeColor : 'text-white/20'}
-                ${isInteractive ? 'cursor-pointer hover:scale-110 transition-transform' : ''}
+                ${isInteractive ? 'cursor-pointer hover:scale-110 transition-transform px-0.5' : ''}
               `}
               onClick={() => handleClick(starIndex)}
               onMouseEnter={() => isInteractive && setHoverRating(starIndex)}

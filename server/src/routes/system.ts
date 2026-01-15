@@ -79,6 +79,10 @@ router.get('/stats', async (_req: Request, res: Response) => {
     let usersWithVideos = 0;
     let imagesBySource: Record<string, number> = {};
     let imagesByStorage: Record<string, number> = {};
+    // Summary by source with size: { source: { count, sizeBytes } }
+    let imageSummaryBySource: Record<string, { count: number; sizeBytes: number }> = {};
+    // Details by source + storage: [{ source, storage, count, sizeBytes }]
+    let imageDetails: Array<{ source: string; storage: string; count: number; sizeBytes: number }> = [];
     try {
       // Get count and total size from profile_images (images with known file sizes)
       const profileImagesResult = await query(`
@@ -129,6 +133,61 @@ router.get('/stats', async (_req: Request, res: Response) => {
       `);
       for (const row of storageCountsResult.rows) {
         imagesByStorage[row.storage_provider || 's3'] = parseInt(row.count);
+      }
+
+      // Get summary by source with size
+      const summaryResult = await query(`
+        SELECT
+          source,
+          COUNT(*) as count,
+          COALESCE(SUM(file_size), 0) as size_bytes
+        FROM profile_images
+        WHERE media_type = 'image' OR media_type IS NULL
+        GROUP BY source
+        ORDER BY count DESC
+      `);
+      for (const row of summaryResult.rows) {
+        imageSummaryBySource[row.source || 'unknown'] = {
+          count: parseInt(row.count),
+          sizeBytes: parseInt(row.size_bytes || '0'),
+        };
+      }
+      // Add affiliate images to summary (size unknown, estimate ~50KB each)
+      if (affiliateCount > 0) {
+        imageSummaryBySource['affiliate_api'] = {
+          count: affiliateCount,
+          sizeBytes: affiliateCount * 50000, // ~50KB estimate per image
+        };
+      }
+
+      // Get details by source + storage
+      const detailsResult = await query(`
+        SELECT
+          source,
+          COALESCE(storage_provider, 'local') as storage,
+          COUNT(*) as count,
+          COALESCE(SUM(file_size), 0) as size_bytes
+        FROM profile_images
+        WHERE media_type = 'image' OR media_type IS NULL
+        GROUP BY source, storage_provider
+        ORDER BY count DESC
+      `);
+      for (const row of detailsResult.rows) {
+        imageDetails.push({
+          source: row.source || 'unknown',
+          storage: row.storage || 'local',
+          count: parseInt(row.count),
+          sizeBytes: parseInt(row.size_bytes || '0'),
+        });
+      }
+      // Add affiliate images (stored locally in data/images)
+      if (affiliateCount > 0) {
+        imageDetails.push({
+          source: 'affiliate_api',
+          storage: 'local',
+          count: affiliateCount,
+          sizeBytes: affiliateCount * 50000,
+        });
       }
     } catch (e) {
       // Tables might not exist
@@ -201,6 +260,8 @@ router.get('/stats', async (_req: Request, res: Response) => {
         imageSizeBytes: imageTotalSizeBytes,
         imagesBySource,
         imagesByStorage,
+        imageSummaryBySource,
+        imageDetails,
         videosStored: videoCount,
         videoSizeBytes: videoTotalSizeBytes,
         usersWithVideos: usersWithVideos,

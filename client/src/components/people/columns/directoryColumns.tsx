@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { BasePerson, ColumnConfig, PriorityLookup } from '../../../types/people';
 import { StarRating } from '../../StarRating';
+import { HoverImageCell } from './baseColumns';
 
 // Directory columns with full feature set
 export function getDirectoryColumns(
@@ -48,29 +49,7 @@ export function getDirectoryColumns(
         const isLive = isPersonLive(person);
 
         return imageUrl ? (
-          <div className="relative w-[120px] h-[90px] group">
-            <img
-              src={imageUrl}
-              alt={person.username}
-              className="w-full h-full object-cover rounded-md border-2 border-white/10 transition-all group-hover:border-mhc-primary group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-mhc-primary/40"
-            />
-            {isLive && (
-              <span className="absolute top-1 right-1 bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold animate-pulse">
-                LIVE
-              </span>
-            )}
-            {/* Hover preview */}
-            <div className="hidden group-hover:block fixed z-[9999] pointer-events-none" style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
-              <div className="bg-black/95 border-2 border-white/30 rounded-lg p-2 shadow-2xl">
-                <img src={imageUrl} alt={person.username} className="w-[400px] h-[300px] object-cover rounded" />
-                {isLive && (
-                  <div className="absolute top-4 left-4 bg-red-500 text-white px-3 py-1 rounded text-sm font-semibold animate-pulse">
-                    LIVE
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <HoverImageCell imageUrl={imageUrl} username={person.username} isLive={isLive} />
         ) : (
           <span className="text-white/30">&mdash;</span>
         );

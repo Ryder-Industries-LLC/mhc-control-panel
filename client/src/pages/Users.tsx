@@ -774,7 +774,7 @@ const Users: React.FC = () => {
       }
     });
 
-    const followingColumns = getFollowingColumns();
+    const followingColumns = getFollowingColumns(handleRatingChange);
 
     const activeFilters: ActiveFilter[] = followingFilter !== 'all'
       ? [{ id: followingFilter, label: followingFilter.replace('_', ' '), type: 'stat' as const }]
@@ -848,7 +848,7 @@ const Users: React.FC = () => {
       }
     });
 
-    const followersColumns = getFollowersColumns();
+    const followersColumns = getFollowersColumns(handleRatingChange);
 
     const activeFilters: ActiveFilter[] = followersFilter !== 'all'
       ? [{ id: followersFilter, label: followersFilter.replace('_', ' '), type: 'stat' as const }]
@@ -1014,7 +1014,7 @@ const Users: React.FC = () => {
 
     // Build standard counts for unfollowed users
     const unfollowedCounts = buildStandardCounts(filteredUnfollowed, { allLabel: 'All Unfollowed' });
-    const unfollowedColumns = getUnfollowedColumns();
+    const unfollowedColumns = getUnfollowedColumns(handleRatingChange);
 
     const activeFilters: ActiveFilter[] = [
       { id: `days-${timeframeFilter}`, label: `Last ${timeframeFilter} days`, type: 'stat' as const }
@@ -1082,7 +1082,7 @@ const Users: React.FC = () => {
   // Render Bans Tab
   const renderBansTab = () => {
     const bansCounts = buildStandardCounts(bannedUsers, { allLabel: 'All Banned' });
-    const bansColumns = getBansColumns();
+    const bansColumns = getBansColumns(handleRatingChange);
 
     return (
       <>
@@ -1130,7 +1130,7 @@ const Users: React.FC = () => {
   // Render Watchlist Tab
   const renderWatchlistTab = () => {
     const watchlistCounts = buildStandardCounts(watchlistUsers, { allLabel: 'All Watchlist' });
-    const watchlistColumns = getWatchlistColumns();
+    const watchlistColumns = getWatchlistColumns(handleRatingChange);
 
     return (
       <>
@@ -1178,7 +1178,7 @@ const Users: React.FC = () => {
   // Render Tipped By Me Tab
   const renderTippedByMeTab = () => {
     const tippedByMeCounts = buildStandardCounts(tippedByMeUsers, { allLabel: 'All Tipped' });
-    const tippedByMeColumns = getTippedByMeColumns();
+    const tippedByMeColumns = getTippedByMeColumns(handleRatingChange);
 
     return (
       <>
@@ -1225,7 +1225,7 @@ const Users: React.FC = () => {
   // Render Tipped Me Tab
   const renderTippedMeTab = () => {
     const tippedMeCounts = buildStandardCounts(tippedMeUsers, { allLabel: 'All Tippers' });
-    const tippedMeColumns = getTippedMeColumns();
+    const tippedMeColumns = getTippedMeColumns(handleRatingChange);
 
     return (
       <>

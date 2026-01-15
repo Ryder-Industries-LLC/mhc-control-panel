@@ -106,6 +106,9 @@ const SOURCE_LABELS: Record<string, { label: string; shortLabel: string; color: 
   imported: { label: 'Import', shortLabel: 'Import', color: 'bg-gray-500' },
 };
 
+// Image source types only (excludes non-image sources like following_snap and external)
+const IMAGE_SOURCE_TYPES = ['affiliate_api', 'profile', 'screensnap', 'manual_upload', 'imported'];
+
 const getSourceInfo = (source: string) => SOURCE_LABELS[source] || { label: source, shortLabel: source, color: 'bg-gray-500' };
 
 // Placeholder images for profiles without photos
@@ -778,18 +781,20 @@ const Profile: React.FC<ProfilePageProps> = () => {
     }
   };
 
-  // Delete uploaded image
-  const handleDeleteImage = async (imageId: string) => {
+  // Delete uploaded image or affiliate image
+  const handleDeleteImage = async (imageId: string, source?: string) => {
     if (!profileData?.person?.username) return;
     if (!window.confirm('Are you sure you want to delete this image?')) return;
 
     try {
-      const response = await fetch(
-        `/api/profile/${profileData.person.username}/images/${imageId}`,
-        {
-          method: 'DELETE',
-        }
-      );
+      // For affiliate images, pass source as query param
+      const url = source === 'affiliate_api'
+        ? `/api/profile/${profileData.person.username}/images/${imageId}?source=affiliate_api`
+        : `/api/profile/${profileData.person.username}/images/${imageId}`;
+
+      const response = await fetch(url, {
+        method: 'DELETE',
+      });
 
       if (response.ok) {
         setUploadedImages((prev) => prev.filter((img) => img.id !== imageId));
@@ -1217,7 +1222,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
       {profileData && (
         <div>
           {/* MHC-1101: Page title with username and status - sticky header (transparent) */}
-          <div className="sticky top-0 z-40 py-1 mb-1 flex items-center gap-2">
+          <div className="sticky top-0 z-40 py-0.5 mb-0.5 flex items-center gap-2">
             <h1 className="text-2xl font-bold text-white">
               <a
                 href={`https://chaturbate.com/${profileData.person.username}`}
@@ -1243,7 +1248,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
           {/* Profile Overview Card - Option B Layout (MHC-1102) */}
           <div className="bg-gradient-primary text-white rounded-lg px-6 py-4 mb-0 shadow-lg">
-            <div className="flex gap-5 items-start flex-wrap md:flex-nowrap">
+            <div className="flex gap-5 items-stretch flex-wrap md:flex-nowrap">
               {/* Profile image section - always show with placeholder fallback */}
               <div className="flex-shrink-0 flex flex-col items-start">
                 {/* Above image row: Following | Follows Me (left) | Timestamp (right) */}
@@ -1296,16 +1301,12 @@ const Profile: React.FC<ProfilePageProps> = () => {
                           getPlaceholderImage(profileData.person.role)
                     }
                     alt={profileData.person.username}
-                    className={`w-[440px] h-[330px] rounded-lg object-cover shadow-lg ${
-                      isSessionLive(profileData.latestSession)
-                        ? 'ring-4 ring-red-500 ring-offset-2 ring-offset-mhc-surface border-2 border-red-400'
-                        : 'border-4 border-white/30'
-                    }`}
+                    className="w-[440px] h-[330px] rounded-lg object-cover shadow-lg border-4 border-white/30"
                     width="440"
                     height="330"
                   />
                 </div>
-                {/* Below image row: CB | UN (left) | Rating (centered) | Add Note | Profile Details (right) */}
+                {/* Below image row: CB | UN (left) | Rating (centered) | Add Note (right) */}
                 <div className="flex items-center justify-between w-[440px] mt-1">
                   {/* CB/UN external links - left side */}
                   <div className="flex gap-1.5">
@@ -1339,43 +1340,26 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     />
                   </div>
 
-                  {/* Right side buttons: Add Note | Profile Details */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowAddNoteModal(true)}
-                      className="px-2.5 py-0.5 bg-mhc-primary hover:bg-mhc-primary/80 text-white text-xs font-medium rounded transition-colors flex items-center gap-1"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 4v16m8-8H4"
-                        />
-                      </svg>
-                      Add Note
-                    </button>
-                    <button
-                      onClick={() => setShowProfileDetailsModal(true)}
-                      className="text-xs text-white/50 hover:text-white transition-colors flex items-center gap-0.5"
-                      title="View profile details"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                      Details
-                    </button>
-                  </div>
+                  {/* Right side: Add Note button */}
+                  <button
+                    onClick={() => setShowAddNoteModal(true)}
+                    className="px-2.5 py-0.5 bg-mhc-primary hover:bg-mhc-primary/80 text-white text-xs font-medium rounded transition-colors flex items-center gap-1"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    Add Note
+                  </button>
                 </div>
               </div>
 
-              {/* Right column - top-aligned */}
-              <div className="flex-1 flex flex-col items-start gap-2.5">
+              {/* Right column - stretches to match image column height */}
+              <div className="flex-1 flex flex-col gap-2.5">
                 {/* Row 1: Relationship Status Badges */}
                 <div className="flex items-center gap-2.5 flex-wrap">
                   {/* Unified relationship status badge (takes precedence) */}
@@ -1777,6 +1761,26 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   {seenWithLoading && <span className="text-white/40 text-sm">Loading...</span>}
                 </div>
 
+                {/* Profile Details link - bottom right of column 2 */}
+                <div className="flex-grow"></div>
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowProfileDetailsModal(true)}
+                    className="text-xs text-white/50 hover:text-white transition-colors flex items-center gap-0.5"
+                    title="View profile details"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    Profile Details
+                  </button>
+                </div>
+
               </div>
             </div>
           </div>
@@ -1794,32 +1798,30 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 sourceCountsMap[src] = (sourceCountsMap[src] || 0) + 1;
               });
 
-              // Filter and sort images
+              // Filter images:
+              // - If a specific filter is selected, show only that source
+              // - If "All" (no filter), exclude profile images (they only show when profile filter is active)
               const filteredImages = imageSourceFilter
                 ? allImages.filter((img) => img.source === imageSourceFilter)
-                : allImages;
+                : allImages.filter((img) => img.source !== 'profile');
 
+              // Sort by date (newest first by default), no special grouping
               const images = [...filteredImages].sort((a, b) => {
-                // Profile pictures are always grouped last
-                const aIsProfile = a.source === 'profile';
-                const bIsProfile = b.source === 'profile';
-                if (aIsProfile !== bIsProfile) {
-                  return aIsProfile ? 1 : -1;
-                }
-                // Within same group, sort by date
                 const dateA = new Date(a.captured_at || a.uploaded_at).getTime();
                 const dateB = new Date(b.captured_at || b.uploaded_at).getTime();
                 return imageSortOrder === 'newest' ? dateB - dateA : dateA - dateB;
               });
 
-              // Source filter chip config - uses SOURCE_LABELS for consistency
+              // Source filter chip config - show only valid image source types
               const sourceFilters = [
                 { key: null, label: 'All', color: 'bg-mhc-primary' },
-                ...Object.entries(SOURCE_LABELS).map(([key, info]) => ({
-                  key,
-                  label: info.label,
-                  color: info.color,
-                })),
+                ...IMAGE_SOURCE_TYPES
+                  .filter((key) => SOURCE_LABELS[key])
+                  .map((key) => ({
+                    key,
+                    label: SOURCE_LABELS[key].label,
+                    color: SOURCE_LABELS[key].color,
+                  })),
               ];
 
               return (
@@ -1866,7 +1868,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                             {sourceFilters.map((filter) => {
                               const count =
                                 filter.key === null
-                                  ? allImages.length
+                                  ? allImages.filter((img) => img.source !== 'profile').length
                                   : sourceCountsMap[filter.key] || 0;
                               const isActive = imageSourceFilter === filter.key;
                               return (
@@ -1880,11 +1882,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                   className={`px-1.5 py-0 text-[10px] font-medium rounded-full transition-all ${
                                     isActive
                                       ? `${filter.color} text-white`
-                                      : count === 0
-                                        ? 'bg-white/5 text-white/30'
-                                        : `${filter.color}/20 text-white/70 hover:${filter.color}/40 hover:text-white`
+                                      : `${filter.color}/20 text-white/70 hover:${filter.color}/40 hover:text-white`
                                   }`}
-                                  disabled={count === 0 && filter.key !== null}
                                 >
                                   {filter.label} ({count})
                                 </button>
@@ -2042,7 +2041,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                         <button
                                           onClick={(e) => {
                                             e.stopPropagation();
-                                            handleDeleteImage(image.id);
+                                            handleDeleteImage(image.id, image.source);
                                           }}
                                           className="p-1 bg-red-500/80 hover:bg-red-500 text-white rounded"
                                           title="Delete"
@@ -2144,7 +2143,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                     Profile
                                   </div>
                                   <button
-                                    onClick={() => handleDeleteImage(video.id)}
+                                    onClick={() => handleDeleteImage(video.id, video.source)}
                                     className="absolute top-2 right-2 p-1 bg-red-500/80 hover:bg-red-500 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity"
                                     title="Delete video"
                                   >
@@ -3038,7 +3037,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
       >
         <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
           {/* Last refresh timestamp */}
-          <div className="text-xs text-white/50 -mt-2 whitespace-nowrap">
+          <div className="text-xs text-white/50 whitespace-nowrap">
             {profileData?.profile?.browser_scraped_at
               ? `Last refresh: ${formatDate(profileData.profile.browser_scraped_at, { relative: true })}`
               : 'Never refreshed'}

@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-14 (v1.34.7)
+**Last Updated**: 2026-01-15 (v1.34.8)
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -66,7 +66,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Fix main photo not updating after setting primary _(v1.34.4 - removed carousel, use primary directly)_
 - [x] Fix affiliate image set-as-primary not working _(v1.34.4 - use local file instead of re-download)_
 - [x] Sort images by most recent first, profile pictures grouped last _(v1.34.7)_
-- [ ] Fix quick labels on Media section - reflect new source values, hide 0-count for unused sources
+- [x] Fix quick labels on Media section - reflect new source values _(v1.34.8 - IMAGE_SOURCE_TYPES constant)_
 
 ### /profile - Notes
 
@@ -153,7 +153,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 
 ### /profile - Timeline
 
-- [ ] Fix/add Private Message From/To indicator (like on Communications)
+- [x] Fix/add Private Message From/To indicator (like on Communications) _(v1.34.8)_
 - [x] Add ability to filter the Activity timeline by Event Type _(v1.19.0)_
 
 ### /profile - Communications
@@ -191,11 +191,11 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 ### /profile - UI/UX
 
 - [x] Profile page UI theming - swap rating/CB links, brighten pills, move Profile Details _(v1.34.5)_
-- [ ] Tighten space between username and top navigation
+- [x] Tighten space between username and top navigation _(v1.34.8)_
 - [ ] Fix rounded corners gap between profile card and media section
 - [ ] Add image timestamp for uploaded images used as primary
 - [ ] Brighten CB/UN buttons and filled rating stars (contrast issue)
-- [ ] Fix hover image endless loop - add delay on disappear or hover start
+- [x] Fix hover image endless loop - add delay on disappear or hover start _(v1.34.8 - 400ms delay)_
 
 ### Code Refactoring
 

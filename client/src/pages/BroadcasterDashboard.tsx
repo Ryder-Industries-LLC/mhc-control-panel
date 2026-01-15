@@ -125,11 +125,20 @@ const BroadcasterDashboard: React.FC = () => {
   };
 
   const getActivityElsewhere = (interactions: Interaction[]) => {
+    const seen = new Set<string>();
     return interactions.filter(i => {
       const username = i.metadata?.username as string | undefined;
       const broadcaster = i.metadata?.broadcaster as string | undefined;
-      // My activity in other rooms
-      return username === 'hudson_cage' && broadcaster !== 'hudson_cage';
+      // My activity in other rooms (or DMs to others)
+      const isMyActivity = username === 'hudson_cage' && broadcaster !== 'hudson_cage';
+      if (!isMyActivity) return false;
+
+      // Deduplicate by content + timestamp (within same minute)
+      const timestampMinute = new Date(i.timestamp).toISOString().slice(0, 16);
+      const key = `${i.type}:${i.content || ''}:${timestampMinute}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
   };
 
@@ -527,6 +536,9 @@ const BroadcasterDashboard: React.FC = () => {
           <div className="flex flex-col gap-3 max-h-[400px] overflow-y-auto">
             {getActivityElsewhere(data.recentInteractions).slice(0, 10).map((interaction) => {
               const broadcaster = interaction.metadata?.broadcaster as string | undefined;
+              const toUser = interaction.metadata?.toUser as string | undefined;
+              // For DMs, broadcaster may be empty - use toUser instead
+              const targetUser = broadcaster || toUser || 'unknown';
 
               return (
                 <div
@@ -537,9 +549,9 @@ const BroadcasterDashboard: React.FC = () => {
                     <div className="flex items-center gap-2">
                       <Badge type={interaction.type} variant="interaction" size="sm" />
                       <span className="text-mhc-text-muted text-sm">
-                        in{' '}
-                        <Link to={`/?username=${broadcaster}`} className="text-purple-400 font-semibold hover:underline">
-                          {broadcaster}'s room
+                        {interaction.type === 'DIRECT_MESSAGE' ? 'to ' : 'in '}
+                        <Link to={`/?username=${targetUser}`} className="text-purple-400 font-semibold hover:underline">
+                          {interaction.type === 'DIRECT_MESSAGE' ? targetUser : `${targetUser}'s room`}
                         </Link>
                       </span>
                     </div>

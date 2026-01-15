@@ -6,6 +6,7 @@ export {
   getTagsColumn,
   getImagesCountColumn,
   getLastActiveColumn,
+  getRatingColumn,
   getBaseColumns,
 } from './baseColumns';
 

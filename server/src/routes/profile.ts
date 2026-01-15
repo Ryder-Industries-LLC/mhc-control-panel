@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import fs from 'fs/promises';
+import path from 'path';
 import multer from 'multer';
 import { ProfileScraperService } from '../services/profile-scraper.service.js';
 import { ChaturbateScraperService } from '../services/chaturbate-scraper.service.js';
@@ -1686,13 +1688,45 @@ router.post('/:username/images/:imageId/set-current', async (req: Request, res: 
 
 /**
  * DELETE /api/profile/:username/images/:imageId
- * Delete an uploaded image
+ * Delete an uploaded image or affiliate snapshot image
  */
 router.delete('/:username/images/:imageId', async (req: Request, res: Response) => {
   try {
     const { imageId } = req.params;
+    const { source } = req.query;
 
-    // First check if this is an uploaded image (not affiliate API)
+    // Check if this is an affiliate image deletion
+    if (source === 'affiliate_api') {
+      // Delete from affiliate_api_snapshots table
+      const deleteResult = await query(
+        'DELETE FROM affiliate_api_snapshots WHERE id = $1 RETURNING image_path',
+        [imageId]
+      );
+
+      if (deleteResult.rowCount === 0) {
+        return res.status(404).json({ error: 'Affiliate image not found' });
+      }
+
+      // Optionally delete the file from storage
+      const imagePath = deleteResult.rows[0]?.image_path;
+      if (imagePath) {
+        try {
+          const storageDir = path.join(process.cwd(), 'data', 'images');
+          const fullPath = path.join(storageDir, imagePath);
+          await fs.unlink(fullPath);
+          logger.info('Affiliate image file deleted', { imagePath });
+        } catch (fileErr: any) {
+          // Log but don't fail if file deletion fails (file may not exist)
+          if (fileErr.code !== 'ENOENT') {
+            logger.warn('Failed to delete affiliate image file', { imagePath, error: fileErr });
+          }
+        }
+      }
+
+      return res.json({ success: true, source: 'affiliate_api' });
+    }
+
+    // Default: delete from profile_images
     const image = await ProfileImagesService.getById(imageId);
     if (!image) {
       return res.status(404).json({ error: 'Image not found' });

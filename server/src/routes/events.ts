@@ -17,19 +17,30 @@ interface EventLog {
 /**
  * GET /api/events/recent
  * Get recent events from the Events API
+ * Supports multiple method values: ?method=broadcastStart&method=broadcastStop
  */
 router.get('/recent', async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query.limit as string) || 100;
-    const method = req.query.method as string | undefined;
+    // Support both single method and array of methods
+    const methodParam = req.query.method;
+    const methods: string[] = Array.isArray(methodParam)
+      ? methodParam as string[]
+      : methodParam
+        ? [methodParam as string]
+        : [];
 
     let sql = 'SELECT * FROM event_logs';
     const params: unknown[] = [];
     let paramIndex = 1;
 
-    if (method) {
+    if (methods.length === 1) {
       sql += ` WHERE method = $${paramIndex++}`;
-      params.push(method);
+      params.push(methods[0]);
+    } else if (methods.length > 1) {
+      const placeholders = methods.map(() => `$${paramIndex++}`).join(', ');
+      sql += ` WHERE method IN (${placeholders})`;
+      params.push(...methods);
     }
 
     sql += ` ORDER BY timestamp DESC LIMIT $${paramIndex}`;

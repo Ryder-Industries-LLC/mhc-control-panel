@@ -265,12 +265,25 @@ export const TimelineTab: React.FC<TimelineTabProps> = ({ username }) => {
                         {formatTimestamp(event.timestamp)}
                       </span>
                     </div>
+                    {/* From/To indicator for Private Messages */}
+                    {event.type === 'PRIVATE_MESSAGE' && event.metadata?.fromUser && event.metadata?.toUser && (
+                      <div className="text-xs text-mhc-text-muted mt-1">
+                        {event.metadata.fromUser.toLowerCase() === username.toLowerCase() ? (
+                          <span>To: <span className="text-purple-300">{event.metadata.toUser}</span></span>
+                        ) : (
+                          <span>From: <span className="text-purple-300">{event.metadata.fromUser}</span></span>
+                        )}
+                        {event.metadata.broadcaster && event.metadata.broadcaster !== 'hudson_cage' && (
+                          <span className="ml-2">in {event.metadata.broadcaster}'s room</span>
+                        )}
+                      </div>
+                    )}
                     {event.content && event.type !== 'USER_ENTER' && event.type !== 'USER_LEAVE' && (
                       <div className="text-sm text-mhc-text/80 mt-1 whitespace-pre-wrap">
                         {event.content}
                       </div>
                     )}
-                    {event.metadata?.broadcaster && event.metadata.broadcaster !== 'hudson_cage' && (
+                    {event.type !== 'PRIVATE_MESSAGE' && event.metadata?.broadcaster && event.metadata.broadcaster !== 'hudson_cage' && (
                       <div className="text-xs text-mhc-text-muted mt-1">
                         in {event.metadata.broadcaster}'s room
                       </div>

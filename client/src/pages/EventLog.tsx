@@ -19,23 +19,26 @@ const EventLog: React.FC = () => {
   const [methodFilter, setMethodFilter] = useState<string>('all');
   const [showRawJson, setShowRawJson] = useState(false);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
 
-  // Available event methods for filtering
-  const eventMethods = [
+  // Primary event methods (commonly used)
+  const primaryMethods = [
     { value: 'all', label: 'All Events' },
-    { value: 'mediaPurchase', label: 'Media Purchase' },
     { value: 'tip', label: 'Tip' },
     { value: 'follow', label: 'Follow' },
     { value: 'unfollow', label: 'Unfollow' },
-    { value: 'fanclubJoin', label: 'Fanclub Join' },
     { value: 'directMessage', label: 'Direct Message' },
     { value: 'privateMessage', label: 'Private Message' },
-    { value: 'roomSubjectChange', label: 'Room Subject Change' },
-    { value: 'broadcastStart', label: 'Broadcast Start' },
-    { value: 'broadcastStop', label: 'Broadcast Stop' },
-    { value: 'userEnter', label: 'User Enter' },
-    { value: 'userLeave', label: 'User Leave' },
+    { value: 'broadcast', label: 'Broadcast' }, // Combined start/stop
+    { value: 'userActivity', label: 'User Enter/Leave' }, // Combined enter/leave
     { value: 'chatMessage', label: 'Chat Message' },
+  ];
+
+  // Overflow/rarely used methods
+  const overflowMethods = [
+    { value: 'mediaPurchase', label: 'Media Purchase' },
+    { value: 'fanclubJoin', label: 'Fanclub Join' },
+    { value: 'roomSubjectChange', label: 'Room Subject Change' },
   ];
 
   useEffect(() => {
@@ -45,7 +48,15 @@ const EventLog: React.FC = () => {
   const fetchEvents = async () => {
     try {
       setLoading(true);
-      const methodParam = methodFilter !== 'all' ? `&method=${methodFilter}` : '';
+      // Handle combined filters
+      let methodParam = '';
+      if (methodFilter === 'broadcast') {
+        methodParam = '&method=broadcastStart&method=broadcastStop';
+      } else if (methodFilter === 'userActivity') {
+        methodParam = '&method=userEnter&method=userLeave';
+      } else if (methodFilter !== 'all') {
+        methodParam = `&method=${methodFilter}`;
+      }
       const res = await fetch(`/api/events/recent?limit=200${methodParam}`);
       if (res.ok) {
         const data = await res.json();
@@ -80,9 +91,11 @@ const EventLog: React.FC = () => {
       case 'chatMessage':
         return `${base} bg-teal-500/20 text-teal-400 border border-teal-500/30`;
       case 'broadcastStart':
+        return `${base} bg-green-500/20 text-green-400 border border-green-500/30`;
       case 'broadcastStop':
-        return `${base} bg-cyan-500/20 text-cyan-400 border border-cyan-500/30`;
+        return `${base} bg-red-500/20 text-red-400 border border-red-500/30`;
       case 'userEnter':
+        return `${base} bg-emerald-500/20 text-emerald-400 border border-emerald-500/30`;
       case 'userLeave':
         return `${base} bg-gray-500/20 text-gray-400 border border-gray-500/30`;
       default:
@@ -158,10 +171,49 @@ const EventLog: React.FC = () => {
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white/5 rounded-lg border border-white/10 p-4 mb-6">
-        <div className="flex flex-wrap gap-2">
-          {eventMethods.map(method => (
+      {/* Stats - Collapsible, collapsed by default */}
+      <CollapsibleSection
+        title="Event Statistics"
+        defaultCollapsed={true}
+        className="bg-mhc-surface mb-4"
+      >
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-4">
+          <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-center">
+            <div className="text-2xl font-bold text-mhc-primary">{events.length.toLocaleString()}</div>
+            <div className="text-white/60 text-sm">Events Loaded</div>
+          </div>
+          <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-center">
+            <div className="text-2xl font-bold text-amber-400">
+              {events.filter(e => e.method === 'tip').length.toLocaleString()}
+            </div>
+            <div className="text-white/60 text-sm">Tips</div>
+          </div>
+          <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-center">
+            <div className="text-2xl font-bold text-emerald-400">
+              {events.filter(e => e.method === 'follow').length.toLocaleString()}
+            </div>
+            <div className="text-white/60 text-sm">Follows</div>
+          </div>
+          <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-center">
+            <div className="text-2xl font-bold text-indigo-400">
+              {events.filter(e => e.method === 'directMessage').length.toLocaleString()}
+            </div>
+            <div className="text-white/60 text-sm">DMs</div>
+          </div>
+          <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-center">
+            <div className="text-2xl font-bold text-blue-400">
+              {events.filter(e => e.method === 'privateMessage').length.toLocaleString()}
+            </div>
+            <div className="text-white/60 text-sm">PMs</div>
+          </div>
+        </div>
+      </CollapsibleSection>
+
+      {/* Filters - closer to results */}
+      <div className="bg-white/5 rounded-lg border border-white/10 p-4 mb-4">
+        <div className="flex flex-wrap gap-2 items-center">
+          {/* Primary filters */}
+          {primaryMethods.map(method => (
             <button
               key={method.value}
               onClick={() => setMethodFilter(method.value)}
@@ -174,38 +226,54 @@ const EventLog: React.FC = () => {
               {method.label}
             </button>
           ))}
-        </div>
-      </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-center">
-          <div className="text-2xl font-bold text-mhc-primary">{events.length.toLocaleString()}</div>
-          <div className="text-white/60 text-sm">Events Loaded</div>
-        </div>
-        <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-center">
-          <div className="text-2xl font-bold text-amber-400">
-            {events.filter(e => e.method === 'tip').length.toLocaleString()}
+          {/* More filters dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowMoreFilters(!showMoreFilters)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
+                overflowMethods.some(m => m.value === methodFilter)
+                  ? 'bg-mhc-primary text-white'
+                  : 'bg-white/10 text-white/60 hover:bg-white/20 hover:text-white'
+              }`}
+            >
+              More
+              <svg
+                className={`w-4 h-4 transition-transform ${showMoreFilters ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {showMoreFilters && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowMoreFilters(false)}
+                />
+                <div className="absolute top-full left-0 mt-1 bg-mhc-surface border border-white/10 rounded-lg shadow-lg z-50 min-w-[160px]">
+                  {overflowMethods.map(method => (
+                    <button
+                      key={method.value}
+                      onClick={() => {
+                        setMethodFilter(method.value);
+                        setShowMoreFilters(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm transition-colors first:rounded-t-lg last:rounded-b-lg ${
+                        methodFilter === method.value
+                          ? 'bg-mhc-primary text-white'
+                          : 'text-white/60 hover:bg-white/10 hover:text-white'
+                      }`}
+                    >
+                      {method.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-          <div className="text-white/60 text-sm">Tips</div>
-        </div>
-        <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-center">
-          <div className="text-2xl font-bold text-emerald-400">
-            {events.filter(e => e.method === 'follow').length.toLocaleString()}
-          </div>
-          <div className="text-white/60 text-sm">Follows</div>
-        </div>
-        <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-center">
-          <div className="text-2xl font-bold text-indigo-400">
-            {events.filter(e => e.method === 'directMessage').length.toLocaleString()}
-          </div>
-          <div className="text-white/60 text-sm">DMs</div>
-        </div>
-        <div className="bg-white/5 rounded-lg border border-white/10 p-4 text-center">
-          <div className="text-2xl font-bold text-blue-400">
-            {events.filter(e => e.method === 'privateMessage').length.toLocaleString()}
-          </div>
-          <div className="text-white/60 text-sm">PMs</div>
         </div>
       </div>
 

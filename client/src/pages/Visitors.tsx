@@ -292,9 +292,9 @@ const Visitors: React.FC = () => {
   const displayedVisitors = filteredVisitors();
 
   return (
-    <div className="min-h-screen bg-mhc-dark">
-      {/* Header */}
-      <div className="sticky top-0 bg-mhc-dark border-b border-mhc-border p-4 z-10">
+    <div className="min-h-screen bg-mhc-bg">
+      {/* Header - solid background to hide scrolling content */}
+      <div className="sticky top-0 bg-mhc-bg border-b border-mhc-border p-4 z-10">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold text-white">Profile Visitors</h1>
