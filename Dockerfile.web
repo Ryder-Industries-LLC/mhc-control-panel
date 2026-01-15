@@ -19,7 +19,7 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install Chromium and dependencies for Puppeteer
+# Install Chromium and dependencies for Puppeteer, plus PostgreSQL client for backups
 RUN apk add --no-cache \
     chromium \
     nss \
@@ -28,7 +28,8 @@ RUN apk add --no-cache \
     ca-certificates \
     ttf-freefont \
     nodejs \
-    yarn
+    yarn \
+    postgresql-client
 
 # Tell Puppeteer to skip installing Chrome. We'll be using the installed package.
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \

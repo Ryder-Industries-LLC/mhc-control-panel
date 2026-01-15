@@ -1,66 +1,85 @@
-# Session Summary - v1.34.8
+# Session Summary - v1.35.0
 
 **Date**: 2026-01-15
 **Mode**: BUILD
 
 ## What Was Accomplished
 
-### v1.34.8 - UI/UX Polish & Event Log Improvements
+### v1.35.0 - Image Storage Consolidation
 
-1. **Profile Page Spacing**
-   - Tightened space between username and top navigation (`py-0.5 mb-0.5`)
+Complete consolidation of all image storage from SSD and scattered S3 objects to a unified S3-only structure.
 
-2. **Timeline Tab - Private Message Indicator**
-   - Added From/To indicator for Private Messages showing direction
-   - Shows "To: username" or "From: username" with purple highlighting
-   - Includes broadcaster room context when relevant
+#### 1. Legacy Image Import Service
+- Created `legacy-image-import.service.ts` for handling orphaned images
+- Parses legacy filename format: `username_timestamp_hash.extension`
+- Imports SSD orphan files to database with proper person matching
+- Tags imported images as `imported_legacy` source
 
-3. **Hover Image Delay**
-   - Fixed hover image endless loop by adding 400ms delay before showing preview
-   - Proper cleanup of timeout refs on unmount
-   - New `HoverImageCell` component in baseColumns.tsx
+#### 2. S3 Storage Consolidation
+- All images now stored in S3 with path structure: `people/username/folder/filename.jpg`
+- Migrated 122,349 SSD orphan files to database and S3
+- Removed 103,116 duplicate flat S3 files
+- SSD storage cleared (0 files remaining)
 
-4. **Visitors Page Sticky Header**
-   - Fixed sticky header background so content doesn't show through when scrolling
-   - Changed from `bg-mhc-dark` to `bg-mhc-bg`
+#### 3. Storage Savings
+- **Before**: ~215 GB total storage
+- **After**: ~179 GB S3-only storage
+- **Saved**: ~36 GB (17% reduction)
 
-5. **Google Avatar Caching**
-   - Added localStorage caching for Google avatar fallback
-   - Avatar persists even when Google CDN fails
+#### 4. New API Endpoints
+- `GET /api/legacy-import/baseline` - Get DB/SSD/S3 counts
+- `GET /api/legacy-import/ssd-orphans` - Find orphan files on SSD
+- `POST /api/legacy-import/ssd` - Import SSD orphans to DB
+- `GET /api/legacy-import/s3-audit` - Audit S3 for untracked objects
+- `POST /api/legacy-import/s3` - Import S3 untracked to DB
+- `POST /api/legacy-import/migrate-ssd-to-s3` - Upload SSD files to S3
+- `POST /api/legacy-import/cleanup-ssd` - Delete migrated SSD files
+- `POST /api/legacy-import/cleanup-s3-duplicates` - Remove duplicate flat S3 files
 
-6. **Media Section Filters**
-   - Fixed quick filters to only show actual image source types
-   - Removed 'follow' and 'link' from filters (not image sources)
-   - Added `IMAGE_SOURCE_TYPES` constant
-
-7. **Event Log Page Improvements**
-   - Stats moved to collapsible section (collapsed by default)
-   - Filters moved closer to results
-   - Rarely used filters moved to "More" dropdown (Media Purchase, Fanclub Join, Room Subject Change)
-   - Combined Broadcast Start/Stop into single "Broadcast" filter
-   - Combined User Enter/Leave into single "User Enter/Leave" filter
-   - Backend updated to support multiple method parameters (SQL IN clause)
-   - Different colors for start/stop (green/red) and enter/leave (emerald/gray)
-
-8. **Admin Images Stats Tables**
-   - Summary table: Added "%" column for percentage of total size
-   - Summary table: Constrained width, proper label ordering
-   - Details table: Pivoted layout - Image Label | IMAGES (SSD, S3) | SIZE (SSD, S3)
-   - Details table: Constrained width, proper ordering, shows "—" for zero values
+#### 5. S3 Provider Enhancement
+- Added `listObjects()` method to S3Provider for auditing
 
 ## Files Modified
 
-### Client
-- `client/src/App.tsx` - Avatar caching with localStorage
-- `client/src/pages/Profile.tsx` - Header spacing, IMAGE_SOURCE_TYPES filter
-- `client/src/pages/EventLog.tsx` - Collapsible stats, reorganized filters, combined filters
-- `client/src/pages/Admin.tsx` - Images stats table improvements (Summary %, Details pivot)
-- `client/src/pages/Visitors.tsx` - Sticky header background fix
-- `client/src/components/profile/TimelineTab.tsx` - PM From/To indicator
-- `client/src/components/people/columns/baseColumns.tsx` - HoverImageCell with delay
+### Server - New Files
+- `server/src/services/legacy-image-import.service.ts` - Legacy import service
+- `server/src/routes/legacy-import.ts` - API routes for legacy import
+- `server/src/services/image-consolidation.service.ts` - Image consolidation utilities
+- `server/src/routes/image-consolidation.ts` - Image consolidation routes
 
-### Server
-- `server/src/routes/events.ts` - Support for multiple method parameters
+### Server - Modified
+- `server/src/app.ts` - Registered new routes
+- `server/src/services/storage/s3-provider.ts` - Added listObjects method
+
+### Client - Modified
+- `client/src/pages/Admin.tsx` - Minor updates
+
+### Infrastructure
+- `Dockerfile.web` - Added postgresql-client for database backups
+
+### Documentation
+- `docs/IMAGE_CONSOLIDATION_BASELINE.md` - Baseline metrics before migration
+- `docs/IMAGE_CONSOLIDATION_REPORT.md` - Final migration report
+
+## Final Image Statistics
+
+| Source | Count |
+|--------|-------|
+| `imported_legacy` | 122,349 |
+| `profile` | 60,581 |
+| `screensnap` | 11,426 |
+| `following_snap` | 1,040 |
+| `manual_upload` | 245 |
+| `affiliate_api` | 11 |
+| `imported` | 3 |
+| **Total** | **195,655** |
+
+### Storage Status
+| Location | Files | Size |
+|----------|-------|------|
+| SSD | 0 | 0 GB |
+| S3 | ~1,078,000 | 179.4 GB |
+| Database | 195,655 records | 100% S3 |
 
 ## Current State
 
@@ -68,16 +87,12 @@
 - **Git**: On main branch, ready for release
 - **API**: Fully functional
 - **UI**: Working at http://localhost:8080
+- **Storage**: 100% S3-only, SSD cleared
 
 ## Remaining Tasks
 
 See docs/TODO.md for full task list.
 
-### High Priority
-- Fix rating not working on Directory/People page
-- Investigate duplicate affiliate images
-- Fix `/profile/mrleather` Images count mismatch
-
 ## Next Steps
 
-Ready for release as v1.34.8.
+Ready for release as v1.35.0.

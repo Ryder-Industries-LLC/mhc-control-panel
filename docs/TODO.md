@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-15 (v1.34.8)
+**Last Updated**: 2026-01-15 (v1.35.0)
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -45,8 +45,6 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Add CB Profile Link to List view, Grid view _(v1.28.0 - CB and UN Cams links added)_
 - [x] Rename "People" to "Directory" in navigation _(v1.28.0)_
 - [x] Add image timestamp on hover for People listing _(v1.34.4)_
-- [ ] Fix rating not working on Directory/People page
-- [ ] Add sort controls to People Grid view
 
 ### /admin
 
@@ -131,10 +129,6 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] The Communications direction is backwards - PMs in "hudson_cage's Room" are actually PMs in "username's room" _(v1.25.0 - fixed broadcaster attribution)_
 - [x] Investigate why there are duplicate messages in Communications PMs _(v1.19.0 - added deduplication to InteractionService)_
 
-### /profile - Images
-
-- [ ] `/profile/mrleather` Images tab says (6) but only 3 images are showing - investigate mismatch
-
 ### /profile - Interactions
 
 - [ ] Fix Interactions messages to be more like the PMs in hudson_cage's Room (See profile/danbury44)
@@ -192,22 +186,21 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 
 - [x] Profile page UI theming - swap rating/CB links, brighten pills, move Profile Details _(v1.34.5)_
 - [x] Tighten space between username and top navigation _(v1.34.8)_
-- [ ] Fix rounded corners gap between profile card and media section
 - [ ] Add image timestamp for uploaded images used as primary
 - [ ] Brighten CB/UN buttons and filled rating stars (contrast issue)
 - [x] Fix hover image endless loop - add delay on disappear or hover start _(v1.34.8 - 400ms delay)_
 
 ### Code Refactoring
 
-- [ ] Combine and refactor image handling logic - one handler for all image types
+- [x] Combine and refactor image handling logic - one handler for all image types _(v1.35.0 - legacy-image-import.service.ts)_
 - [ ] Consider combining Person/Directory handling (similar patterns)
 - [ ] Review Live status logic for affiliate data
 
 ### Infrastructure / Tech Debt
 
-- [ ] SSD Cleanup - verify media-before-s3 contents exist in S3, then delete 19GB backup
+- [x] SSD Cleanup - verify media-before-s3 contents exist in S3, then delete 19GB backup _(v1.35.0 - Image Storage Consolidation complete, SSD cleared)_
 - [ ] Render Migration Planning - S3-only storage, Render.com for DB and containers
-- [ ] Fully deprecate double image columns - remove DB entries, column, UI refs, storage duplicates
+- [x] Fully deprecate double image columns - remove DB entries, column, UI refs, storage duplicates _(v1.35.0 - all images now in S3 with unified path structure)_
 
 ---
 

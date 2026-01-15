@@ -29,6 +29,9 @@ import sessionsV2Routes from './routes/sessions-v2.js';
 import settingsRoutes from './routes/settings.js';
 import inboxRoutes from './routes/inbox.js';
 import storageRoutes from './routes/storage.js';
+import imageConsolidationRoutes from './routes/image-consolidation.js';
+import backupRoutes from './routes/backup.js';
+import legacyImportRoutes from './routes/legacy-import.js';
 
 export function createApp() {
   const app = express();
@@ -144,6 +147,9 @@ export function createApp() {
   app.use('/api/settings', settingsRoutes);
   app.use('/api/inbox', inboxRoutes);
   app.use('/api/storage', storageRoutes);
+  app.use('/api/image-consolidation', imageConsolidationRoutes);
+  app.use('/api/backup', backupRoutes);
+  app.use('/api/legacy-import', legacyImportRoutes);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

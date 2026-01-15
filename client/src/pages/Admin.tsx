@@ -3136,23 +3136,14 @@ const Admin: React.FC = () => {
                           'unknown': 'Unknown',
                         };
 
-                        // Define display order
-                        const labelOrder = ['Affiliate', 'Snap', 'Follow', 'Profile', 'Upload', 'Import', 'Link', 'Unknown'];
-
                         const entries = Object.entries(systemStats.database.imageSummaryBySource)
                           .map(([source, data]) => ({
                             source,
                             label: sourceLabels[source] || source,
                             ...data
                           }))
-                          .sort((a, b) => {
-                            const aIdx = labelOrder.indexOf(a.label);
-                            const bIdx = labelOrder.indexOf(b.label);
-                            if (aIdx === -1 && bIdx === -1) return 0;
-                            if (aIdx === -1) return 1;
-                            if (bIdx === -1) return -1;
-                            return aIdx - bIdx;
-                          });
+                          // Sort by size descending (largest first)
+                          .sort((a, b) => b.sizeBytes - a.sizeBytes);
 
                         const totalCount = entries.reduce((sum, data) => sum + data.count, 0);
                         const totalSize = entries.reduce((sum, data) => sum + data.sizeBytes, 0);
@@ -3216,9 +3207,6 @@ const Admin: React.FC = () => {
                           'unknown': 'Unknown',
                         };
 
-                        // Define display order
-                        const labelOrder = ['Affiliate', 'Snap', 'Follow', 'Profile', 'Upload', 'Import', 'Link', 'Unknown'];
-
                         // Pivot the data: group by source, with SSD and S3 values
                         const pivoted: Record<string, { ssdCount: number; s3Count: number; ssdSize: number; s3Size: number }> = {};
 
@@ -3238,14 +3226,9 @@ const Admin: React.FC = () => {
                           }
                         });
 
-                        // Sort by defined order
+                        // Sort by S3 size descending (largest S3 size first)
                         const sortedLabels = Object.keys(pivoted).sort((a, b) => {
-                          const aIdx = labelOrder.indexOf(a);
-                          const bIdx = labelOrder.indexOf(b);
-                          if (aIdx === -1 && bIdx === -1) return 0;
-                          if (aIdx === -1) return 1;
-                          if (bIdx === -1) return -1;
-                          return aIdx - bIdx;
+                          return pivoted[b].s3Size - pivoted[a].s3Size;
                         });
 
                         return sortedLabels.map((label) => {

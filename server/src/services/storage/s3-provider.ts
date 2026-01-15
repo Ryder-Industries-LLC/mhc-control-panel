@@ -331,6 +331,56 @@ export class S3Provider extends BaseStorageProvider {
   }
 
   /**
+   * List objects in the bucket with optional prefix filter
+   */
+  async listObjects(prefixFilter: string = '', maxObjects: number = 10000): Promise<{ key: string; size: number; lastModified: Date }[]> {
+    if (!this.client) {
+      return [];
+    }
+
+    const objects: { key: string; size: number; lastModified: Date }[] = [];
+    let continuationToken: string | undefined;
+
+    try {
+      const fullPrefix = prefixFilter ? `${this.prefix}/${prefixFilter}` : this.prefix;
+
+      do {
+        const command = new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: fullPrefix,
+          ContinuationToken: continuationToken,
+          MaxKeys: Math.min(1000, maxObjects - objects.length),
+        });
+
+        const response = await this.client.send(command);
+
+        if (response.Contents) {
+          for (const obj of response.Contents) {
+            if (obj.Key) {
+              objects.push({
+                key: obj.Key.replace(`${this.prefix}/`, ''), // Return relative path
+                size: obj.Size || 0,
+                lastModified: obj.LastModified || new Date(),
+              });
+
+              if (objects.length >= maxObjects) {
+                break;
+              }
+            }
+          }
+        }
+
+        continuationToken = response.NextContinuationToken;
+      } while (continuationToken && objects.length < maxObjects);
+
+      return objects;
+    } catch (error) {
+      logger.error(`[S3Provider] Failed to list objects: ${error}`);
+      return [];
+    }
+  }
+
+  /**
    * Get bucket statistics (object count and total size)
    * Uses ListObjectsV2 to iterate through all objects with the configured prefix
    */
