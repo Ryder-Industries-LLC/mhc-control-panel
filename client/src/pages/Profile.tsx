@@ -1800,6 +1800,13 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 : allImages;
 
               const images = [...filteredImages].sort((a, b) => {
+                // Profile pictures are always grouped last
+                const aIsProfile = a.source === 'profile';
+                const bIsProfile = b.source === 'profile';
+                if (aIsProfile !== bIsProfile) {
+                  return aIsProfile ? 1 : -1;
+                }
+                // Within same group, sort by date
                 const dateA = new Date(a.captured_at || a.uploaded_at).getTime();
                 const dateB = new Date(b.captured_at || b.uploaded_at).getTime();
                 return imageSortOrder === 'newest' ? dateB - dateA : dateA - dateB;

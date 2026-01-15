@@ -44,8 +44,8 @@ export function GatedRoute({ children }: GatedRouteProps) {
     return <Navigate to="/verify-2fa" state={{ from: location }} replace />;
   }
 
-  // Check second gate
-  const accessTime = sessionStorage.getItem(GATE_STORAGE_KEY);
+  // Check second gate (use localStorage so it persists across tabs)
+  const accessTime = localStorage.getItem(GATE_STORAGE_KEY);
   const hasValidAccess = accessTime && (Date.now() - parseInt(accessTime, 10)) < ACCESS_DURATION;
 
   if (!hasValidAccess) {

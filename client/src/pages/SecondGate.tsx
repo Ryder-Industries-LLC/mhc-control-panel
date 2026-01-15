@@ -18,7 +18,7 @@ export default function SecondGate() {
 
   // Check if already has valid access
   useEffect(() => {
-    const accessTime = sessionStorage.getItem(GATE_STORAGE_KEY);
+    const accessTime = localStorage.getItem(GATE_STORAGE_KEY);
     if (accessTime) {
       const elapsed = Date.now() - parseInt(accessTime, 10);
       if (elapsed < ACCESS_DURATION) {
@@ -27,7 +27,7 @@ export default function SecondGate() {
         return;
       }
       // Access expired, clear it
-      sessionStorage.removeItem(GATE_STORAGE_KEY);
+      localStorage.removeItem(GATE_STORAGE_KEY);
     }
   }, [navigate]);
 
@@ -60,7 +60,7 @@ export default function SecondGate() {
   useEffect(() => {
     if (!settingsLoading && (gatePassword === null || gatePassword === '')) {
       // No password configured, grant access and redirect
-      sessionStorage.setItem(GATE_STORAGE_KEY, Date.now().toString());
+      localStorage.setItem(GATE_STORAGE_KEY, Date.now().toString());
       navigate('/people', { replace: true });
     }
   }, [settingsLoading, gatePassword, navigate]);
@@ -80,7 +80,7 @@ export default function SecondGate() {
     // Check password against stored setting
     if (password === gatePassword) {
       // Grant access
-      sessionStorage.setItem(GATE_STORAGE_KEY, Date.now().toString());
+      localStorage.setItem(GATE_STORAGE_KEY, Date.now().toString());
       setAccessGranted(true);
 
       // Brief delay to show success, then redirect

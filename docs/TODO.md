@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-14 (v1.34.6)
+**Last Updated**: 2026-01-14 (v1.34.7)
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -65,6 +65,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Fix doubled image count (was showing 18 instead of 9) _(v1.23.0)_
 - [x] Fix main photo not updating after setting primary _(v1.34.4 - removed carousel, use primary directly)_
 - [x] Fix affiliate image set-as-primary not working _(v1.34.4 - use local file instead of re-download)_
+- [x] Sort images by most recent first, profile pictures grouped last _(v1.34.7)_
 - [ ] Fix quick labels on Media section - reflect new source values, hide 0-count for unused sources
 
 ### /profile - Notes
