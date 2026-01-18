@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-15 (v1.35.0)
+**Last Updated**: 2026-01-18 (v2.0.0)
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -56,6 +56,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Instead of centering Model and Follower count on profile overview card, make it left aligned _(v1.18.0)_
 - [x] Move Flags to bottom of profile overview as always-visible checkboxes _(v1.23.0)_
 - [x] Add "Banned by Me" flag field _(v1.23.0 - DB migration, API, UI)_
+- [x] Bidirectional Collaborations - replace "Seen With" with symmetric relationship _(v2.0.0 - single row represents A↔B)_
 
 ### /profile - Media
 
@@ -193,14 +194,18 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 ### Code Refactoring
 
 - [x] Combine and refactor image handling logic - one handler for all image types _(v1.35.0 - legacy-image-import.service.ts)_
+- [x] Create consolidated MediaService for all media operations _(v2.0.0 - media.service.ts)_
+- [x] SHA256 deduplication - remove duplicate media records _(v2.0.0 - 38,820 duplicates removed)_
 - [ ] Consider combining Person/Directory handling (similar patterns)
 - [ ] Review Live status logic for affiliate data
 
 ### Infrastructure / Tech Debt
 
 - [x] SSD Cleanup - verify media-before-s3 contents exist in S3, then delete 19GB backup _(v1.35.0 - Image Storage Consolidation complete, SSD cleared)_
-- [ ] Render Migration Planning - S3-only storage, Render.com for DB and containers
 - [x] Fully deprecate double image columns - remove DB entries, column, UI refs, storage duplicates _(v1.35.0 - all images now in S3 with unified path structure)_
+- [x] Quarantine soft-deleted files in S3 _(v2.0.0 - 38,831 files moved to QUARANTINE)_
+- [ ] S3 Verification - verify all media_locator records have S3 files _(in progress - ~7 hours)_
+- [ ] Render Migration Planning - S3-only storage, Render.com for DB and containers
 
 ---
 

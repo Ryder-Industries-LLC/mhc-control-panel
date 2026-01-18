@@ -4,7 +4,7 @@ import puppeteerExtra from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { logger } from '../config/logger.js';
 import { FollowerScraperService } from './follower-scraper.service.js';
-import { ProfileImagesService } from './profile-images.service.js';
+import { MediaService } from './media.service.js';
 import { storageService } from './storage/storage.service.js';
 import { query } from '../db/client.js';
 import path from 'path';
@@ -1143,14 +1143,14 @@ export class ChaturbateScraperService {
           try {
             // Check if we've already downloaded this photoset or if user deleted it
             if (personId) {
-              const hasPhotoset = await ProfileImagesService.hasPhotoset(personId, photoset.id);
+              const hasPhotoset = await MediaService.hasPhotoset(personId, photoset.id);
               if (hasPhotoset) {
                 logger.debug(`Photoset ${photoset.id} already downloaded for ${username}, skipping`);
                 continue;
               }
 
               // Check if user previously deleted this photoset - don't re-download
-              const wasDeleted = await ProfileImagesService.isPhotosetDeleted(personId, photoset.id);
+              const wasDeleted = await MediaService.isPhotosetDeleted(personId, photoset.id);
               if (wasDeleted) {
                 logger.debug(`Photoset ${photoset.id} was deleted by user for ${username}, skipping`);
                 continue;
@@ -1341,7 +1341,7 @@ export class ChaturbateScraperService {
 
               try {
                 // Check if we already have this source URL for this person (prevent duplicates)
-                const alreadyExists = await ProfileImagesService.hasSourceUrl(personId, item.url);
+                const alreadyExists = await MediaService.hasMediaSourceUrl(personId, item.url);
                 if (alreadyExists) {
                   logger.debug(`Skipping already downloaded image: ${item.url.substring(0, 80)}...`);
                   continue;
@@ -1394,7 +1394,7 @@ export class ChaturbateScraperService {
 
                   if (result.success) {
                     // Save to database - use actual provider from write result
-                    await ProfileImagesService.create({
+                    await MediaService.createMediaRecord({
                       personId,
                       filePath: result.relativePath,
                       source: 'profile',
@@ -1456,7 +1456,7 @@ export class ChaturbateScraperService {
 
                   if (result.success) {
                     // Save to database - use actual provider from write result
-                    await ProfileImagesService.create({
+                    await MediaService.createMediaRecord({
                       personId,
                       filePath: result.relativePath,
                       source: 'profile',
@@ -1497,7 +1497,7 @@ export class ChaturbateScraperService {
 
         // Update has_videos flag if we downloaded any videos
         if (personId && profileMedia.some(m => m.mediaType === 'video')) {
-          await ProfileImagesService.updateHasVideosFlag(personId);
+          await MediaService.updateHasVideosFlag(personId);
         }
       }
 

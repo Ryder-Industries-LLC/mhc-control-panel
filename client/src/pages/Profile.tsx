@@ -96,20 +96,20 @@ const formatTimeET = (dateStr: string): string => {
 };
 
 // Source label mapping for consistency
-const SOURCE_LABELS: Record<string, { label: string; shortLabel: string; color: string }> = {
-  affiliate_api: { label: 'Affiliate', shortLabel: 'Affiliate', color: 'bg-blue-500' },
-  profile: { label: 'Profile', shortLabel: 'Profile', color: 'bg-cyan-500' },
-  screensnap: { label: 'Snap', shortLabel: 'Snap', color: 'bg-purple-500' },
-  following_snap: { label: 'Follow', shortLabel: 'Follow', color: 'bg-green-500' },
-  external: { label: 'Link', shortLabel: 'Link', color: 'bg-orange-500' },
-  manual_upload: { label: 'Upload', shortLabel: 'Upload', color: 'bg-amber-500' },
-  imported: { label: 'Import', shortLabel: 'Import', color: 'bg-gray-500' },
+const SOURCE_LABELS: Record<string, { label: string; shortLabel: string; color: string; tooltip: string }> = {
+  affiliate_api: { label: 'Affiliate', shortLabel: 'Affiliate', color: 'bg-blue-500', tooltip: 'Auto-captured from Chaturbate Affiliate API' },
+  profile: { label: 'Profile', shortLabel: 'Profile', color: 'bg-cyan-500', tooltip: 'Scraped from CB profile photosets' },
+  screensnap: { label: 'Snap', shortLabel: 'Snap', color: 'bg-purple-500', tooltip: 'Manual screenshot capture (Cmd+/)' },
+  following_snap: { label: 'Live Capture', shortLabel: 'Live', color: 'bg-green-500', tooltip: 'Auto-captured from followed users when live' },
+  external: { label: 'Link', shortLabel: 'Link', color: 'bg-orange-500', tooltip: 'Linked from external URL' },
+  manual_upload: { label: 'Upload', shortLabel: 'Upload', color: 'bg-amber-500', tooltip: 'Manually uploaded images' },
+  imported: { label: 'Import', shortLabel: 'Import', color: 'bg-gray-500', tooltip: 'Imported from external sources' },
 };
 
-// Image source types only (excludes non-image sources like following_snap and external)
-const IMAGE_SOURCE_TYPES = ['affiliate_api', 'profile', 'screensnap', 'manual_upload', 'imported'];
+// Image source types for quick filters
+const IMAGE_SOURCE_TYPES = ['affiliate_api', 'profile', 'screensnap', 'following_snap', 'manual_upload', 'imported'];
 
-const getSourceInfo = (source: string) => SOURCE_LABELS[source] || { label: source, shortLabel: source, color: 'bg-gray-500' };
+const getSourceInfo = (source: string) => SOURCE_LABELS[source] || { label: source, shortLabel: source, color: 'bg-gray-500', tooltip: '' };
 
 // Placeholder images for profiles without photos
 // Viewer: Simple silhouette in grayscale
@@ -190,13 +190,13 @@ const Profile: React.FC<ProfilePageProps> = () => {
   // MHC-1104: Room Banned flag
   const [roomBanned, setRoomBanned] = useState(false);
 
-  // MHC-1105: Seen With state
-  const [seenWith, setSeenWith] = useState<
-    Array<{ id: string; username: string; personId?: string; notes?: string; createdAt: string }>
+  // Collaborators state (replaces Seen With)
+  const [collaborators, setCollaborators] = useState<
+    Array<{ id: string; collaboratorUsername: string; collaboratorPersonId: string; notes?: string | null; firstSeenAt: string; createdAt: string }>
   >([]);
-  const [seenWithLoading, setSeenWithLoading] = useState(false);
-  const [seenWithInput, setSeenWithInput] = useState('');
-  const [seenWithSuggestions, setSeenWithSuggestions] = useState<
+  const [collaboratorsLoading, setCollaboratorsLoading] = useState(false);
+  const [collaboratorInput, setCollaboratorInput] = useState('');
+  const [collaboratorSuggestions, setCollaboratorSuggestions] = useState<
     Array<{ username: string; id: string }>
   >([]);
 
@@ -483,22 +483,22 @@ const Profile: React.FC<ProfilePageProps> = () => {
       };
       fetchMyVisitStats();
 
-      // MHC-1105: Fetch seen_with data
-      const fetchSeenWithData = async () => {
-        setSeenWithLoading(true);
+      // Fetch collaborators data
+      const fetchCollaboratorsData = async () => {
+        setCollaboratorsLoading(true);
         try {
-          const response = await fetch(`/api/profile/${profileData.person.username}/seen-with`);
+          const response = await fetch(`/api/profile/${profileData.person.username}/collaborations`);
           if (response.ok) {
             const data = await response.json();
-            setSeenWith(data.seenWith || []);
+            setCollaborators(data.collaborators || []);
           }
         } catch (err) {
-          console.error('Error fetching seen-with:', err);
+          console.error('Error fetching collaborators:', err);
         } finally {
-          setSeenWithLoading(false);
+          setCollaboratorsLoading(false);
         }
       };
-      fetchSeenWithData();
+      fetchCollaboratorsData();
     }
   }, [profileData?.person?.username]);
 
@@ -713,44 +713,14 @@ const Profile: React.FC<ProfilePageProps> = () => {
   };
 
   // Set image as current/primary
-  // For affiliate images, first promote them to profile_images, then set as current
-  const handleSetAsCurrent = async (
-    imageId: string,
-    isAffiliateImage: boolean = false,
-    affiliateData?: { filePath: string; capturedAt: string; viewers?: number }
-  ) => {
+  // All images (including affiliate) now have media_locator IDs, so we can set directly
+  const handleSetAsCurrent = async (imageId: string) => {
     if (!profileData?.person?.username) return;
 
     try {
-      let targetImageId = imageId;
-
-      // If this is an affiliate image, promote it to profile_images first
-      if (isAffiliateImage && affiliateData) {
-        const importResponse = await fetch(
-          `/api/profile/${profileData.person.username}/images/import-affiliate`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              filePath: affiliateData.filePath,
-              capturedAt: affiliateData.capturedAt,
-              viewers: affiliateData.viewers,
-            }),
-          }
-        );
-
-        if (!importResponse.ok) {
-          const data = await importResponse.json();
-          throw new Error(data.error || 'Failed to import affiliate image');
-        }
-
-        const importedImage = await importResponse.json();
-        targetImageId = importedImage.id;
-      }
-
-      // Now set as current
+      // Set as current - all images now have media_locator IDs
       const response = await fetch(
-        `/api/profile/${profileData.person.username}/images/${targetImageId}/set-current`,
+        `/api/profile/${profileData.person.username}/images/${imageId}/set-current`,
         {
           method: 'POST',
         }
@@ -1019,61 +989,69 @@ const Profile: React.FC<ProfilePageProps> = () => {
     }
   };
 
-  // MHC-1105: Seen With handlers
-  const fetchSeenWith = async () => {
+  // Collaborators handlers
+  const fetchCollaborators = async () => {
     if (!profileData?.person?.username) return;
-    setSeenWithLoading(true);
+    setCollaboratorsLoading(true);
     try {
-      const response = await fetch(`/api/profile/${profileData.person.username}/seen-with`);
+      const response = await fetch(`/api/profile/${profileData.person.username}/collaborations`);
       if (response.ok) {
         const data = await response.json();
-        setSeenWith(data.seenWith || []);
+        setCollaborators(data.collaborators || []);
       }
     } catch (err) {
-      console.error('Error fetching seen-with:', err);
+      console.error('Error fetching collaborators:', err);
     } finally {
-      setSeenWithLoading(false);
+      setCollaboratorsLoading(false);
     }
   };
 
-  const handleAddSeenWith = async (username: string) => {
+  const handleAddCollaborator = async (username: string) => {
     if (!profileData?.person?.username || !username.trim()) return;
     try {
-      const response = await fetch(`/api/profile/${profileData.person.username}/seen-with`, {
+      const response = await fetch(`/api/profile/${profileData.person.username}/collaborations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ seenWithUsername: username.trim() }),
+        body: JSON.stringify({ collaboratorUsername: username.trim() }),
       });
       if (response.ok) {
         const data = await response.json();
-        setSeenWith((prev) => [data.entry, ...prev]);
-        setSeenWithInput('');
-        setSeenWithSuggestions([]);
+        // Add the new collaborator to the list
+        setCollaborators((prev) => [{
+          id: data.collaboration.id,
+          collaboratorUsername: data.collaboration.collaboratorUsername,
+          collaboratorPersonId: data.collaboration.collaboratorPersonId,
+          notes: data.collaboration.notes,
+          firstSeenAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        }, ...prev]);
+        setCollaboratorInput('');
+        setCollaboratorSuggestions([]);
       }
     } catch (err) {
-      console.error('Error adding seen-with:', err);
+      console.error('Error adding collaborator:', err);
     }
   };
 
-  const handleRemoveSeenWith = async (entryId: string) => {
+  const handleRemoveCollaborator = async (collaboratorUsername: string) => {
     if (!profileData?.person?.username) return;
     try {
       const response = await fetch(
-        `/api/profile/${profileData.person.username}/seen-with/${entryId}`,
+        `/api/profile/${profileData.person.username}/collaborations/${collaboratorUsername}`,
         {
           method: 'DELETE',
         }
       );
       if (response.ok) {
-        setSeenWith((prev) => prev.filter((s) => s.id !== entryId));
+        setCollaborators((prev) => prev.filter((c) => c.collaboratorUsername !== collaboratorUsername));
       }
     } catch (err) {
-      console.error('Error removing seen-with:', err);
+      console.error('Error removing collaborator:', err);
     }
   };
 
-  const handleSeenWithInputChange = async (value: string) => {
-    setSeenWithInput(value);
+  const handleCollaboratorInputChange = async (value: string) => {
+    setCollaboratorInput(value);
     if (value.trim().length >= 2) {
       // Fetch autocomplete suggestions from directory
       try {
@@ -1083,15 +1061,15 @@ const Profile: React.FC<ProfilePageProps> = () => {
         if (response.ok) {
           const data = await response.json();
           // /api/person/search returns { usernames: string[] }
-          setSeenWithSuggestions(
+          setCollaboratorSuggestions(
             data.usernames?.map((username: string) => ({ username, id: null })) || []
           );
         }
       } catch (err) {
-        setSeenWithSuggestions([]);
+        setCollaboratorSuggestions([]);
       }
     } else {
-      setSeenWithSuggestions([]);
+      setCollaboratorSuggestions([]);
     }
   };
 
@@ -1708,19 +1686,19 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   );
                 })()}
 
-                {/* Row 7: Seen With - below tags */}
+                {/* Row 7: Collaborators - below tags */}
                 <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className="text-sm text-white/70 font-medium">Seen With:</span>
-                  {seenWith.map((entry) => (
+                  <span className="text-sm text-white/70 font-medium">Collaborators:</span>
+                  {collaborators.map((collab) => (
                     <span
-                      key={entry.id}
+                      key={collab.id}
                       className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-500/20 text-blue-300 rounded text-sm"
                     >
-                      <a href={`/profile/${entry.username}`} className="hover:underline">
-                        {entry.username}
+                      <a href={`/profile/${collab.collaboratorUsername}`} className="hover:underline">
+                        {collab.collaboratorUsername}
                       </a>
                       <button
-                        onClick={() => handleRemoveSeenWith(entry.id)}
+                        onClick={() => handleRemoveCollaborator(collab.collaboratorUsername)}
                         className="ml-1 text-blue-400 hover:text-red-400 text-lg leading-none"
                         title="Remove"
                       >
@@ -1732,23 +1710,23 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   <div className="relative">
                     <input
                       type="text"
-                      value={seenWithInput}
-                      onChange={(e) => handleSeenWithInputChange(e.target.value)}
+                      value={collaboratorInput}
+                      onChange={(e) => handleCollaboratorInputChange(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && seenWithInput.trim()) {
-                          handleAddSeenWith(seenWithInput);
+                        if (e.key === 'Enter' && collaboratorInput.trim()) {
+                          handleAddCollaborator(collaboratorInput);
                         }
                       }}
                       placeholder="+ Add"
                       className="px-2.5 py-1 bg-white/10 text-white text-sm rounded border border-white/20 focus:border-mhc-primary focus:outline-none w-24"
                     />
-                    {seenWithSuggestions.length > 0 && (
+                    {collaboratorSuggestions.length > 0 && (
                       <div className="absolute top-full left-0 mt-1 w-48 bg-mhc-surface border border-white/20 rounded shadow-lg z-10 max-h-32 overflow-y-auto">
-                        {seenWithSuggestions.map((suggestion) => (
+                        {collaboratorSuggestions.map((suggestion) => (
                           <button
-                            key={suggestion.id}
+                            key={suggestion.username}
                             onClick={() => {
-                              handleAddSeenWith(suggestion.username);
+                              handleAddCollaborator(suggestion.username);
                             }}
                             className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-mhc-primary/20"
                           >
@@ -1758,7 +1736,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                       </div>
                     )}
                   </div>
-                  {seenWithLoading && <span className="text-white/40 text-sm">Loading...</span>}
+                  {collaboratorsLoading && <span className="text-white/40 text-sm">Loading...</span>}
                 </div>
 
                 {/* Profile Details link - bottom right of column 2 */}
@@ -1871,9 +1849,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                   ? allImages.filter((img) => img.source !== 'profile').length
                                   : sourceCountsMap[filter.key] || 0;
                               const isActive = imageSourceFilter === filter.key;
+                              const tooltip = filter.key ? SOURCE_LABELS[filter.key]?.tooltip : 'Show all images';
                               return (
                                 <button
                                   key={filter.key || 'all'}
+                                  title={tooltip}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setImageSourceFilter(filter.key);
@@ -2005,20 +1985,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              const isAffiliate = image.source === 'affiliate_api';
-                                              handleSetAsCurrent(
-                                                image.id,
-                                                isAffiliate,
-                                                isAffiliate
-                                                  ? {
-                                                      // Use local file_path for affiliate images (already stored)
-                                                      filePath: image.file_path,
-                                                      capturedAt:
-                                                        image.captured_at || image.uploaded_at,
-                                                      viewers: image.viewers,
-                                                    }
-                                                  : undefined
-                                              );
+                                              handleSetAsCurrent(image.id);
                                             }}
                                             className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded shadow-lg border border-white/30"
                                             title="Set as primary"

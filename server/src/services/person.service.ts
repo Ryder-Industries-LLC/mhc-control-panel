@@ -229,15 +229,14 @@ export class PersonService {
         ) as source,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
-        (SELECT COUNT(DISTINCT image_path_360x270) FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL)
-          + (SELECT COUNT(*) FROM profile_images WHERE person_id = p.id) as image_count,
+        (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         COALESCE(
-          (SELECT file_path FROM profile_images WHERE person_id = p.id AND is_primary = true LIMIT 1),
-          (SELECT image_path_360x270 FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1)
+          (SELECT file_path FROM media_locator WHERE person_id = p.id AND is_primary = true LIMIT 1),
+          (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1)
         ) as image_url,
         COALESCE(
-          (SELECT COALESCE(captured_at, uploaded_at) FROM profile_images WHERE person_id = p.id AND is_primary = true LIMIT 1),
-          (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id AND image_path_360x270 IS NOT NULL ORDER BY observed_at DESC LIMIT 1)
+          (SELECT COALESCE(captured_at, uploaded_at) FROM media_locator WHERE person_id = p.id AND is_primary = true LIMIT 1),
+          (SELECT COALESCE(captured_at, uploaded_at) FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1)
         ) as image_captured_at,
         (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
         (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
@@ -272,25 +271,31 @@ export class PersonService {
 
   /**
    * Get image history for a person (unique images, most recent first)
+   * Uses media_locator as the single source of truth
    */
   static async getImageHistory(personId: string, limit: number = 10): Promise<any[]> {
     const result = await query(
-      `SELECT DISTINCT ON (image_path_360x270)
-        image_path_360x270 as image_url,
-        observed_at,
-        session_start,
-        current_show,
-        num_users,
-        room_subject
-       FROM affiliate_api_snapshots
-       WHERE person_id = $1 AND image_path_360x270 IS NOT NULL
-       ORDER BY image_path_360x270, observed_at DESC`,
+      `SELECT DISTINCT ON (ml.file_path)
+        ml.file_path as image_url,
+        aas.observed_at,
+        aas.session_start,
+        aas.current_show,
+        aas.num_users,
+        aas.room_subject
+       FROM media_locator ml
+       LEFT JOIN affiliate_api_snapshots aas ON aas.media_locator_id = ml.id
+       WHERE ml.person_id = $1
+       ORDER BY ml.file_path, aas.observed_at DESC NULLS LAST`,
       [personId]
     );
 
     // Sort by observed_at descending and limit
     const sorted = result.rows.sort(
-      (a, b) => new Date(b.observed_at).getTime() - new Date(a.observed_at).getTime()
+      (a, b) => {
+        const dateA = a.observed_at ? new Date(a.observed_at).getTime() : 0;
+        const dateB = b.observed_at ? new Date(b.observed_at).getTime() : 0;
+        return dateB - dateA;
+      }
     );
 
     return sorted.slice(0, limit);

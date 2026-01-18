@@ -1,5 +1,5 @@
 import { feedCacheService } from '../services/feed-cache.service.js';
-import { ProfileImagesService } from '../services/profile-images.service.js';
+import { MediaService } from '../services/media.service.js';
 import { storageService } from '../services/storage/storage.service.js';
 import { JobPersistenceService } from '../services/job-persistence.service.js';
 import { query } from '../db/client.js';
@@ -37,7 +37,7 @@ export class LiveScreenshotJob {
   private isProcessing = false;
   private intervalId: NodeJS.Timeout | null = null;
   private config: LiveScreenshotConfig = {
-    intervalMinutes: 30,
+    intervalMinutes: 5,
     enabled: true,
   };
 
@@ -336,7 +336,7 @@ export class LiveScreenshotJob {
 
           if (result.success) {
             // Create profile_images record with source='following_snap'
-            await ProfileImagesService.create({
+            await MediaService.createMediaRecord({
               personId: person.person_id,
               filePath: result.relativePath,
               source: 'following_snap',

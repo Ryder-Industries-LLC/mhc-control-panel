@@ -2,6 +2,7 @@ import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
 import type { OnlineRoom } from '../api/chaturbate/affiliate-client.js';
 import { storageService } from './storage/storage.service.js';
+import { MediaService } from './media.service.js';
 import axios from 'axios';
 import crypto from 'crypto';
 
@@ -17,10 +18,11 @@ export interface BroadcastSession {
   num_users: number;
   num_followers: number;
   is_hd: boolean;
-  image_url: string;
-  image_url_360x270: string;
-  image_path: string | null;
-  image_path_360x270: string | null;
+  image_url_360x270: string;  // Original CB API field name
+  legacy_image_url: string | null;
+  deprecated_image_path: string | null;  // DEPRECATED: Path now lives in media_locator
+  legacy_image_path: string | null;
+  media_locator_id: string | null;  // FK to media_locator
   created_at: Date;
 }
 
@@ -46,55 +48,39 @@ export class BroadcastSessionService {
   }
 
   /**
-   * Download an image and save using the new storage service
+   * Download an image and save using MediaService.
+   * Creates a media_locator record and returns both path and media_locator_id.
    */
   private static async downloadAndSaveImage(
     imageUrl: string,
     username: string,
-    type: 'thumbnail' | 'full'
-  ): Promise<string | null> {
+    personId: string,
+    _type: 'thumbnail' | 'full'
+  ): Promise<{ path: string; mediaLocatorId: string } | null> {
     try {
-      if (this.isPlaceholderUrl(imageUrl)) {
-        logger.debug('Skipping placeholder image URL', { username, imageUrl });
-        return null;
-      }
-
-      const response = await axios.get(imageUrl, {
-        responseType: 'arraybuffer',
-        timeout: 10000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
+      // Use MediaService to download and save - it handles:
+      // - Placeholder URL detection
+      // - Duplicate source URL check
+      // - Placeholder size detection
+      // - Storage write
+      // - media_locator record creation
+      const mediaRecord = await MediaService.downloadAndSaveMedia({
+        url: imageUrl,
+        username,
+        personId,
+        source: 'affiliate_api',
+        mimeType: 'image/jpeg',
       });
 
-      if (this.isPlaceholderBySize(response.data)) {
-        logger.debug('Skipping placeholder image (detected by size)', { username, size: response.data.length });
+      if (!mediaRecord) {
         return null;
       }
 
-      // Generate unique filename
-      const timestamp = Date.now();
-      const hash = crypto.createHash('md5').update(imageUrl).digest('hex').substring(0, 8);
-      const filename = `${timestamp}_${hash}.jpg`;
-
-      // Use new storage service with username-based paths
-      const result = await storageService.writeWithUsername(
-        username,
-        'affiliate_api', // Source type for affiliate polling thumbnails
-        filename,
-        Buffer.from(response.data),
-        'image/jpeg'
-      );
-
-      if (result.success) {
-        logger.debug('Affiliate image saved', { username, type, path: result.relativePath });
-        return result.relativePath;
-      } else {
-        logger.warn('Failed to save affiliate image', { username, type, error: result.error });
-        return null;
-      }
+      return {
+        path: mediaRecord.file_path,
+        mediaLocatorId: mediaRecord.id,
+      };
     } catch (error: any) {
-      // Extract meaningful error info from axios errors
       const errorInfo = error?.response?.status
         ? `HTTP ${error.response.status}`
         : error?.code || error?.message || 'Unknown error';
@@ -128,19 +114,24 @@ export class BroadcastSessionService {
     const existingResult = await query(existingSessionSql, [personId, sessionStart]);
     const existingSession = existingResult.rows[0];
 
-    // Download image once (image_url and image_url_360x270 are identical from CB API)
-    const imagePath = await this.downloadAndSaveImage(roomData.image_url, roomData.username, 'thumbnail');
-    // Use same path for both columns for backward compatibility
-    const imagePaths = { thumbnail: imagePath, full: imagePath };
+    // Download image and create media_locator record
+    const imageResult = await this.downloadAndSaveImage(roomData.image_url, roomData.username, personId, 'thumbnail');
 
-    // If we got a valid new image, use it; otherwise keep as null (don't use placeholder URLs)
-    const shouldClearOldImage = imagePaths.full !== null;
+    // Extract path and media_locator_id from result
+    const imagePath = imageResult?.path ?? null;
+    const mediaLocatorId = imageResult?.mediaLocatorId ?? null;
+
+    // If we got a valid new image, use it; otherwise keep existing
+    const shouldClearOldImage = imagePath !== null;
 
     let result;
 
     if (existingSession) {
       // Update the existing session with latest data
-      // Always update image paths when we have a new valid image
+      // Note: After migration 086:
+      // - image_url_360x270 = CB API field name
+      // - deprecated_image_path = path (now lives in media_locator)
+      // - media_locator_id = FK to media_locator
       const updateSql = `
         UPDATE affiliate_api_snapshots SET
           observed_at = NOW(),
@@ -151,10 +142,9 @@ export class BroadcastSessionService {
           num_users = $6,
           num_followers = $7,
           is_hd = $8,
-          image_url = $9,
-          image_url_360x270 = $10,
-          image_path = CASE WHEN $13 THEN $11 ELSE COALESCE($11, image_path) END,
-          image_path_360x270 = CASE WHEN $13 THEN $12 ELSE COALESCE($12, image_path_360x270) END
+          image_url_360x270 = $9,
+          deprecated_image_path = CASE WHEN $12 THEN $10 ELSE COALESCE($10, deprecated_image_path) END,
+          media_locator_id = CASE WHEN $12 THEN $11 ELSE COALESCE($11, media_locator_id) END
         WHERE id = $1
         RETURNING *
       `;
@@ -168,11 +158,10 @@ export class BroadcastSessionService {
         roomData.num_users,
         roomData.num_followers,
         roomData.is_hd,
-        roomData.image_url,
-        roomData.image_url_360x270,
-        imagePaths.thumbnail,
-        imagePaths.full,
-        shouldClearOldImage, // $13 - whether to replace old image with new one
+        roomData.image_url,           // $9 - image_url_360x270
+        imagePath,                     // $10 - deprecated_image_path
+        mediaLocatorId,                // $11 - media_locator_id
+        shouldClearOldImage,           // $12 - whether to replace old image with new one
       ];
 
       result = await query(updateSql, updateValues);
@@ -185,19 +174,18 @@ export class BroadcastSessionService {
       });
     } else {
       // Create a new session
+      // Note: After migration 086, using new column names
       const insertSql = `
         INSERT INTO affiliate_api_snapshots (
           person_id, observed_at, seconds_online, session_start,
           current_show, room_subject, tags,
           num_users, num_followers, is_hd,
-          image_url, image_url_360x270,
-          image_path, image_path_360x270
+          image_url_360x270, deprecated_image_path, media_locator_id
         ) VALUES (
           $1, NOW(), $2, $3,
           $4, $5, $6,
           $7, $8, $9,
-          $10, $11,
-          $12, $13
+          $10, $11, $12
         )
         RETURNING *
       `;
@@ -212,10 +200,9 @@ export class BroadcastSessionService {
         roomData.num_users,
         roomData.num_followers,
         roomData.is_hd,
-        roomData.image_url,
-        roomData.image_url_360x270,
-        imagePaths.thumbnail,
-        imagePaths.full,
+        roomData.image_url,   // $10 - image_url_360x270
+        imagePath,            // $11 - deprecated_image_path
+        mediaLocatorId,       // $12 - media_locator_id FK
       ];
 
       result = await query(insertSql, insertValues);
@@ -225,7 +212,7 @@ export class BroadcastSessionService {
         username: roomData.username,
         secondsOnline: roomData.seconds_online,
         numUsers: roomData.num_users,
-        imageSaved: !!imagePaths.full,
+        imageSaved: !!imagePath,
       });
     }
 
@@ -385,10 +372,11 @@ export class BroadcastSessionService {
       num_users: row.num_users,
       num_followers: row.num_followers,
       is_hd: row.is_hd,
-      image_url: row.image_url,
       image_url_360x270: row.image_url_360x270,
-      image_path: row.image_path,
-      image_path_360x270: row.image_path_360x270,
+      legacy_image_url: row.legacy_image_url,
+      deprecated_image_path: row.deprecated_image_path,
+      legacy_image_path: row.legacy_image_path,
+      media_locator_id: row.media_locator_id,
       created_at: row.created_at,
     };
   }

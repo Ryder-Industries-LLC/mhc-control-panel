@@ -15,7 +15,8 @@ import {
   type HistoryFieldType,
 } from '../services/relationship-history.service.js';
 import { ProfileNotesService } from '../services/profile-notes.service.js';
-import { ProfileImagesService } from '../services/profile-images.service.js';
+import { MediaService } from '../services/media.service.js';
+import { CollaborationsService } from '../services/collaborations.service.js';
 import { SocialLinksService, type SocialPlatform } from '../services/social-links.service.js';
 import { SnapshotService } from '../services/snapshot.service.js';
 import { RoomVisitsService } from '../services/room-visits.service.js';
@@ -1472,7 +1473,7 @@ router.get('/:username/images/current', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Person not found' });
     }
 
-    const primaryImage = await ProfileImagesService.getPrimaryByPersonId(person.id);
+    const primaryImage = await MediaService.getPrimaryMedia(person.id);
 
     res.json({ image: primaryImage });
   } catch (error) {
@@ -1500,32 +1501,37 @@ router.get('/:username/images', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Person not found' });
     }
 
-    // Get uploaded images from profile_images table
-    const uploadedResult = await ProfileImagesService.getByPersonId(
+    // Get uploaded images from media_locator table
+    const uploadedResult = await MediaService.getMediaByPersonId(
       person.id,
-      limit ? parseInt(limit as string, 10) : undefined,
-      parseInt(offset as string, 10)
+      {
+        limit: limit ? parseInt(limit as string, 10) : undefined,
+        offset: parseInt(offset as string, 10),
+      }
     );
 
-    // Get affiliate API images from affiliate_api_snapshots
-    // Include original_url for import functionality
+    // Get affiliate API images via media_locator (the single source of truth)
+    // Join through media_locator_id FK to get the actual file paths
+    // Note: After migration 086, image_url_360x270 is the CB API field name
     const affiliateImagesSql = `
-      SELECT DISTINCT ON (image_path)
-        id,
-        image_path as file_path,
-        image_url as original_url,
+      SELECT DISTINCT ON (ml.file_path)
+        ml.id as media_locator_id,
+        ml.file_path,
+        ml.is_primary,
+        aas.image_url_360x270 as original_url,
         'affiliate_api' as source,
-        observed_at as captured_at,
-        num_users as viewers
-      FROM affiliate_api_snapshots
-      WHERE person_id = $1
-        AND image_path IS NOT NULL
-      ORDER BY image_path, observed_at DESC
+        aas.observed_at as captured_at,
+        aas.num_users as viewers
+      FROM affiliate_api_snapshots aas
+      JOIN media_locator ml ON ml.id = aas.media_locator_id
+      WHERE aas.person_id = $1
+        AND aas.media_locator_id IS NOT NULL
+      ORDER BY ml.file_path, aas.observed_at DESC
       LIMIT 50
     `;
     const affiliateResult = await query(affiliateImagesSql, [person.id]);
     const affiliateImages = affiliateResult.rows.map((row) => ({
-      id: row.id,
+      id: row.media_locator_id,  // Use media_locator.id so setPrimaryMedia works
       person_id: person.id,
       file_path: row.file_path,
       original_url: row.original_url, // Original CB URL for import
@@ -1535,15 +1541,34 @@ router.get('/:username/images', async (req: Request, res: Response) => {
       captured_at: row.captured_at,
       uploaded_at: row.captured_at,
       viewers: row.viewers,
-      is_primary: false, // Affiliate images cannot be set as primary
+      is_primary: row.is_primary || false,  // Use actual value from media_locator
       media_type: 'image' as const, // Affiliate API only has images
       duration_seconds: null,
       photoset_id: null,
       title: null,
     }));
 
+    // Convert MediaRecord[] to match the image shape expected by frontend
+    const uploadedImages = uploadedResult.records.map(record => ({
+      id: record.id,
+      person_id: record.person_id,
+      file_path: record.file_path,
+      original_url: record.source_url,
+      original_filename: record.original_filename,
+      source: record.source,
+      description: record.description,
+      captured_at: record.captured_at,
+      uploaded_at: record.uploaded_at,
+      viewers: null,
+      is_primary: record.is_primary,
+      media_type: record.media_type,
+      duration_seconds: record.duration_seconds,
+      photoset_id: record.photoset_id,
+      title: record.title,
+    }));
+
     // Combine and sort by date
-    const allImages = [...uploadedResult.images, ...affiliateImages].sort((a, b) => {
+    const allImages = [...uploadedImages, ...affiliateImages].sort((a, b) => {
       const dateA = new Date(a.captured_at || a.uploaded_at).getTime();
       const dateB = new Date(b.captured_at || b.uploaded_at).getTime();
       return dateB - dateA;
@@ -1592,11 +1617,8 @@ router.post('/:username/images', upload.single('image'), async (req: Request, re
       return res.status(500).json({ error: 'Failed to get person record' });
     }
 
-    // Initialize storage if needed
-    await ProfileImagesService.init();
-
     // Save the uploaded file
-    const image = await ProfileImagesService.saveUploadedFile(
+    const image = await MediaService.saveUploadedMedia(
       {
         buffer: req.file.buffer,
         originalname: req.file.originalname,
@@ -1648,7 +1670,7 @@ router.patch('/:username/images/:imageId', async (req: Request, res: Response) =
       }
     }
 
-    const image = await ProfileImagesService.update(imageId, {
+    const image = await MediaService.updateMediaRecord(imageId, {
       description,
       source,
       capturedAt: captured_at ? new Date(captured_at) : undefined,
@@ -1673,7 +1695,7 @@ router.post('/:username/images/:imageId/set-current', async (req: Request, res: 
   try {
     const { imageId } = req.params;
 
-    const image = await ProfileImagesService.setAsPrimary(imageId);
+    const image = await MediaService.setPrimaryMedia(imageId);
     if (!image) {
       return res.status(404).json({ error: 'Image not found' });
     }
@@ -1689,6 +1711,7 @@ router.post('/:username/images/:imageId/set-current', async (req: Request, res: 
 /**
  * DELETE /api/profile/:username/images/:imageId
  * Delete an uploaded image or affiliate snapshot image
+ * Note: imageId is now always media_locator.id after the consolidation
  */
 router.delete('/:username/images/:imageId', async (req: Request, res: Response) => {
   try {
@@ -1697,42 +1720,30 @@ router.delete('/:username/images/:imageId', async (req: Request, res: Response) 
 
     // Check if this is an affiliate image deletion
     if (source === 'affiliate_api') {
-      // Delete from affiliate_api_snapshots table
-      const deleteResult = await query(
-        'DELETE FROM affiliate_api_snapshots WHERE id = $1 RETURNING image_path',
+      // imageId is now media_locator.id, not affiliate_api_snapshots.id
+      // First, clear the media_locator_id FK from any affiliate_api_snapshots referencing this image
+      await query(
+        'UPDATE affiliate_api_snapshots SET media_locator_id = NULL WHERE media_locator_id = $1',
         [imageId]
       );
 
-      if (deleteResult.rowCount === 0) {
-        return res.status(404).json({ error: 'Affiliate image not found' });
+      // Now soft-delete the media_locator record (this also handles S3 quarantine)
+      const deleted = await MediaService.softDeleteMedia(imageId);
+      if (!deleted) {
+        return res.status(404).json({ error: 'Image not found in media_locator' });
       }
 
-      // Optionally delete the file from storage
-      const imagePath = deleteResult.rows[0]?.image_path;
-      if (imagePath) {
-        try {
-          const storageDir = path.join(process.cwd(), 'data', 'images');
-          const fullPath = path.join(storageDir, imagePath);
-          await fs.unlink(fullPath);
-          logger.info('Affiliate image file deleted', { imagePath });
-        } catch (fileErr: any) {
-          // Log but don't fail if file deletion fails (file may not exist)
-          if (fileErr.code !== 'ENOENT') {
-            logger.warn('Failed to delete affiliate image file', { imagePath, error: fileErr });
-          }
-        }
-      }
-
+      logger.info('Affiliate image deleted from media_locator', { mediaLocatorId: imageId });
       return res.json({ success: true, source: 'affiliate_api' });
     }
 
-    // Default: delete from profile_images
-    const image = await ProfileImagesService.getById(imageId);
+    // Default: delete from media_locator (uploaded images, screensnaps, etc.)
+    const image = await MediaService.getMediaById(imageId);
     if (!image) {
       return res.status(404).json({ error: 'Image not found' });
     }
 
-    const deleted = await ProfileImagesService.delete(imageId);
+    const deleted = await MediaService.softDeleteMedia(imageId);
     if (!deleted) {
       return res.status(404).json({ error: 'Image not found' });
     }
@@ -1746,7 +1757,7 @@ router.delete('/:username/images/:imageId', async (req: Request, res: Response) 
 
 /**
  * POST /api/profile/:username/images/import-affiliate
- * Import an affiliate API image into profile_images so it can be set as current.
+ * Import an affiliate API image into media_locator so it can be set as current.
  * Uses the existing local file path instead of re-downloading from CB.
  */
 router.post('/:username/images/import-affiliate', async (req: Request, res: Response) => {
@@ -1768,9 +1779,9 @@ router.post('/:username/images/import-affiliate', async (req: Request, res: Resp
       return res.status(404).json({ error: 'Person not found' });
     }
 
-    // Create a profile_images record pointing to the existing affiliate file
-    // The file is already stored - we just need a record in profile_images to make it "promotable" to primary
-    const image = await ProfileImagesService.create({
+    // Create a media_locator record pointing to the existing affiliate file
+    // The file is already stored - we just need a record in media_locator to make it "promotable" to primary
+    const image = await MediaService.createMediaRecord({
       personId: person.id,
       filePath: filePath,
       source: 'affiliate_api',
@@ -1782,7 +1793,7 @@ router.post('/:username/images/import-affiliate', async (req: Request, res: Resp
       storageProvider: 's3', // Affiliate images are stored in S3
     });
 
-    logger.info('Affiliate image promoted to profile_images', { username, imageId: image.id, filePath });
+    logger.info('Affiliate image promoted to media_locator', { username, imageId: image.id, filePath });
     res.status(201).json(image);
   } catch (error: any) {
     logger.error('Error promoting affiliate image', { error, username: req.params.username });
@@ -2536,9 +2547,6 @@ router.post('/bulk/upload', upload.array('images', 500), async (req: Request, re
     const uploaded: { filename: string; username: string; imageId: string }[] = [];
     const skipped: { filename: string; reason: string; username?: string }[] = [];
 
-    // Initialize profile images service
-    await ProfileImagesService.init();
-
     for (const file of files) {
       // Parse username from filename
       // Pattern: username.ext or username-suffix.ext
@@ -2570,7 +2578,7 @@ router.post('/bulk/upload', upload.array('images', 500), async (req: Request, re
 
       try {
         // Save the image
-        const image = await ProfileImagesService.saveUploadedFile(
+        const image = await MediaService.saveUploadedMedia(
           {
             buffer: file.buffer,
             originalname: file.originalname,
@@ -2611,12 +2619,153 @@ router.post('/bulk/upload', upload.array('images', 500), async (req: Request, re
 });
 
 // ============================================================
-// MHC-1105: SEEN WITH ENDPOINTS
+// COLLABORATIONS ENDPOINTS (Replaces Seen With)
+// ============================================================
+
+/**
+ * GET /api/profile/:username/collaborations
+ * Get all collaborators for a profile (bidirectional)
+ */
+router.get('/:username/collaborations', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    // Get collaborators
+    const collaborators = await CollaborationsService.getCollaborators(person.id);
+
+    res.json({ collaborators });
+  } catch (error) {
+    logger.error('Error getting collaborators', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/:username/collaborations
+ * Add a new collaborator for a profile
+ */
+router.post('/:username/collaborations', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { collaboratorUsername, notes } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+    if (!collaboratorUsername || typeof collaboratorUsername !== 'string') {
+      return res.status(400).json({ error: 'collaboratorUsername is required and must be a string' });
+    }
+
+    // Normalize usernames
+    const normalizedUsername = username.toLowerCase().trim();
+    const normalizedCollaboratorUsername = collaboratorUsername.toLowerCase().trim();
+
+    // Prevent self-collaboration
+    if (normalizedUsername === normalizedCollaboratorUsername) {
+      return res.status(400).json({ error: 'Cannot add yourself as a collaborator' });
+    }
+
+    // Get or create both persons
+    const person = await PersonService.findOrCreate({ username: normalizedUsername, role: 'MODEL' });
+    if (!person) {
+      return res.status(500).json({ error: 'Failed to get person record' });
+    }
+
+    const collaboratorPerson = await PersonService.findOrCreate({
+      username: normalizedCollaboratorUsername,
+      role: 'MODEL',
+    });
+    if (!collaboratorPerson) {
+      return res.status(500).json({ error: 'Failed to get collaborator person record' });
+    }
+
+    // Add collaboration
+    const collaborationId = await CollaborationsService.addCollaboration(
+      person.id,
+      collaboratorPerson.id,
+      notes || null
+    );
+
+    if (!collaborationId) {
+      return res.status(400).json({ error: 'Failed to add collaboration' });
+    }
+
+    logger.info('Collaboration added', {
+      username: normalizedUsername,
+      collaboratorUsername: normalizedCollaboratorUsername,
+      collaborationId,
+    });
+
+    res.json({
+      collaboration: {
+        id: collaborationId,
+        collaboratorPersonId: collaboratorPerson.id,
+        collaboratorUsername: normalizedCollaboratorUsername,
+        notes: notes || null,
+      },
+    });
+  } catch (error) {
+    logger.error('Error adding collaboration', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/profile/:username/collaborations/:collaboratorUsername
+ * Remove a collaboration between two profiles
+ */
+router.delete('/:username/collaborations/:collaboratorUsername', async (req: Request, res: Response) => {
+  try {
+    const { username, collaboratorUsername } = req.params;
+
+    if (!username || !collaboratorUsername) {
+      return res.status(400).json({ error: 'Username and collaboratorUsername are required' });
+    }
+
+    // Get both persons
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const collaboratorPerson = await PersonService.findByUsername(collaboratorUsername);
+    if (!collaboratorPerson) {
+      return res.status(404).json({ error: 'Collaborator not found' });
+    }
+
+    // Remove collaboration
+    const removed = await CollaborationsService.removeCollaboration(person.id, collaboratorPerson.id);
+
+    if (!removed) {
+      return res.status(404).json({ error: 'Collaboration not found' });
+    }
+
+    logger.info('Collaboration removed', { username, collaboratorUsername });
+    res.json({ success: true, removedCollaborator: collaboratorUsername });
+  } catch (error) {
+    logger.error('Error removing collaboration', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// MHC-1105: SEEN WITH ENDPOINTS (LEGACY - use collaborations instead)
 // ============================================================
 
 /**
  * GET /api/profile/:username/seen-with
  * Get all usernames associated with a profile via "Seen With"
+ * @deprecated Use GET /api/profile/:username/collaborations instead
  */
 router.get('/:username/seen-with', async (req: Request, res: Response) => {
   try {

@@ -71,7 +71,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
       `),
     ]);
 
-    // Calculate image and video storage stats from profile_images table
+    // Calculate image and video storage stats from media_locator table
     let imageCount = 0;
     let imageTotalSizeBytes = 0;
     let videoCount = 0;
@@ -84,7 +84,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
     // Details by source + storage: [{ source, storage, count, sizeBytes }]
     let imageDetails: Array<{ source: string; storage: string; count: number; sizeBytes: number }> = [];
     try {
-      // Get count and total size from profile_images (images with known file sizes)
+      // Get count and total size from media_locator (images with known file sizes)
       const profileImagesResult = await query(`
         SELECT
           COUNT(*) FILTER (WHERE media_type = 'image' OR media_type IS NULL) as image_count,
@@ -92,8 +92,8 @@ router.get('/stats', async (_req: Request, res: Response) => {
           COUNT(*) FILTER (WHERE media_type = 'video') as video_count,
           COALESCE(SUM(file_size) FILTER (WHERE media_type = 'video'), 0) as video_total_size,
           COUNT(DISTINCT person_id) FILTER (WHERE media_type = 'video') as users_with_videos
-        FROM profile_images
-        WHERE file_size IS NOT NULL
+        FROM media_locator
+        WHERE file_size IS NOT NULL AND deleted_at IS NULL
       `);
       const uploadedImageCount = parseInt(profileImagesResult.rows[0]?.image_count || '0');
       imageTotalSizeBytes = parseInt(profileImagesResult.rows[0]?.image_total_size || '0');
@@ -101,48 +101,45 @@ router.get('/stats', async (_req: Request, res: Response) => {
       videoTotalSizeBytes = parseInt(profileImagesResult.rows[0]?.video_total_size || '0');
       usersWithVideos = parseInt(profileImagesResult.rows[0]?.users_with_videos || '0');
 
-      // Also count affiliate API snapshots (these don't have file_size stored)
-      const affiliateImagesResult = await query(`
+      // All images are now in media_locator (affiliate images are included via media_locator_id FK)
+      // Get total image count from media_locator (excluding soft-deleted)
+      const totalImagesResult = await query(`
         SELECT COUNT(*) as count
-        FROM affiliate_api_snapshots
-        WHERE image_path_360x270 IS NOT NULL
+        FROM media_locator
+        WHERE (media_type = 'image' OR media_type IS NULL) AND deleted_at IS NULL
       `);
-      const affiliateCount = parseInt(affiliateImagesResult.rows[0]?.count || '0');
+      imageCount = parseInt(totalImagesResult.rows[0]?.count || '0');
 
-      imageCount = uploadedImageCount + affiliateCount;
-
-      // Get image counts by source
+      // Get image counts by source (excluding soft-deleted)
       const sourceCountsResult = await query(`
         SELECT source, COUNT(*) as count
-        FROM profile_images
-        WHERE media_type = 'image' OR media_type IS NULL
+        FROM media_locator
+        WHERE (media_type = 'image' OR media_type IS NULL) AND deleted_at IS NULL
         GROUP BY source
       `);
       for (const row of sourceCountsResult.rows) {
         imagesBySource[row.source || 'unknown'] = parseInt(row.count);
       }
-      // Add affiliate_api count from affiliate_api_snapshots table
-      imagesBySource['affiliate_api_snapshots'] = affiliateCount;
 
-      // Get image counts by storage provider
+      // Get image counts by storage provider (excluding soft-deleted)
       const storageCountsResult = await query(`
         SELECT storage_provider, COUNT(*) as count
-        FROM profile_images
-        WHERE media_type = 'image' OR media_type IS NULL
+        FROM media_locator
+        WHERE (media_type = 'image' OR media_type IS NULL) AND deleted_at IS NULL
         GROUP BY storage_provider
       `);
       for (const row of storageCountsResult.rows) {
         imagesByStorage[row.storage_provider || 's3'] = parseInt(row.count);
       }
 
-      // Get summary by source with size
+      // Get summary by source with size (excluding soft-deleted)
       const summaryResult = await query(`
         SELECT
           source,
           COUNT(*) as count,
           COALESCE(SUM(file_size), 0) as size_bytes
-        FROM profile_images
-        WHERE media_type = 'image' OR media_type IS NULL
+        FROM media_locator
+        WHERE (media_type = 'image' OR media_type IS NULL) AND deleted_at IS NULL
         GROUP BY source
         ORDER BY count DESC
       `);
@@ -152,23 +149,16 @@ router.get('/stats', async (_req: Request, res: Response) => {
           sizeBytes: parseInt(row.size_bytes || '0'),
         };
       }
-      // Add affiliate images to summary (size unknown, estimate ~50KB each)
-      if (affiliateCount > 0) {
-        imageSummaryBySource['affiliate_api'] = {
-          count: affiliateCount,
-          sizeBytes: affiliateCount * 50000, // ~50KB estimate per image
-        };
-      }
 
-      // Get details by source + storage
+      // Get details by source + storage (excluding soft-deleted)
       const detailsResult = await query(`
         SELECT
           source,
           COALESCE(storage_provider, 'local') as storage,
           COUNT(*) as count,
           COALESCE(SUM(file_size), 0) as size_bytes
-        FROM profile_images
-        WHERE media_type = 'image' OR media_type IS NULL
+        FROM media_locator
+        WHERE (media_type = 'image' OR media_type IS NULL) AND deleted_at IS NULL
         GROUP BY source, storage_provider
         ORDER BY count DESC
       `);
@@ -178,15 +168,6 @@ router.get('/stats', async (_req: Request, res: Response) => {
           storage: row.storage || 'local',
           count: parseInt(row.count),
           sizeBytes: parseInt(row.size_bytes || '0'),
-        });
-      }
-      // Add affiliate images (stored locally in data/images)
-      if (affiliateCount > 0) {
-        imageDetails.push({
-          source: 'affiliate_api',
-          storage: 'local',
-          count: affiliateCount,
-          sizeBytes: affiliateCount * 50000,
         });
       }
     } catch (e) {

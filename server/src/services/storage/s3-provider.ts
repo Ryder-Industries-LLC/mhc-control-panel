@@ -4,7 +4,7 @@
  * Stores files in AWS S3 bucket with pre-signed URL support for serving.
  */
 
-import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand, ListObjectsV2Command, CopyObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { BaseStorageProvider } from './base-provider.js';
 import { StorageProviderType, StorageWriteResult, StorageReadResult, StorageFileStats } from './types.js';
@@ -342,7 +342,9 @@ export class S3Provider extends BaseStorageProvider {
     let continuationToken: string | undefined;
 
     try {
-      const fullPrefix = prefixFilter ? `${this.prefix}/${prefixFilter}` : this.prefix;
+      // Normalize prefix (ensure it ends with / for proper concatenation)
+      const normalizedPrefix = this.prefix.endsWith('/') ? this.prefix : `${this.prefix}/`;
+      const fullPrefix = prefixFilter ? `${normalizedPrefix}${prefixFilter}` : this.prefix;
 
       do {
         const command = new ListObjectsV2Command({
@@ -357,8 +359,10 @@ export class S3Provider extends BaseStorageProvider {
         if (response.Contents) {
           for (const obj of response.Contents) {
             if (obj.Key) {
+              // Normalize prefix for stripping (ensure it ends with /)
+              const prefixToStrip = this.prefix.endsWith('/') ? this.prefix : `${this.prefix}/`;
               objects.push({
-                key: obj.Key.replace(`${this.prefix}/`, ''), // Return relative path
+                key: obj.Key.replace(prefixToStrip, ''), // Return relative path
                 size: obj.Size || 0,
                 lastModified: obj.LastModified || new Date(),
               });
@@ -422,6 +426,66 @@ export class S3Provider extends BaseStorageProvider {
     } catch (error) {
       logger.error(`[S3Provider] Failed to get bucket stats: ${error}`);
       return null;
+    }
+  }
+
+  /**
+   * Copy an object within the bucket
+   * Both source and destination are relative to the bucket (not including the prefix)
+   */
+  async copyObject(sourceKey: string, destKey: string): Promise<boolean> {
+    if (!this.client) {
+      return false;
+    }
+
+    try {
+      // Normalize prefix (ensure no double slashes)
+      const normalizedPrefix = this.prefix ? (this.prefix.endsWith('/') ? this.prefix : `${this.prefix}/`) : '';
+      const fullSourceKey = `${normalizedPrefix}${sourceKey}`;
+      const fullDestKey = `${normalizedPrefix}${destKey}`;
+
+      const command = new CopyObjectCommand({
+        Bucket: this.bucket,
+        CopySource: `${this.bucket}/${fullSourceKey}`,
+        Key: fullDestKey,
+      });
+
+      await this.client.send(command);
+      logger.debug(`[S3Provider] Copied ${sourceKey} to ${destKey}`);
+      return true;
+    } catch (error) {
+      logger.error(`[S3Provider] Failed to copy ${sourceKey} to ${destKey}: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Delete an object by its relative key (prefix will be added)
+   */
+  async deleteObject(key: string): Promise<boolean> {
+    if (!this.client) {
+      return false;
+    }
+
+    try {
+      // Handle prefix - don't add extra slash if prefix already has trailing slash
+      const fullKey = this.prefix
+        ? (this.prefix.endsWith('/') ? `${this.prefix}${key}` : `${this.prefix}/${key}`)
+        : key;
+
+      logger.info(`[S3Provider] Deleting object: ${fullKey} (bucket: ${this.bucket})`);
+
+      const command = new DeleteObjectCommand({
+        Bucket: this.bucket,
+        Key: fullKey,
+      });
+
+      const result = await this.client.send(command);
+      logger.info(`[S3Provider] Delete result for ${key}: ${JSON.stringify(result.$metadata)}`);
+      return true;
+    } catch (error) {
+      logger.error(`[S3Provider] Failed to delete ${key}: ${error}`);
+      return false;
     }
   }
 }
