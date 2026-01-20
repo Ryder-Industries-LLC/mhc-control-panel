@@ -1403,14 +1403,57 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-5 pt-0 pb-5">
-      {error && (
-        <div className="bg-red-500/20 border-l-4 border-red-500 text-red-300 px-4 py-3 rounded-md mb-5">
-          <strong className="font-bold mr-1">Error:</strong> {error}
+      {/* Loading State */}
+      {loading && (
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-mhc-primary border-t-transparent mb-4"></div>
+          <p className="text-mhc-text-muted">Loading profile...</p>
         </div>
       )}
 
-      {/* Profile Content */}
-      {profileData && (
+      {/* Error State */}
+      {!loading && error && (
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="bg-red-500/20 border border-red-500/50 text-red-300 px-8 py-6 rounded-lg max-w-md text-center">
+            <svg className="w-12 h-12 mx-auto mb-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <h2 className="text-xl font-bold mb-2">Failed to Load Profile</h2>
+            <p className="text-red-200/80 mb-4">{error}</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-red-500/30 hover:bg-red-500/50 text-red-100 rounded transition-colors"
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* No Profile Data State (after loading completes without error but no data) */}
+      {/* Triggers when profileData is null OR when it exists but has no meaningful data */}
+      {!loading && !error && urlUsername && (!profileData || (!profileData.profile && !profileData.latestSession && (!profileData.interactions || profileData.interactions.length === 0))) && (
+        <div className="flex flex-col items-center justify-center py-20">
+          <div className="bg-mhc-surface border border-white/10 text-white px-8 py-6 rounded-lg max-w-md text-center">
+            <svg className="w-12 h-12 mx-auto mb-4 text-mhc-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            <h2 className="text-xl font-bold mb-2">Profile Not Found</h2>
+            <p className="text-mhc-text-muted mb-4">
+              Could not load profile for <span className="font-mono text-mhc-primary">{urlUsername}</span>
+            </p>
+            <button
+              onClick={() => window.history.back()}
+              className="px-4 py-2 bg-mhc-primary/30 hover:bg-mhc-primary/50 text-white rounded transition-colors"
+            >
+              Go Back
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Profile Content - only show when there's meaningful data */}
+      {!loading && profileData && (profileData.profile || profileData.latestSession || (profileData.interactions && profileData.interactions.length > 0)) && (
         <div>
           {/* MHC-1101: Page title with username and status - sticky header (transparent) */}
           <div className="sticky top-0 z-40 py-0.5 mb-0.5 flex items-center gap-2">
@@ -1487,8 +1530,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
                             profileData.latestSession,
                             isSessionLive(profileData.latestSession)
                           ) ||
-                          profileData.profile.photos?.find((p: any) => p.isPrimary)?.url ||
-                          profileData.profile.photos?.[0]?.url ||
+                          profileData.profile?.photos?.find((p: any) => p.isPrimary)?.url ||
+                          profileData.profile?.photos?.[0]?.url ||
                           getPlaceholderImage(profileData.person.role)
                     }
                     alt={profileData.person.username}
