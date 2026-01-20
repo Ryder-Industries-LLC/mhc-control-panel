@@ -75,6 +75,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Chat log parsing with multi-format support _(v2.1.0 - CB native, bookmarklet, rating badges)_
 - [x] Unified paste modal for PM, DM, Public Chat _(v2.1.0)_
 - [ ] Notes tab restructure: separate tabs for Notes, PM, DM, Public Chat, Tips, Tip Menu
+- [ ] **BUG**: PM/DM parsing needs to detect timestamp format vs regular copy/paste - parse for chat bubbles accordingly
 
 ### /profile - Snapshot
 
@@ -124,6 +125,8 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [ ] Investigate duplicate affiliate images (4+ copies of same image appearing)
 - [ ] Investigate statbate_model not increasing
 - [ ] Add search/watchlist prioritization for scraping jobs (needs requirements)
+- [ ] Investigate PM/DM from Events API - why direct messages not coming through
+- [ ] Directory page caching issues - fix double header with filters
 
 ---
 
@@ -194,6 +197,8 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [ ] Add image timestamp for uploaded images used as primary
 - [ ] Brighten CB/UN buttons and filled rating stars (contrast issue)
 - [x] Fix hover image endless loop - add delay on disappear or hover start _(v1.34.8 - 400ms delay)_
+- [ ] **Profile Page Overhaul** - finish/redo profile page layout and organization
+- [ ] Move social media links to profile page (from where?)
 
 ### Code Refactoring
 
@@ -202,6 +207,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] SHA256 deduplication - remove duplicate media records _(v2.0.0 - 38,820 duplicates removed)_
 - [ ] Consider combining Person/Directory handling (similar patterns)
 - [ ] Review Live status logic for affiliate data
+- [ ] **Create ParsingService** - consolidate all parsing logic (chat, PM/DM, tip menu) into dedicated service with methods for each parsing type
 
 ### Infrastructure / Tech Debt
 
@@ -222,6 +228,15 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 ### /profile - Images
 
 - [ ] Look at scraping CB API for images on profile pages and pull images, tagging them as "profile" type
+
+### /profile - Tipping History
+
+- [ ] **TippingHistoryService** - Create service to track my tips to profiles
+  - Pull from Events API tip events
+  - Extract from notes (if tips mentioned)
+  - Scrape CB using profile scrape credentials to get full tip history
+  - Display tipping history section on profile page (if I've tipped)
+  - Show total tipped, tip dates, tip amounts
 
 ### Stats & Data Sources
 
