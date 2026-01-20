@@ -74,7 +74,7 @@ const Users: React.FC = () => {
   const [, setUsernameSuggestions] = useState<string[]>([]);
 
   // Standard filter type used across tabs
-  type StandardFilter = 'all' | 'live' | 'with_image' | 'with_videos' | 'with_rating' | 'models' | 'viewers' | 'following' | 'friends' | 'watchlist';
+  type StandardFilter = 'all' | 'live' | 'with_image' | 'with_videos' | 'with_rating' | 'models' | 'viewers' | 'following';
 
   // Following tab state
   const [followingUsers, setFollowingUsers] = useState<FollowingPerson[]>([]);
@@ -105,6 +105,9 @@ const Users: React.FC = () => {
   // Watchlist tab state
   const [watchlistUsers, setWatchlistUsers] = useState<BasePerson[]>([]);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
+  const [watchlistFilters, setWatchlistFilters] = useState<Set<StatFilter>>(new Set());
+  const [watchlistSortField, setWatchlistSortField] = useState<keyof BasePerson>('session_observed_at');
+  const [watchlistSortDirection, setWatchlistSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Tippers tabs state
   const [tippedByMeUsers, setTippedByMeUsers] = useState<TipperPerson[]>([]);
@@ -164,7 +167,9 @@ const Users: React.FC = () => {
       setActiveTab('directory');
     }
 
-    if (tabParam && ['directory', 'following', 'followers', 'unfollowed', 'subs', 'doms', 'friends', 'bans', 'watchlist'].includes(tabParam)) {
+    // All valid tabs - some are hidden from main navigation but still accessible via URL
+    const validTabs = ['directory', 'following', 'followers', 'unfollowed', 'subs', 'doms', 'friends', 'bans', 'watchlist', 'tipped-by-me', 'tipped-me'];
+    if (tabParam && validTabs.includes(tabParam)) {
       setActiveTab(tabParam);
     }
 
@@ -507,6 +512,9 @@ const Users: React.FC = () => {
       }
       return newFilters;
     });
+    // Reset sort to default (Last Active, newest first) when applying quick filters
+    setSortField('session_observed_at');
+    setSortDirection('desc');
   };
 
   const clearAllFilters = () => {
@@ -515,6 +523,9 @@ const Users: React.FC = () => {
     setTagFilter('');
     setSearchQuery('');
     setRoleFilter('ALL');
+    // Reset sort to default (Last Active, newest first)
+    setSortField('session_observed_at');
+    setSortDirection('desc');
   };
 
   // Filtering logic
@@ -551,12 +562,6 @@ const Users: React.FC = () => {
             break;
           case 'following':
             if (!p.following) return false;
-            break;
-          case 'friends':
-            if (!p.friend_tier) return false;
-            break;
-          case 'watchlist':
-            if (!p.watch_list) return false;
             break;
         }
       }
@@ -768,8 +773,6 @@ const Users: React.FC = () => {
         case 'models': return p.role === 'MODEL';
         case 'viewers': return p.role === 'VIEWER';
         case 'following': return p.following;
-        case 'friends': return !!p.friend_tier;
-        case 'watchlist': return p.watch_list;
         default: return true;
       }
     });
@@ -842,8 +845,6 @@ const Users: React.FC = () => {
         case 'models': return p.role === 'MODEL';
         case 'viewers': return p.role === 'VIEWER';
         case 'following': return p.following;
-        case 'friends': return !!p.friend_tier;
-        case 'watchlist': return p.watch_list;
         default: return true;
       }
     });
@@ -1132,6 +1133,77 @@ const Users: React.FC = () => {
     const watchlistCounts = buildStandardCounts(watchlistUsers, { allLabel: 'All Watchlist' });
     const watchlistColumns = getWatchlistColumns(handleRatingChange);
 
+    // Filter watchlist users based on active filters
+    const filteredWatchlistUsers = watchlistUsers.filter(p => {
+      if (watchlistFilters.size === 0) return true;
+      for (const filter of Array.from(watchlistFilters)) {
+        switch (filter) {
+          case 'live':
+            if (!isPersonLive(p)) return false;
+            break;
+          case 'with_image':
+            if (!p.image_url) return false;
+            break;
+          case 'with_videos':
+            if (!p.has_videos) return false;
+            break;
+          case 'with_rating':
+            if (!p.rating || p.rating === 0) return false;
+            break;
+          case 'models':
+            if (p.role !== 'MODEL') return false;
+            break;
+          case 'viewers':
+            if (p.role !== 'VIEWER') return false;
+            break;
+          case 'following':
+            if (!p.following) return false;
+            break;
+        }
+      }
+      return true;
+    });
+
+    // Sort filtered users
+    const sortedWatchlistUsers = [...filteredWatchlistUsers].sort((a, b) => {
+      const aValue = a[watchlistSortField];
+      const bValue = b[watchlistSortField];
+      if (aValue === null || aValue === undefined) return 1;
+      if (bValue === null || bValue === undefined) return -1;
+      let comparison = 0;
+      if (watchlistSortField === 'session_observed_at' || watchlistSortField === 'last_seen_at' || watchlistSortField === 'first_seen_at') {
+        const aDate = new Date(aValue as string).getTime();
+        const bDate = new Date(bValue as string).getTime();
+        comparison = aDate - bDate;
+      } else if (typeof aValue === 'string' && typeof bValue === 'string') {
+        comparison = aValue.localeCompare(bValue);
+      } else if (typeof aValue === 'number' && typeof bValue === 'number') {
+        comparison = aValue - bValue;
+      }
+      return watchlistSortDirection === 'asc' ? comparison : -comparison;
+    });
+
+    const handleWatchlistFilterToggle = (filter: StatFilter) => {
+      setWatchlistFilters(prev => {
+        const newFilters = new Set(prev);
+        if (newFilters.has(filter)) {
+          newFilters.delete(filter);
+        } else {
+          newFilters.add(filter);
+        }
+        return newFilters;
+      });
+      // Reset sort to default when applying quick filters
+      setWatchlistSortField('session_observed_at');
+      setWatchlistSortDirection('desc');
+    };
+
+    const activeWatchlistFiltersArray: ActiveFilter[] = Array.from(watchlistFilters).map(f => ({
+      id: f,
+      label: f.replace('_', ' '),
+      type: 'stat' as const,
+    }));
+
     return (
       <>
         <div className="flex justify-between items-center my-6">
@@ -1140,32 +1212,45 @@ const Users: React.FC = () => {
 
         <FiltersPanel
           counts={watchlistCounts}
-          activeCountFilters={new Set()}
-          onCountFilterToggle={() => {}}
+          activeCountFilters={watchlistFilters as Set<string>}
+          onCountFilterToggle={(id) => handleWatchlistFilterToggle(id as StatFilter)}
         />
 
         <ActiveFiltersBar
-          filters={[]}
-          resultCount={watchlistUsers.length}
-          onRemoveFilter={() => {}}
-          onClearAll={() => {}}
+          filters={activeWatchlistFiltersArray}
+          resultCount={sortedWatchlistUsers.length}
+          onRemoveFilter={(id) => {
+            setWatchlistFilters(prev => {
+              const newFilters = new Set(prev);
+              newFilters.delete(id as StatFilter);
+              return newFilters;
+            });
+          }}
+          onClearAll={() => setWatchlistFilters(new Set())}
           className="mt-4"
         />
 
         <ResultsToolbar
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          totalItems={watchlistUsers.length}
+          sortOptions={DIRECTORY_SORT_OPTIONS}
+          sortValue={`${watchlistSortField}-${watchlistSortDirection}`}
+          onSortChange={(value) => {
+            const [field, dir] = value.split('-') as [keyof BasePerson, 'asc' | 'desc'];
+            setWatchlistSortField(field);
+            setWatchlistSortDirection(dir);
+          }}
+          totalItems={sortedWatchlistUsers.length}
           className="mt-4"
         />
 
         {watchlistLoading ? (
           <div className="p-12 text-center text-white/50">Loading watchlist...</div>
         ) : viewMode === 'grid' ? (
-          <PeopleGrid data={watchlistUsers} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
+          <PeopleGrid data={sortedWatchlistUsers} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
         ) : (
           <PeopleTable
-            data={watchlistUsers}
+            data={sortedWatchlistUsers}
             columns={watchlistColumns}
             emptyMessage="No users on watchlist."
             className="mt-4"

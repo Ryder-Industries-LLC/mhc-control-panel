@@ -100,7 +100,7 @@ export type TabType =
   | 'tipped-by-me'
   | 'tipped-me';
 
-// Stat filter type for combinable filters
+// Stat filter type for combinable filters (used in card filters)
 export type StatFilter =
   | 'live'
   | 'with_image'
@@ -108,9 +108,7 @@ export type StatFilter =
   | 'with_rating'
   | 'models'
   | 'viewers'
-  | 'following'
-  | 'friends'
-  | 'watchlist';
+  | 'following';
 
 // Priority lookup from queue
 export interface PriorityLookup {
@@ -239,19 +237,15 @@ export const TAG_PRESETS = [
   'dirty', 'fetish', 'daddy', 'alpha', 'dom', 'slave', 'bulge'
 ];
 
-// Default segments configuration
+// Default segments configuration (main tabs)
 export const SEGMENTS: SegmentConfig[] = [
   { id: 'directory', label: 'Directory', color: 'primary' },
   { id: 'following', label: 'Following', color: 'emerald' },
   { id: 'followers', label: 'Followers', color: 'blue' },
-  { id: 'unfollowed', label: 'Unfollowed', color: 'gray' },
-  { id: 'subs', label: 'Subs', color: 'emerald' },
   { id: 'doms', label: 'Doms', color: 'purple' },
   { id: 'friends', label: 'Friends', color: 'yellow' },
   { id: 'bans', label: 'Bans', color: 'red' },
   { id: 'watchlist', label: 'Watchlist', color: 'orange' },
-  { id: 'tipped-by-me', label: 'Tipped By Me', color: 'amber' },
-  { id: 'tipped-me', label: 'Tipped Me', color: 'emerald' },
 ];
 
 // Sort options for Directory
@@ -386,7 +380,7 @@ export const getRoleChipClass = (role: RoleType): string => {
 
 /**
  * Build standard filter counts from any list of persons
- * Standard 8 filters: All | Live Now | With Media | Models | Viewers | Following | Friends | Watchlist
+ * Standard filters: All | Live Now | With Images | With Videos | Rated | Models | Viewers | Following
  */
 export const buildStandardCounts = <T extends BasePerson>(
   data: T[],
@@ -410,6 +404,7 @@ export const buildStandardCounts = <T extends BasePerson>(
   }
 
   // MHC-1106: Renamed "With Media" to "With Images" - filter only counts images, not videos
+  // Removed watchlist and friends (they are main tabs)
   counts.push(
     { id: 'live', label: 'Live Now', value: data.filter(p => isPersonLive(p)).length, color: 'red' },
     { id: 'with_image', label: 'With Images', value: data.filter(p => p.image_url).length, color: 'primary' },
@@ -418,8 +413,6 @@ export const buildStandardCounts = <T extends BasePerson>(
     { id: 'models', label: 'Models', value: data.filter(p => p.role === 'MODEL').length, color: 'purple' },
     { id: 'viewers', label: 'Viewers', value: data.filter(p => p.role === 'VIEWER').length, color: 'blue' },
     { id: 'following', label: 'Following', value: data.filter(p => p.following).length, color: 'emerald' },
-    { id: 'friends', label: 'Friends', value: data.filter(p => p.friend_tier).length, color: 'yellow' },
-    { id: 'watchlist', label: 'Watchlist', value: data.filter(p => p.watch_list).length, color: 'orange' },
   );
 
   return counts;

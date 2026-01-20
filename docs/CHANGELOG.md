@@ -2,6 +2,43 @@
 
 All notable changes to MHC Control Panel.
 
+## [2.2.0] - 2026-01-20
+
+### Added
+- **Media Favorites System** - Mark images/videos as favorites and view in dedicated page
+  - New `is_favorite` column on `media_locator` table with indexed queries
+  - MediaService methods: `toggleFavorite`, `setFavorite`, `getFavorites`, `getFavoriteStats`
+  - New API routes at `/api/media/favorites` and `/api/media/:mediaId/favorite`
+  - New `FavoriteIcon.tsx` component - heart icon with toggle animation
+  - New `/favorites` page with:
+    - Grid view of all favorite media
+    - Filter by media type (images/videos)
+    - Stats showing total favorites, images, and videos counts
+    - Each item links back to user profile
+    - Pagination support
+  - Favorite icons on Profile page image gallery and video section
+  - Navigation link added between "Follow History" and "Event Log"
+
+- **StarRating Component** - Reusable rating component for profile pages
+
+### Changed
+- **People/Directory Tab Reorganization**
+  - Main tabs now: Directory, Following, Followers, Doms, Friends, Bans, Watchlist
+  - Removed from main tabs: Unfollowed, Subs, Tipped By Me, Tipped Me (still accessible via URL params)
+  - Card filters now: All, Live Now, With Images, With Videos, Rated, Models, Viewers, Following
+  - Removed from card filters: Watchlist, Friends (they are main tabs now)
+
+### Fixed
+- Profile Not Found crash - now shows "Profile Not Found" message instead of blank screen when navigating to non-existent profiles
+- Quick filters on People page now reset sort to "Last Active (Newest)" when applied
+- Watchlist tab now has full filtering and sorting support with sort dropdown
+
+### Database
+- Migration 092: `is_favorite` boolean column on `media_locator` table
+- Partial index on `is_favorite` for efficient favorite queries
+
+---
+
 ## [2.1.0] - 2026-01-20
 
 ### Added

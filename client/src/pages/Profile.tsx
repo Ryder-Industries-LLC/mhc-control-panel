@@ -22,6 +22,7 @@ import { RelationshipHistoryViewer } from '../components/RelationshipHistoryView
 import { StarRating } from '../components/StarRating';
 import { Modal } from '../components/Modal';
 import { ProfileAttributes } from '../components/ProfileAttributes';
+import { FavoriteIcon } from '../components/FavoriteIcon';
 // Profile.css removed - fully migrated to Tailwind CSS
 
 interface ProfilePageProps {}
@@ -984,6 +985,21 @@ const Profile: React.FC<ProfilePageProps> = () => {
       }
     } catch (err) {
       console.error('Failed to delete image', err);
+    }
+  };
+
+  // Toggle media favorite status
+  const handleToggleFavorite = async (mediaId: string) => {
+    try {
+      const result = await api.toggleMediaFavorite(mediaId);
+      // Update the local state to reflect the change
+      setUploadedImages((prev) =>
+        prev.map((img) =>
+          img.id === mediaId ? { ...img, is_favorite: result.is_favorite } : img
+        )
+      );
+    } catch (err) {
+      console.error('Failed to toggle favorite', err);
     }
   };
 
@@ -2215,6 +2231,15 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                           </svg>
                                         </button>
                                       </div>
+                                      {/* Favorite icon - always visible when favorited, shown on hover otherwise */}
+                                      <div className={`absolute top-1 right-1 ${image.is_favorite ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`} style={{ right: '4.5rem' }}>
+                                        <FavoriteIcon
+                                          isFavorite={image.is_favorite || false}
+                                          onToggle={() => handleToggleFavorite(image.id)}
+                                          size="sm"
+                                          className="bg-black/40 rounded-full"
+                                        />
+                                      </div>
                                       {image.is_primary && (
                                         <div className="absolute bottom-1 right-1 bg-emerald-500 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
                                           Primary
@@ -2295,6 +2320,15 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                   </div>
                                   <div className="absolute top-2 left-2 bg-cyan-500/80 text-white text-[10px] px-1.5 py-0.5 rounded font-semibold">
                                     Profile
+                                  </div>
+                                  {/* Favorite icon for video */}
+                                  <div className={`absolute top-2 ${video.is_favorite ? '' : 'opacity-0 group-hover:opacity-100'} transition-opacity`} style={{ right: '2.5rem' }}>
+                                    <FavoriteIcon
+                                      isFavorite={video.is_favorite || false}
+                                      onToggle={() => handleToggleFavorite(video.id)}
+                                      size="sm"
+                                      className="bg-black/40 rounded-full"
+                                    />
                                   </div>
                                   <button
                                     onClick={() => handleDeleteImage(video.id, video.source)}

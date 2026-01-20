@@ -560,6 +560,39 @@ export const api = {
     const response = await apiClient.get('/api/settings/broadcast/config');
     return response.data;
   },
+
+  // Media Favorites
+  toggleMediaFavorite: async (mediaId: string): Promise<any> => {
+    const response = await apiClient.post(`/api/media/${mediaId}/favorite`);
+    return response.data;
+  },
+
+  setMediaFavorite: async (mediaId: string, isFavorite: boolean): Promise<any> => {
+    const response = await apiClient.put(`/api/media/${mediaId}/favorite`, { is_favorite: isFavorite });
+    return response.data;
+  },
+
+  getFavoriteMedia: async (page = 1, pageSize = 50, mediaType?: 'image' | 'video'): Promise<{
+    records: any[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> => {
+    const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    if (mediaType) params.append('mediaType', mediaType);
+    const response = await apiClient.get(`/api/media/favorites?${params}`);
+    return response.data;
+  },
+
+  getFavoriteStats: async (): Promise<{
+    totalFavorites: number;
+    imageCount: number;
+    videoCount: number;
+  }> => {
+    const response = await apiClient.get('/api/media/favorites/stats');
+    return response.data;
+  },
 };
 
 export default apiClient;

@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-20 (v2.1.0)
+**Last Updated**: 2026-01-20 (v2.2.0)
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -45,6 +45,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Add CB Profile Link to List view, Grid view _(v1.28.0 - CB and UN Cams links added)_
 - [x] Rename "People" to "Directory" in navigation _(v1.28.0)_
 - [x] Add image timestamp on hover for People listing _(v1.34.4)_
+- [x] Tab reorganization - simplified main tabs and card filters _(v2.2.0)_
 
 ### /admin
 
@@ -67,6 +68,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Fix affiliate image set-as-primary not working _(v1.34.4 - use local file instead of re-download)_
 - [x] Sort images by most recent first, profile pictures grouped last _(v1.34.7)_
 - [x] Fix quick labels on Media section - reflect new source values _(v1.34.8 - IMAGE_SOURCE_TYPES constant)_
+- [x] Media Favorites - mark images/videos as favorites, view in dedicated /favorites page _(v2.2.0)_
 
 ### /profile - Notes
 

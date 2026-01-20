@@ -33,6 +33,7 @@ import imageConsolidationRoutes from './routes/image-consolidation.js';
 import backupRoutes from './routes/backup.js';
 import legacyImportRoutes from './routes/legacy-import.js';
 import attributesRoutes from './routes/attributes.js';
+import mediaRoutes from './routes/media.js';
 
 export function createApp() {
   const app = express();
@@ -152,6 +153,7 @@ export function createApp() {
   app.use('/api/backup', backupRoutes);
   app.use('/api/legacy-import', legacyImportRoutes);
   app.use('/api/attributes', attributesRoutes);
+  app.use('/api/media', mediaRoutes);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

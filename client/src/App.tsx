@@ -14,6 +14,7 @@ import SessionDetail from './pages/SessionDetail';
 import Inbox from './pages/Inbox';
 import FollowHistory from './pages/FollowHistory';
 import EventLog from './pages/EventLog';
+import Favorites from './pages/Favorites';
 import GlobalLookup from './components/GlobalLookup';
 
 // Auth pages
@@ -199,6 +200,7 @@ function AppContent() {
                 <NavLink to="/stats">Stats</NavLink>
                 <NavLink to="/broadcasts">Broadcasts</NavLink>
                 <NavLink to="/follow-history">Follow History</NavLink>
+                <NavLink to="/favorites">Favorites</NavLink>
                 <NavLink to="/event-log">Event Log</NavLink>
                 <NavLink to="/admin">Admin</NavLink>
               </div>
@@ -253,6 +255,7 @@ function AppContent() {
           <Route path="/live" element={<GatedRoute><LiveMonitor /></GatedRoute>} />
           <Route path="/visitors" element={<GatedRoute><Visitors /></GatedRoute>} />
           <Route path="/follow-history" element={<GatedRoute><FollowHistory /></GatedRoute>} />
+          <Route path="/favorites" element={<GatedRoute><Favorites /></GatedRoute>} />
           <Route path="/admin" element={<GatedRoute><Admin /></GatedRoute>} />
         </Routes>
       </main>

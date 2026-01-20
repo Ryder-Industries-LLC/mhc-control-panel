@@ -36,6 +36,7 @@ export interface MediaRecord {
   width: number | null;
   height: number | null;
   is_primary: boolean;
+  is_favorite: boolean;
   created_at: Date;
   media_type: MediaType;
   duration_seconds: number | null;
@@ -1046,6 +1047,7 @@ export class MediaService {
       width: row.width,
       height: row.height,
       is_primary: row.is_primary || false,
+      is_favorite: row.is_favorite || false,
       created_at: row.created_at,
       media_type: row.media_type || 'image',
       duration_seconds: row.duration_seconds,
@@ -1057,5 +1059,133 @@ export class MediaService {
       storage_provider: row.storage_provider || 's3',
       username: row.username,
     };
+  }
+
+  // ============================================================================
+  // Favorites Operations
+  // ============================================================================
+
+  /**
+   * Toggle favorite status for a media item
+   */
+  static async toggleFavorite(mediaId: string): Promise<MediaRecord | null> {
+    const sql = `
+      UPDATE media_locator
+      SET is_favorite = NOT COALESCE(is_favorite, FALSE)
+      WHERE id = $1 AND deleted_at IS NULL
+      RETURNING *
+    `;
+
+    try {
+      const result = await query(sql, [mediaId]);
+      if (result.rows.length === 0) {
+        return null;
+      }
+      logger.info('Toggled media favorite', { mediaId, is_favorite: result.rows[0].is_favorite });
+      return this.mapRowToMediaRecord(result.rows[0]);
+    } catch (error) {
+      logger.error('Error toggling favorite', { error, mediaId });
+      throw error;
+    }
+  }
+
+  /**
+   * Set favorite status explicitly
+   */
+  static async setFavorite(mediaId: string, isFavorite: boolean): Promise<MediaRecord | null> {
+    const sql = `
+      UPDATE media_locator
+      SET is_favorite = $2
+      WHERE id = $1 AND deleted_at IS NULL
+      RETURNING *
+    `;
+
+    try {
+      const result = await query(sql, [mediaId, isFavorite]);
+      if (result.rows.length === 0) {
+        return null;
+      }
+      logger.info('Set media favorite', { mediaId, is_favorite: isFavorite });
+      return this.mapRowToMediaRecord(result.rows[0]);
+    } catch (error) {
+      logger.error('Error setting favorite', { error, mediaId });
+      throw error;
+    }
+  }
+
+  /**
+   * Get all favorite media with pagination
+   */
+  static async getFavorites(options?: MediaQueryOptions & { mediaType?: MediaType }): Promise<{ records: MediaRecord[]; total: number }> {
+    const { limit = 50, offset = 0, mediaType } = options || {};
+
+    let whereClause = 'is_favorite = TRUE AND deleted_at IS NULL';
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (mediaType) {
+      whereClause += ` AND media_type = $${paramIndex++}`;
+      params.push(mediaType);
+    }
+
+    const countSql = `SELECT COUNT(*) FROM media_locator WHERE ${whereClause}`;
+    const recordsSql = `
+      SELECT m.*, p.username as person_username
+      FROM media_locator m
+      LEFT JOIN persons p ON m.person_id = p.id
+      WHERE ${whereClause}
+      ORDER BY m.uploaded_at DESC
+      LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+    `;
+    params.push(limit, offset);
+
+    try {
+      const countParams = mediaType ? [mediaType] : [];
+      const [countResult, recordsResult] = await Promise.all([
+        query(countSql, countParams),
+        query(recordsSql, params),
+      ]);
+
+      // Map results and include person_username
+      const records = recordsResult.rows.map((row: any) => ({
+        ...this.mapRowToMediaRecord(row),
+        person_username: row.person_username,
+      }));
+
+      return {
+        records,
+        total: parseInt(countResult.rows[0].count, 10),
+      };
+    } catch (error) {
+      logger.error('Error getting favorites', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Get favorite media count and stats
+   */
+  static async getFavoriteStats(): Promise<{ totalFavorites: number; imageCount: number; videoCount: number }> {
+    const sql = `
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE media_type = 'image') as images,
+        COUNT(*) FILTER (WHERE media_type = 'video') as videos
+      FROM media_locator
+      WHERE is_favorite = TRUE AND deleted_at IS NULL
+    `;
+
+    try {
+      const result = await query(sql, []);
+      const row = result.rows[0];
+      return {
+        totalFavorites: parseInt(row.total, 10),
+        imageCount: parseInt(row.images, 10),
+        videoCount: parseInt(row.videos, 10),
+      };
+    } catch (error) {
+      logger.error('Error getting favorite stats', { error });
+      throw error;
+    }
   }
 }
