@@ -21,18 +21,54 @@ import { NamesEditor, type ProfileNames, type AddressTermSeed } from '../compone
 import { RelationshipHistoryViewer } from '../components/RelationshipHistoryViewer';
 import { StarRating } from '../components/StarRating';
 import { Modal } from '../components/Modal';
+import { ProfileAttributes } from '../components/ProfileAttributes';
 // Profile.css removed - fully migrated to Tailwind CSS
 
 interface ProfilePageProps {}
 
 type TabType = 'snapshot' | 'sessions' | 'interactions' | 'timeline';
+type NoteCategory = 'note' | 'pm' | 'dm' | 'public_chat' | 'tip_menu' | 'tips';
+
 interface ProfileNote {
   id: string;
   profile_id: number;
   content: string;
+  category: NoteCategory;
+  formatted_content: string | null;
+  source_url: string | null;
   created_at: string;
   updated_at: string;
 }
+
+interface TipEvent {
+  username: string;
+  tokens: number;
+  message?: string;
+}
+
+interface TipMenuItem {
+  item: string;
+  tokens: number;
+}
+
+interface ParsedChatResult {
+  formatted: string;
+  userCount: number;
+  messageCount: number;
+  extractedTips: TipEvent[];
+  extractedTipMenu: TipMenuItem[];
+  tipsFormatted: string | null;
+  tipMenuFormatted: string | null;
+}
+
+const CATEGORY_CONFIG: Record<NoteCategory, { label: string; color: string; bgColor: string }> = {
+  note: { label: 'Note', color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
+  pm: { label: 'PM', color: 'text-purple-400', bgColor: 'bg-purple-500/20' },
+  dm: { label: 'DM', color: 'text-indigo-400', bgColor: 'bg-indigo-500/20' },
+  public_chat: { label: 'Public Chat', color: 'text-emerald-400', bgColor: 'bg-emerald-500/20' },
+  tip_menu: { label: 'Tip Menu', color: 'text-amber-400', bgColor: 'bg-amber-500/20' },
+  tips: { label: 'Tips', color: 'text-orange-400', bgColor: 'bg-orange-500/20' },
+};
 
 // Check if a session is currently live (observed within the last 30 minutes)
 const isSessionLive = (session: any): boolean => {
@@ -168,12 +204,28 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteContent, setEditingNoteContent] = useState('');
   const [editingNoteDate, setEditingNoteDate] = useState('');
+  const [editingNoteCategory, setEditingNoteCategory] = useState<NoteCategory>('note');
   const [notesSaving, setNotesSaving] = useState(false);
   const [notesMessage, setNotesMessage] = useState<string | null>(null);
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
   const [noteLineLimit, setNoteLineLimit] = useState(6); // Configurable line limit for Read More
   const [showAllNotes, setShowAllNotes] = useState(false); // Show all notes vs first 2
   const [showAddNoteModal, setShowAddNoteModal] = useState(false);
+  const [notesCategoryFilter, setNotesCategoryFilter] = useState<NoteCategory>('note');
+  const [newNoteCategory, setNewNoteCategory] = useState<NoteCategory>('note');
+  const [showPasteChatModal, setShowPasteChatModal] = useState(false);
+  const [showPasteTipMenuModal, setShowPasteTipMenuModal] = useState(false);
+  const [pasteChatCategory, setPasteChatCategory] = useState<'pm' | 'dm' | 'public_chat'>('public_chat');
+  const [pasteContent, setPasteContent] = useState('');
+  const [parsedChatPreview, setParsedChatPreview] = useState<ParsedChatResult | null>(null);
+  const [parsedTipMenuPreview, setParsedTipMenuPreview] = useState<{ formatted: string; items: Array<{ item: string; tokens: number }> } | null>(null);
+  // Checkboxes for which notes to create from chat paste
+  const [createChatNote, setCreateChatNote] = useState(true);
+  const [createTipsNote, setCreateTipsNote] = useState(true);
+  const [createTipMenuNote, setCreateTipMenuNote] = useState(true);
+  const [hasTipMenu, setHasTipMenu] = useState(false);
+  const [showTipMenuModal, setShowTipMenuModal] = useState(false);
+  const [tipMenuContent, setTipMenuContent] = useState<ProfileNote | null>(null);
   const [showProfileDetailsModal, setShowProfileDetailsModal] = useState(false);
 
   // Profile attributes state
@@ -203,8 +255,28 @@ const Profile: React.FC<ProfilePageProps> = () => {
   // Top mover badge state
   const [topMoverStatus, setTopMoverStatus] = useState<'gainer' | 'loser' | null>(null);
 
-  // Image preview modal state
+  // Image preview modal state with delay to prevent stuck previews
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const previewTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Helper to show preview with delay (prevents flashing on quick mouse movements)
+  const showPreview = (url: string) => {
+    if (previewTimeoutRef.current) {
+      clearTimeout(previewTimeoutRef.current);
+    }
+    previewTimeoutRef.current = setTimeout(() => {
+      setPreviewImageUrl(url);
+    }, 150); // Small delay before showing
+  };
+
+  // Helper to hide preview (immediate on mouse leave)
+  const hidePreview = () => {
+    if (previewTimeoutRef.current) {
+      clearTimeout(previewTimeoutRef.current);
+      previewTimeoutRef.current = null;
+    }
+    setPreviewImageUrl(null);
+  };
 
   // Draggable preview position (persisted to localStorage)
   const [previewPosition, setPreviewPosition] = useState<{ x: number; y: number }>(() => {
@@ -313,6 +385,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
       setUsername(urlUsername);
       setLoading(true);
       setError(null);
+      // Clear stale data immediately when navigating to a new profile
+      setUploadedImages([]);
+      setCurrentProfileImage(null);
+      setProfileNotes([]);
+      setCollaborators([]);
 
       fetch(`/api/profile/${urlUsername}`)
         .then((response) => {
@@ -378,6 +455,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
       setEditingNoteId(null);
       setEditingNoteContent('');
       setExpandedNoteIds(new Set());
+      setNotesCategoryFilter('note');
+      setHasTipMenu(false);
+      setTipMenuContent(null);
       // Fetch notes
       const fetchProfileNotes = async () => {
         setNotesLoading(true);
@@ -390,6 +470,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
             // Auto-expand the last (most recent) note
             if (notes.length > 0) {
               setExpandedNoteIds(new Set([notes[0].id]));
+            }
+            // Check if any notes are tip menus
+            if (notes.some((n: ProfileNote) => n.category === 'tip_menu')) {
+              setHasTipMenu(true);
             }
           }
         } catch (err) {
@@ -613,30 +697,151 @@ const Profile: React.FC<ProfilePageProps> = () => {
     }
   }, [profileData?.person?.username]);
 
-  // Add a new note
-  const handleAddNote = async () => {
-    if (!profileData?.person?.username || !newNoteContent.trim()) return;
+  // Add a new note with optional category and formatted content
+  const handleAddNote = async (options?: { category?: NoteCategory; formatted_content?: string; content?: string }) => {
+    const noteContent = options?.content || newNoteContent;
+    if (!profileData?.person?.username || !noteContent.trim()) return;
 
     setNotesSaving(true);
     try {
       const response = await fetch(`/api/profile/${profileData.person.username}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newNoteContent.trim() }),
+        body: JSON.stringify({
+          content: noteContent.trim(),
+          category: options?.category || newNoteCategory,
+          formatted_content: options?.formatted_content,
+        }),
       });
 
       if (response.ok) {
         const note = await response.json();
         setProfileNotes((prev) => [note, ...prev]);
         setNewNoteContent('');
+        setNewNoteCategory('note');
         setNotesMessage('Note added!');
         setTimeout(() => setNotesMessage(null), 3000);
+        // Check for tip menu after adding
+        if (note.category === 'tip_menu') {
+          setHasTipMenu(true);
+        }
       }
     } catch (err) {
       setNotesMessage('Error adding note');
       setTimeout(() => setNotesMessage(null), 3000);
     } finally {
       setNotesSaving(false);
+    }
+  };
+
+  // Parse chat log and show preview (also extracts tips and tip menu)
+  const handleParseChatLog = async (contentOverride?: string) => {
+    const content = contentOverride ?? pasteContent;
+    if (!profileData?.person?.username || !content.trim()) return;
+
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/notes/parse-chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      });
+
+      if (response.ok) {
+        const data: ParsedChatResult = await response.json();
+        setParsedChatPreview(data);
+        // Auto-check boxes based on what was extracted
+        setCreateChatNote(data.messageCount > 0);
+        setCreateTipsNote(data.extractedTips?.length > 0);
+        setCreateTipMenuNote(data.extractedTipMenu?.length > 0);
+      }
+    } catch (err) {
+      console.error('Error parsing chat log:', err);
+    }
+  };
+
+  // Parse tip menu and show preview
+  const handleParseTipMenu = async () => {
+    if (!profileData?.person?.username || !pasteContent.trim()) return;
+
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/notes/parse-tip-menu`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: pasteContent }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setParsedTipMenuPreview({ formatted: data.formatted, items: data.items });
+      }
+    } catch (err) {
+      console.error('Error parsing tip menu:', err);
+    }
+  };
+
+  // Save parsed chat log as notes
+  // For PM/DM: just saves the chat note
+  // For public_chat: can create up to 3 notes (chat, tips, tip_menu)
+  const handleSaveChatLog = async () => {
+    if (!parsedChatPreview || !profileData?.person?.username) return;
+
+    const notesToCreate: Array<{ category: NoteCategory; formatted_content: string }> = [];
+
+    // Add main chat note if selected and has messages
+    if (createChatNote && parsedChatPreview.messageCount > 0) {
+      notesToCreate.push({ category: pasteChatCategory, formatted_content: parsedChatPreview.formatted });
+    }
+
+    // Only extract tips/menu from public_chat (not PM/DM)
+    if (pasteChatCategory === 'public_chat') {
+      // Add tips note if selected and has tips
+      if (createTipsNote && parsedChatPreview.tipsFormatted) {
+        notesToCreate.push({ category: 'tips', formatted_content: parsedChatPreview.tipsFormatted });
+      }
+
+      // Add tip menu note if selected and has items
+      if (createTipMenuNote && parsedChatPreview.tipMenuFormatted) {
+        notesToCreate.push({ category: 'tip_menu', formatted_content: parsedChatPreview.tipMenuFormatted });
+      }
+    }
+
+    // Create all selected notes
+    for (const note of notesToCreate) {
+      await handleAddNote({ category: note.category, formatted_content: note.formatted_content, content: pasteContent });
+    }
+
+    setShowPasteChatModal(false);
+    setPasteContent('');
+    setParsedChatPreview(null);
+    setCreateChatNote(true);
+    setCreateTipsNote(true);
+    setCreateTipMenuNote(true);
+  };
+
+  // Save parsed tip menu as note
+  const handleSaveTipMenu = async () => {
+    if (!parsedTipMenuPreview) return;
+    await handleAddNote({ category: 'tip_menu', formatted_content: parsedTipMenuPreview.formatted, content: pasteContent });
+    setShowPasteTipMenuModal(false);
+    setPasteContent('');
+    setParsedTipMenuPreview(null);
+  };
+
+  // Fetch tip menu for profile overview
+  const fetchTipMenu = async () => {
+    if (!profileData?.person?.username) return;
+
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/tip-menu`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data) {
+          setTipMenuContent(data);
+          setHasTipMenu(true);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching tip menu:', err);
     }
   };
 
@@ -651,6 +856,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: editingNoteContent.trim(),
+          category: editingNoteCategory,
           created_at: editingNoteDate ? new Date(editingNoteDate).toISOString() : undefined,
         }),
       });
@@ -661,8 +867,13 @@ const Profile: React.FC<ProfilePageProps> = () => {
         setEditingNoteId(null);
         setEditingNoteContent('');
         setEditingNoteDate('');
+        setEditingNoteCategory('note');
         setNotesMessage('Note updated!');
         setTimeout(() => setNotesMessage(null), 3000);
+        // Update tip menu status if category changed
+        if (updatedNote.category === 'tip_menu') {
+          setHasTipMenu(true);
+        }
       }
     } catch (err) {
       setNotesMessage('Error updating note');
@@ -697,6 +908,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
   const startEditingNote = (note: ProfileNote) => {
     setEditingNoteId(note.id);
     setEditingNoteContent(note.content);
+    setEditingNoteCategory(note.category || 'note');
     // Format date for datetime-local input (YYYY-MM-DDTHH:MM)
     const date = new Date(note.created_at);
     const localDateTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
@@ -710,6 +922,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
     setEditingNoteId(null);
     setEditingNoteContent('');
     setEditingNoteDate('');
+    setEditingNoteCategory('note');
   };
 
   // Set image as current/primary
@@ -1555,98 +1768,12 @@ const Profile: React.FC<ProfilePageProps> = () => {
                   )}
                 </div>
 
-                {/* Row 4: Fast Flags - Safety / Blocking */}
-                <div className="flex flex-wrap items-center gap-4">
-                  {/* Banned Me Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={bannedMe}
-                      onChange={handleBannedToggle}
-                      className="w-4 h-4 rounded border-2 border-red-500/50 bg-mhc-surface-light text-red-500 focus:ring-red-500 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Banned Me</span>
-                  </label>
-
-                  {/* Banned User Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={bannedByMe}
-                      onChange={handleBannedByMeToggle}
-                      className="w-4 h-4 rounded border-2 border-orange-500/50 bg-mhc-surface-light text-orange-500 focus:ring-orange-500 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Banned User</span>
-                  </label>
-
-                  {/* Room Banned Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={roomBanned}
-                      onChange={handleRoomBannedToggle}
-                      className="w-4 h-4 rounded border-2 border-red-700/50 bg-mhc-surface-light text-red-700 focus:ring-red-700 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Room Banned</span>
-                  </label>
-                </div>
-
-                {/* Row 5: Fast Flags - Curation / Interest */}
-                <div className="flex flex-wrap items-center gap-4">
-                  {/* Watchlist Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={watchList}
-                      onChange={handleWatchListToggle}
-                      className="w-4 h-4 rounded border-2 border-yellow-500/50 bg-mhc-surface-light text-yellow-500 focus:ring-yellow-500 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Watchlist</span>
-                  </label>
-
-                  {/* Interaction Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={hadInteraction}
-                      onChange={handleHadInteractionToggle}
-                      className="w-4 h-4 rounded border-2 border-emerald-500/50 bg-mhc-surface-light text-emerald-500 focus:ring-emerald-500 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Interaction</span>
-                  </label>
-
-                  {/* Smoking Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={smokeOnCam}
-                      onChange={handleSmokeOnCamToggle}
-                      className="w-4 h-4 rounded border-2 border-gray-400/50 bg-mhc-surface-light text-gray-400 focus:ring-gray-400 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Smoking</span>
-                  </label>
-
-                  {/* Fetish Gear Toggle */}
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={leatherFetish}
-                      onChange={handleLeatherFetishToggle}
-                      className="w-4 h-4 rounded border-2 border-purple-500/50 bg-mhc-surface-light text-purple-500 focus:ring-purple-500 cursor-pointer"
-                    />
-                    <span className="text-white/90 text-sm font-medium">Fetish Gear</span>
-                  </label>
-
-                  {/* Profile Smoke indicator (read-only) */}
-                  {profileSmoke && (
-                    <span
-                      className="px-2.5 py-0.5 rounded text-xs font-medium bg-amber-500/20 text-amber-200 border border-amber-500/30"
-                      title="Profile indicates smoker"
-                    >
-                      🚬 Profile Smoke
-                    </span>
-                  )}
-                </div>
+                {/* Attributes - Dynamic attributes with history */}
+                <ProfileAttributes
+                  username={profileData.person.username}
+                  personId={profileData.person.id}
+                  showHistory={true}
+                />
 
                 {/* Row 6: Promoted Tags - only show specific important tags */}
                 {(() => {
@@ -1741,7 +1868,24 @@ const Profile: React.FC<ProfilePageProps> = () => {
 
                 {/* Profile Details link - bottom right of column 2 */}
                 <div className="flex-grow"></div>
-                <div className="flex justify-end">
+                <div className="flex justify-end items-center gap-4">
+                  {/* Tip Menu link - only show if profile has tip menu */}
+                  {hasTipMenu && (
+                    <button
+                      onClick={() => {
+                        fetchTipMenu();
+                        setShowTipMenuModal(true);
+                      }}
+                      className="text-xs text-amber-400/70 hover:text-amber-400 transition-colors flex items-center gap-1"
+                      title="View tip menu"
+                    >
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" />
+                        <path fillRule="evenodd" d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z" clipRule="evenodd" />
+                      </svg>
+                      Tip Menu
+                    </button>
+                  )}
                   <button
                     onClick={() => setShowProfileDetailsModal(true)}
                     className="text-xs text-white/50 hover:text-white transition-colors flex items-center gap-0.5"
@@ -1931,8 +2075,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
                                           ? 'border-mhc-primary ring-2 ring-mhc-primary/50'
                                           : 'border-white/10'
                                       }`}
-                                      onMouseEnter={() => setPreviewImageUrl(imageUrl)}
-                                      onMouseLeave={() => setPreviewImageUrl(null)}
+                                      onMouseEnter={() => showPreview(imageUrl)}
+                                      onMouseLeave={hidePreview}
                                     >
                                       <div className="aspect-[4/3]">
                                         <img
@@ -2288,7 +2432,38 @@ const Profile: React.FC<ProfilePageProps> = () => {
               }
               defaultCollapsed={false}
               className="bg-mhc-surface"
+              actions={
+                <button
+                  onClick={() => setShowAddNoteModal(true)}
+                  className="px-3 py-1.5 text-sm font-medium text-mhc-primary hover:bg-mhc-primary/10 border border-mhc-primary/30 rounded-md transition-colors"
+                >
+                  + Add Note
+                </button>
+              }
             >
+              {/* Category Filter Tabs - All 6 categories shown individually */}
+              <div className="flex flex-wrap gap-1 mb-4 pb-3 border-b border-white/10">
+                {(['note', 'pm', 'dm', 'public_chat', 'tips', 'tip_menu'] as NoteCategory[]).map((cat) => {
+                  const config = CATEGORY_CONFIG[cat];
+                  const count = profileNotes.filter((n) => n.category === cat).length;
+                  // Always show PM and DM tabs even if count is 0
+                  const showCount = count > 0;
+                  return (
+                    <button
+                      key={cat}
+                      onClick={() => setNotesCategoryFilter(cat)}
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                        notesCategoryFilter === cat
+                          ? `${config.bgColor} ${config.color}`
+                          : 'text-white/60 hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {config.label}{showCount ? ` (${count})` : ''}
+                    </button>
+                  );
+                })}
+              </div>
+
               {/* Notes List */}
               {notesLoading ? (
                 <div className="text-white/50 text-sm py-4 text-center">Loading notes...</div>
@@ -2298,7 +2473,10 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {(showAllNotes ? profileNotes : profileNotes.slice(0, 2)).map(
+                  {(() => {
+                    // Filter notes by selected category
+                    const filteredNotes = profileNotes.filter((n) => n.category === notesCategoryFilter);
+                    return (showAllNotes ? filteredNotes : filteredNotes.slice(0, 2)).map(
                     (note, noteIndex) => (
                       <div
                         key={note.id}
@@ -2307,6 +2485,26 @@ const Profile: React.FC<ProfilePageProps> = () => {
                         {editingNoteId === note.id ? (
                           /* Editing Mode */
                           <div className="space-y-3">
+                            {/* Category Selection */}
+                            <div className="flex flex-wrap gap-1">
+                              {(['note', 'pm', 'dm', 'public_chat', 'tip_menu', 'tips'] as NoteCategory[]).map((cat) => {
+                                const config = CATEGORY_CONFIG[cat];
+                                return (
+                                  <button
+                                    key={cat}
+                                    type="button"
+                                    onClick={() => setEditingNoteCategory(cat)}
+                                    className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
+                                      editingNoteCategory === cat
+                                        ? `${config.bgColor} ${config.color} ring-1 ring-white/20`
+                                        : 'bg-white/5 text-white/50 hover:text-white/80 hover:bg-white/10'
+                                    }`}
+                                  >
+                                    {config.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
                             <textarea
                               value={editingNoteContent}
                               onChange={(e) => setEditingNoteContent(e.target.value)}
@@ -2343,19 +2541,31 @@ const Profile: React.FC<ProfilePageProps> = () => {
                           /* Display Mode */
                           <>
                             <div className="flex justify-between items-start mb-2">
-                              <span className="text-xs text-white/40">
-                                {new Date(note.created_at).toLocaleString('en-US', {
-                                  weekday: 'short',
-                                  year: 'numeric',
-                                  month: 'short',
-                                  day: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                                {note.updated_at !== note.created_at && (
-                                  <span className="ml-2 italic">(edited)</span>
+                              <div className="flex items-center gap-2">
+                                {/* Category Badge - Always show for all notes */}
+                                {note.category && (
+                                  <span
+                                    className={`px-2 py-0.5 rounded text-xs font-medium ${
+                                      CATEGORY_CONFIG[note.category]?.bgColor || 'bg-gray-500/20'
+                                    } ${CATEGORY_CONFIG[note.category]?.color || 'text-gray-400'}`}
+                                  >
+                                    {CATEGORY_CONFIG[note.category]?.label || note.category}
+                                  </span>
                                 )}
-                              </span>
+                                <span className="text-xs text-white/40">
+                                  {new Date(note.created_at).toLocaleString('en-US', {
+                                    weekday: 'short',
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                  {note.updated_at !== note.created_at && (
+                                    <span className="ml-2 italic">(edited)</span>
+                                  )}
+                                </span>
+                              </div>
                               <div className="flex gap-2">
                                 <button
                                   onClick={() => startEditingNote(note)}
@@ -2374,6 +2584,48 @@ const Profile: React.FC<ProfilePageProps> = () => {
                               </div>
                             </div>
                             {(() => {
+                              // If formatted_content exists, render as HTML
+                              if (note.formatted_content) {
+                                const isExpanded = expandedNoteIds.has(note.id);
+                                return (
+                                  <>
+                                    <div
+                                      className={`text-mhc-text text-sm ${!isExpanded ? 'max-h-48 overflow-hidden' : ''}`}
+                                      dangerouslySetInnerHTML={{ __html: note.formatted_content }}
+                                    />
+                                    {!isExpanded && (
+                                      <button
+                                        onClick={() =>
+                                          setExpandedNoteIds((prev) => {
+                                            const next = new Set(Array.from(prev));
+                                            next.add(note.id);
+                                            return next;
+                                          })
+                                        }
+                                        className="text-mhc-primary hover:text-mhc-primary-light text-sm mt-2 transition-colors"
+                                      >
+                                        Show Full...
+                                      </button>
+                                    )}
+                                    {isExpanded && (
+                                      <button
+                                        onClick={() =>
+                                          setExpandedNoteIds((prev) => {
+                                            const next = new Set(Array.from(prev));
+                                            next.delete(note.id);
+                                            return next;
+                                          })
+                                        }
+                                        className="text-mhc-primary hover:text-mhc-primary-light text-sm mt-2 transition-colors"
+                                      >
+                                        Show Less
+                                      </button>
+                                    )}
+                                  </>
+                                );
+                              }
+
+                              // Plain text content - use line-based truncation
                               const lines = note.content.split('\n');
                               const isLong = lines.length > noteLineLimit;
                               const isExpanded = expandedNoteIds.has(note.id);
@@ -2422,7 +2674,8 @@ const Profile: React.FC<ProfilePageProps> = () => {
                         )}
                       </div>
                     )
-                  )}
+                  );
+                  })()}
                   {/* Show More Notes button */}
                   {profileNotes.length > 2 && (
                     <div className="mt-4 text-center">
@@ -2944,14 +3197,43 @@ const Profile: React.FC<ProfilePageProps> = () => {
         onClose={() => {
           setShowAddNoteModal(false);
           setNotesMessage(null);
+          setNewNoteCategory('note');
         }}
         size="md"
       >
         <div className="space-y-4">
+          {/* Category buttons: Note for direct text, arrow buttons open paste modals */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setNewNoteCategory('note')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                newNoteCategory === 'note'
+                  ? `${CATEGORY_CONFIG['note'].bgColor} ${CATEGORY_CONFIG['note'].color} ring-2 ring-white/20`
+                  : 'bg-white/5 text-white/60 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              Note
+            </button>
+            {/* PM, DM, and Public Chat open paste modal for chat log parsing */}
+            {(['pm', 'dm', 'public_chat'] as const).map((cat) => (
+              <button
+                key={`paste-${cat}`}
+                onClick={() => {
+                  setShowAddNoteModal(false);
+                  setPasteChatCategory(cat);
+                  setShowPasteChatModal(true);
+                }}
+                className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-white/5 text-white/60 hover:text-white hover:bg-white/10"
+              >
+                {CATEGORY_CONFIG[cat].label} →
+              </button>
+            ))}
+          </div>
+
           <textarea
             value={newNoteContent}
             onChange={(e) => setNewNoteContent(e.target.value)}
-            placeholder="Add a new note..."
+            placeholder={`Add a new ${CATEGORY_CONFIG[newNoteCategory].label.toLowerCase()}...`}
             rows={4}
             className="w-full px-4 py-3 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-base resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
             autoFocus
@@ -2973,6 +3255,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
                 setShowAddNoteModal(false);
                 setNewNoteContent('');
                 setNotesMessage(null);
+                setNewNoteCategory('note');
               }}
               className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-medium rounded-lg transition-colors"
             >
@@ -2993,6 +3276,270 @@ const Profile: React.FC<ProfilePageProps> = () => {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* Paste Chat Log Modal - Used for PM, DM, and Public Chat */}
+      <Modal
+        isOpen={showPasteChatModal}
+        title={`Paste ${CATEGORY_CONFIG[pasteChatCategory].label}`}
+        onClose={() => {
+          setShowPasteChatModal(false);
+          setPasteContent('');
+          setParsedChatPreview(null);
+        }}
+        size="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-white/60 text-sm">
+            Paste a chat log. The system will auto-format it with colored usernames and detect participants.
+            {pasteChatCategory === 'public_chat' && ' Tips and tip menu items will also be extracted.'}
+          </p>
+          <textarea
+            value={pasteContent}
+            onChange={(e) => {
+              setPasteContent(e.target.value);
+              if (!e.target.value.trim()) {
+                setParsedChatPreview(null);
+              }
+            }}
+            onPaste={(e) => {
+              // Get pasted content directly from clipboard
+              const pasted = e.clipboardData.getData('text');
+              if (pasted.trim()) {
+                // Update state and parse with the pasted content
+                setPasteContent(pasted);
+                handleParseChatLog(pasted);
+              }
+            }}
+            placeholder="Paste chat log here..."
+            rows={8}
+            className="w-full px-4 py-3 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm font-mono resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+            autoFocus
+          />
+
+          {/* Preview Section */}
+          {parsedChatPreview && (
+            <div className="space-y-4">
+              {/* Summary of what was extracted */}
+              <div className="p-3 bg-white/5 rounded-lg border border-white/10">
+                <h4 className="text-white/80 text-sm font-medium mb-3">Extracted from chat:</h4>
+                <div className="space-y-2">
+                  {/* Main chat checkbox - uses current category */}
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={createChatNote}
+                      onChange={(e) => setCreateChatNote(e.target.checked)}
+                      disabled={parsedChatPreview.messageCount === 0}
+                      className="w-4 h-4 rounded border-gray-500 bg-mhc-surface text-mhc-primary focus:ring-mhc-primary/20 disabled:opacity-50"
+                    />
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${CATEGORY_CONFIG[pasteChatCategory].bgColor} ${CATEGORY_CONFIG[pasteChatCategory].color}`}>
+                      {CATEGORY_CONFIG[pasteChatCategory].label}
+                    </span>
+                    <span className="text-white/60 text-sm">
+                      {parsedChatPreview.messageCount} messages, {parsedChatPreview.userCount} users
+                    </span>
+                  </label>
+
+                  {/* Tips checkbox - only for public_chat */}
+                  {pasteChatCategory === 'public_chat' && (
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={createTipsNote}
+                        onChange={(e) => setCreateTipsNote(e.target.checked)}
+                        disabled={!parsedChatPreview.extractedTips?.length}
+                        className="w-4 h-4 rounded border-gray-500 bg-mhc-surface text-mhc-primary focus:ring-mhc-primary/20 disabled:opacity-50"
+                      />
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${CATEGORY_CONFIG.tips.bgColor} ${CATEGORY_CONFIG.tips.color}`}>
+                        {CATEGORY_CONFIG.tips.label}
+                      </span>
+                      <span className="text-white/60 text-sm">
+                        {parsedChatPreview.extractedTips?.length || 0} tips
+                        {parsedChatPreview.extractedTips?.length > 0 && (
+                          <span className="text-amber-400 ml-1">
+                            ({parsedChatPreview.extractedTips.reduce((sum, t) => sum + t.tokens, 0).toLocaleString()} tokens)
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  )}
+
+                  {/* Tip Menu checkbox - only for public_chat */}
+                  {pasteChatCategory === 'public_chat' && (
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={createTipMenuNote}
+                        onChange={(e) => setCreateTipMenuNote(e.target.checked)}
+                        disabled={!parsedChatPreview.extractedTipMenu?.length}
+                        className="w-4 h-4 rounded border-gray-500 bg-mhc-surface text-mhc-primary focus:ring-mhc-primary/20 disabled:opacity-50"
+                      />
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${CATEGORY_CONFIG.tip_menu.bgColor} ${CATEGORY_CONFIG.tip_menu.color}`}>
+                        {CATEGORY_CONFIG.tip_menu.label}
+                      </span>
+                      <span className="text-white/60 text-sm">
+                        {parsedChatPreview.extractedTipMenu?.length || 0} menu items
+                      </span>
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Chat Preview */}
+              {parsedChatPreview.messageCount > 0 && (
+                <div className="p-4 bg-mhc-surface-light rounded-md max-h-48 overflow-y-auto">
+                  <h4 className="text-white/80 text-sm font-medium mb-2">Chat Preview:</h4>
+                  <div
+                    className="text-sm"
+                    dangerouslySetInnerHTML={{ __html: parsedChatPreview.formatted }}
+                  />
+                </div>
+              )}
+
+              {/* Tips Preview */}
+              {parsedChatPreview.tipsFormatted && (
+                <div className="p-4 bg-mhc-surface-light rounded-md max-h-48 overflow-y-auto">
+                  <h4 className="text-white/80 text-sm font-medium mb-2">Tips Preview:</h4>
+                  <div
+                    className="text-sm"
+                    dangerouslySetInnerHTML={{ __html: parsedChatPreview.tipsFormatted }}
+                  />
+                </div>
+              )}
+
+              {/* Tip Menu Preview */}
+              {parsedChatPreview.tipMenuFormatted && (
+                <div className="p-4 bg-mhc-surface-light rounded-md max-h-48 overflow-y-auto">
+                  <h4 className="text-white/80 text-sm font-medium mb-2">Tip Menu Preview:</h4>
+                  <div
+                    className="text-sm"
+                    dangerouslySetInnerHTML={{ __html: parsedChatPreview.tipMenuFormatted }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => {
+                setShowPasteChatModal(false);
+                setPasteContent('');
+                setParsedChatPreview(null);
+              }}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-medium rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveChatLog}
+              disabled={!parsedChatPreview || notesSaving || (!createChatNote && !createTipsNote && !createTipMenuNote)}
+              className="px-4 py-2 bg-mhc-primary hover:bg-mhc-primary/90 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {notesSaving ? 'Saving...' : `Save ${[createChatNote && parsedChatPreview?.messageCount, createTipsNote && parsedChatPreview?.tipsFormatted, createTipMenuNote && parsedChatPreview?.tipMenuFormatted].filter(Boolean).length} Note${[createChatNote && parsedChatPreview?.messageCount, createTipsNote && parsedChatPreview?.tipsFormatted, createTipMenuNote && parsedChatPreview?.tipMenuFormatted].filter(Boolean).length !== 1 ? 's' : ''}`}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Paste Tip Menu Modal */}
+      <Modal
+        isOpen={showPasteTipMenuModal}
+        title="Paste Tip Menu"
+        onClose={() => {
+          setShowPasteTipMenuModal(false);
+          setPasteContent('');
+          setParsedTipMenuPreview(null);
+        }}
+        size="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-white/60 text-sm">
+            Paste a tip menu. Supported formats: "Item - 100", "100 - Item", "Item: 100", "Item (100)"
+          </p>
+          <textarea
+            value={pasteContent}
+            onChange={(e) => {
+              setPasteContent(e.target.value);
+              setParsedTipMenuPreview(null);
+            }}
+            placeholder="Paste tip menu here..."
+            rows={8}
+            className="w-full px-4 py-3 bg-mhc-surface-light border border-gray-600 rounded-md text-mhc-text text-sm font-mono resize-y focus:outline-none focus:border-mhc-primary focus:ring-2 focus:ring-mhc-primary/20"
+            autoFocus
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleParseTipMenu}
+              disabled={!pasteContent.trim()}
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Preview Format
+            </button>
+          </div>
+          {parsedTipMenuPreview && (
+            <div className="p-4 bg-mhc-surface-light rounded-md max-h-64 overflow-y-auto">
+              <h4 className="text-white/80 text-sm font-medium mb-2">Preview ({parsedTipMenuPreview.items.length} items):</h4>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-white/60 border-b border-white/10">
+                    <th className="py-1">Item</th>
+                    <th className="py-1 text-right">Tokens</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parsedTipMenuPreview.items.map((item, idx) => (
+                    <tr key={idx} className="border-b border-white/5">
+                      <td className="py-1 text-white/80">{item.item}</td>
+                      <td className="py-1 text-right text-amber-400 font-medium">{item.tokens}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => {
+                setShowPasteTipMenuModal(false);
+                setPasteContent('');
+                setParsedTipMenuPreview(null);
+              }}
+              className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white font-medium rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveTipMenu}
+              disabled={!parsedTipMenuPreview || notesSaving}
+              className="px-4 py-2 bg-mhc-primary hover:bg-mhc-primary/90 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {notesSaving ? 'Saving...' : 'Save Tip Menu'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Tip Menu Display Modal */}
+      <Modal
+        isOpen={showTipMenuModal}
+        title="Tip Menu"
+        onClose={() => setShowTipMenuModal(false)}
+        size="md"
+      >
+        {tipMenuContent ? (
+          <div className="space-y-4">
+            <div className="text-xs text-white/40">
+              Last updated: {new Date(tipMenuContent.created_at).toLocaleString()}
+            </div>
+            <div className="p-4 bg-mhc-surface-light rounded-md">
+              <p className="text-mhc-text text-sm whitespace-pre-wrap">{tipMenuContent.content}</p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-white/60 text-center py-4">No tip menu available</p>
+        )}
       </Modal>
 
       {/* Profile Details Modal */}

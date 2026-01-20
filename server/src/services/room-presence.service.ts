@@ -1,6 +1,7 @@
 import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
 import { EventEmitter } from 'events';
+import { NotesService } from './notes.service.js';
 
 export interface RoomOccupant {
   person_id: string;
@@ -261,6 +262,8 @@ export class RoomPresenceService {
 
   /**
    * Get all current occupants with enriched profile data
+   * Note: Uses SQL subquery for notes_preview (not NotesService) for performance -
+   * avoids N+1 queries when fetching multiple occupants at once.
    */
   static async getCurrentOccupants(): Promise<RoomOccupantWithProfile[]> {
     try {
@@ -443,22 +446,8 @@ export class RoomPresenceService {
         };
       }
 
-      // Get notes preview
-      let notesPreview: string | undefined;
-      try {
-        const notesResult = await query(
-          `SELECT content FROM profile_notes
-           WHERE profile_id = (SELECT id FROM profiles WHERE person_id = $1)
-           ORDER BY created_at DESC LIMIT 1`,
-          [occupant.person_id]
-        );
-        if (notesResult.rows[0]?.content) {
-          const content = notesResult.rows[0].content;
-          notesPreview = content.length > 100 ? content.substring(0, 100) + '...' : content;
-        }
-      } catch {
-        // Ignore notes errors
-      }
+      // Get notes preview using NotesService
+      const notesPreview = await NotesService.getNotesPreviewByPersonId(occupant.person_id) ?? undefined;
 
       return {
         ...occupant,

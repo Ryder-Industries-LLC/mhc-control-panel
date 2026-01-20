@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-18 (v2.0.0)
+**Last Updated**: 2026-01-20 (v2.1.0)
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -57,6 +57,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Move Flags to bottom of profile overview as always-visible checkboxes _(v1.23.0)_
 - [x] Add "Banned by Me" flag field _(v1.23.0 - DB migration, API, UI)_
 - [x] Bidirectional Collaborations - replace "Seen With" with symmetric relationship _(v2.0.0 - single row represents A↔B)_
+- [x] Profile Attributes System - full CRUD with history tracking _(v2.1.0 - Phase 3 complete)_
 
 ### /profile - Media
 
@@ -71,6 +72,9 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 
 - [x] Auto-expand last note when Notes section expands _(v1.23.0)_
 - [x] Add "Read More" for notes >6 lines with configurable setting _(v1.23.0 - Admin → Settings → Media)_
+- [x] Chat log parsing with multi-format support _(v2.1.0 - CB native, bookmarklet, rating badges)_
+- [x] Unified paste modal for PM, DM, Public Chat _(v2.1.0)_
+- [ ] Notes tab restructure: separate tabs for Notes, PM, DM, Public Chat, Tips, Tip Menu
 
 ### /profile - Snapshot
 
@@ -204,7 +208,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] SSD Cleanup - verify media-before-s3 contents exist in S3, then delete 19GB backup _(v1.35.0 - Image Storage Consolidation complete, SSD cleared)_
 - [x] Fully deprecate double image columns - remove DB entries, column, UI refs, storage duplicates _(v1.35.0 - all images now in S3 with unified path structure)_
 - [x] Quarantine soft-deleted files in S3 _(v2.0.0 - 38,831 files moved to QUARANTINE)_
-- [ ] S3 Verification - verify all media_locator records have S3 files _(in progress - ~7 hours)_
+- [x] S3 Verification - verify all media_locator records have S3 files _(v2.0.0 - completed)_
 - [ ] Render Migration Planning - S3-only storage, Render.com for DB and containers
 
 ---

@@ -1,0 +1,1084 @@
+Profile System Refactoring Plan
+Overview
+Comprehensive refactoring of the MHC Control Panel profile system to:
+
+Make "Seen With" functionality bidirectional
+Compartmentalize profile sections into dedicated services
+Add expandable fast flags system with history tracking
+Create notes system with categories
+Implement relationship management (Dom/Sub/Friend with tiers)
+Reorganize Profile UI with collapsible sections
+Previous Work Status
+Media Storage Consolidation (COMPLETED)
+✅ Phase 7-9: MediaService created, migrations run, code updated
+✅ Phase 10: SHA256 deduplication (38,820 duplicates removed)
+✅ Phase 11: S3 consistency check, admin stats fixed
+✅ Quarantine soft-deleted files (38,831 files moved, 0 errors)
+⏳ Full S3 verification (pending - verify each media_locator has S3 file)
+Phase 1: Collaborations (Replaces "Seen With")
+Purpose
+Track broadcasters who have appeared on cam together. Simple symmetric relationship - no need to track who hosted whom. When A and B collaborate:
+
+A's profile shows: "Collaborators: B"
+B's profile shows: "Collaborators: A"
+This covers all use cases: guests, hosts, couples, roommates, etc.
+
+Current State Analysis
+Table: profile_seen_with (migration 083)
+Schema: profile_id → seen_with_username (ONE-WAY, creates duplicates)
+Problem: Adding A→B doesn't create B→A, leading to inconsistent data
+Files:
+server/src/routes/profile.ts:2625-2790
+client/src/pages/Profile.tsx:992-1066
+Proposed Changes
+1.1 New Database Schema (088_collaborations.sql)
+
+-- Collaborations table: symmetric relationship between two people
+-- Uses ordered pairs (person_a_id < person_b_id) to prevent duplicates
+CREATE TABLE IF NOT EXISTS collaborations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  person_a_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+  person_b_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+  notes TEXT,
+  first_seen_at TIMESTAMP DEFAULT NOW(),
+  created_at TIMESTAMP DEFAULT NOW(),
+
+  -- Ensure person_a_id < person_b_id to prevent duplicate pairs
+  -- This enforces that (A,B) and (B,A) are stored as the same row
+  CONSTRAINT collaborations_ordered CHECK (person_a_id < person_b_id),
+  CONSTRAINT collaborations_unique UNIQUE (person_a_id, person_b_id)
+);
+
+-- Indexes for fast lookup from either direction
+CREATE INDEX idx_collaborations_person_a ON collaborations(person_a_id);
+CREATE INDEX idx_collaborations_person_b ON collaborations(person_b_id);
+
+-- Helper function: Add collaboration (handles ordering automatically)
+CREATE OR REPLACE FUNCTION add_collaboration(
+  p_person1_id UUID,
+  p_person2_id UUID,
+  p_notes TEXT DEFAULT NULL
+) RETURNS UUID AS $$
+DECLARE
+  v_a UUID;
+  v_b UUID;
+  v_id UUID;
+BEGIN
+  -- Prevent self-collaboration
+  IF p_person1_id = p_person2_id THEN
+    RETURN NULL;
+  END IF;
+
+  -- Ensure consistent ordering (smaller UUID first)
+  IF p_person1_id < p_person2_id THEN
+    v_a := p_person1_id;
+    v_b := p_person2_id;
+  ELSE
+    v_a := p_person2_id;
+    v_b := p_person1_id;
+  END IF;
+
+  -- Insert or update notes
+  INSERT INTO collaborations (person_a_id, person_b_id, notes)
+  VALUES (v_a, v_b, p_notes)
+  ON CONFLICT (person_a_id, person_b_id)
+  DO UPDATE SET notes = COALESCE(EXCLUDED.notes, collaborations.notes)
+  RETURNING id INTO v_id;
+
+  RETURN v_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Helper function: Remove collaboration
+CREATE OR REPLACE FUNCTION remove_collaboration(
+  p_person1_id UUID,
+  p_person2_id UUID
+) RETURNS BOOLEAN AS $$
+DECLARE
+  v_a UUID;
+  v_b UUID;
+  v_deleted BOOLEAN;
+BEGIN
+  -- Ensure consistent ordering
+  IF p_person1_id < p_person2_id THEN
+    v_a := p_person1_id;
+    v_b := p_person2_id;
+  ELSE
+    v_a := p_person2_id;
+    v_b := p_person1_id;
+  END IF;
+
+  DELETE FROM collaborations
+  WHERE person_a_id = v_a AND person_b_id = v_b;
+
+  GET DIAGNOSTICS v_deleted = ROW_COUNT;
+  RETURN v_deleted > 0;
+END;
+$$ LANGUAGE plpgsql;
+
+-- View: Get all collaborators for a person (queries from both directions)
+CREATE OR REPLACE VIEW collaborations_view AS
+SELECT
+  person_a_id AS person_id,
+  person_b_id AS collaborator_id,
+  notes,
+  first_seen_at,
+  created_at
+FROM collaborations
+UNION ALL
+SELECT
+  person_b_id AS person_id,
+  person_a_id AS collaborator_id,
+  notes,
+  first_seen_at,
+  created_at
+FROM collaborations;
+
+-- Migrate existing data from profile_seen_with
+INSERT INTO collaborations (person_a_id, person_b_id, notes, created_at)
+SELECT
+  LEAST(pr.person_id, psw.seen_with_person_id),
+  GREATEST(pr.person_id, psw.seen_with_person_id),
+  psw.notes,
+  psw.created_at
+FROM profile_seen_with psw
+JOIN profiles pr ON pr.id = psw.profile_id
+WHERE psw.seen_with_person_id IS NOT NULL
+  AND pr.person_id != psw.seen_with_person_id  -- Exclude self-references
+ON CONFLICT (person_a_id, person_b_id) DO NOTHING;
+
+-- Deprecate old table (keep for rollback, drop in future migration)
+-- ALTER TABLE profile_seen_with RENAME TO profile_seen_with_deprecated;
+1.2 Backend Changes
+New Service: server/src/services/collaborations.service.ts
+
+
+export interface Collaboration {
+  id: string;
+  collaboratorPersonId: string;
+  collaboratorUsername: string;
+  notes?: string;
+  firstSeenAt: Date;
+  createdAt: Date;
+}
+
+export class CollaborationsService {
+  // Get all collaborators for a person
+  static async getCollaborators(personId: string): Promise<Collaboration[]>
+
+  // Add a collaboration (handles ordering internally)
+  static async addCollaboration(person1Id: string, person2Id: string, notes?: string): Promise<string | null>
+
+  // Remove a collaboration
+  static async removeCollaboration(person1Id: string, person2Id: string): Promise<boolean>
+
+  // Check if two people are collaborators
+  static async areCollaborators(person1Id: string, person2Id: string): Promise<boolean>
+
+  // Bulk add collaborations (for when multiple people appear together)
+  static async addCollaborationGroup(personIds: string[]): Promise<void>
+}
+New Routes: server/src/routes/collaborations.ts
+
+
+GET    /api/profile/:username/collaborations          // List all collaborators
+POST   /api/profile/:username/collaborations          // Add { collaboratorUsername, notes? }
+DELETE /api/profile/:username/collaborations/:collaboratorUsername  // Remove collaboration
+1.3 Frontend Changes
+Display in Profile Overview Card:
+
+
+┌─────────────────────────────────────────────────────────┐
+│ Collaborators                                 [+ Add]   │
+├─────────────────────────────────────────────────────────┤
+│   • alex_lord_                                    [×]   │
+│   • david_stain                                   [×]   │
+│   • hot_guy_2000                                  [×]   │
+└─────────────────────────────────────────────────────────┘
+Add Modal:
+
+
+┌─────────────────────────────────────────────────────────┐
+│ Add Collaborator                                        │
+├─────────────────────────────────────────────────────────┤
+│ Username: [autocomplete input________________]          │
+│                                                         │
+│ Notes (optional): [_______________________________]     │
+│                                                         │
+│                              [Cancel]  [Add]            │
+└─────────────────────────────────────────────────────────┘
+Key Behaviors:
+
+Adding A as collaborator on B's profile automatically shows B on A's profile
+Single database row represents the bidirectional relationship
+Usernames are clickable links to their profiles
+Notes are optional (e.g., "seen together 2024-01-15")
+Phase 2: Notes Service Refactoring & Categories
+Current State Analysis
+Table: profile_notes (migration 031)
+Schema: Simple profile_id + content + timestamps
+Capabilities: Basic CRUD, edit tracking via updated_at
+Limitations: No categories, no author tracking, no soft-delete
+Files:
+server/src/services/profile-notes.service.ts
+server/src/routes/profile.ts:822-961
+client/src/pages/Profile.tsx:2268-2431
+Other usages: visitors.ts and room-presence.service.ts query profile_notes directly for notes_preview
+Proposed Changes
+2.1 Service Refactoring
+Rename profile-notes.service.ts → notes.service.ts and consolidate note-related logic:
+
+
+// server/src/services/notes.service.ts
+export type NoteCategory = 'note' | 'pm' | 'dm' | 'public_chat' | 'tip_menu';
+
+export interface Note {
+  id: string;
+  profile_id: number;
+  content: string;
+  category: NoteCategory;
+  formatted_content: string | null;  // For chat logs/tip menus with formatting
+  source_url: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export class NotesService {
+  // Existing methods (renamed from ProfileNotesService)
+  static async getNotes(profileId: number, options?: { category?: NoteCategory; limit?: number; offset?: number })
+  static async getById(noteId: string)
+  static async addNote(profileId: number, content: string, category?: NoteCategory)
+  static async updateNote(noteId: string, data: { content?: string; category?: NoteCategory; created_at?: Date })
+  static async deleteNote(noteId: string)
+  static async getCount(profileId: number, category?: NoteCategory)
+
+  // NEW: Special paste handlers
+  static async parseChatLog(rawText: string): Promise<{ formatted: string; userColors: Map<string, string> }>
+  static async parseTipMenu(rawText: string): Promise<{ formatted: string; items: Array<{item: string; tokens: number}> }>
+  static async getLatestTipMenu(profileId: number): Promise<Note | null>
+}
+2.2 Database Migration (089_note_categories.sql)
+
+-- Create note categories enum
+CREATE TYPE note_category AS ENUM ('note', 'pm', 'dm', 'public_chat', 'tip_menu');
+
+-- Add category column to existing table
+ALTER TABLE profile_notes
+ADD COLUMN IF NOT EXISTS category note_category DEFAULT 'note';
+
+-- Add formatted_content for storing formatted HTML/markdown version
+ALTER TABLE profile_notes
+ADD COLUMN IF NOT EXISTS formatted_content TEXT;
+
+-- Add source_url for linking to original conversation
+ALTER TABLE profile_notes
+ADD COLUMN IF NOT EXISTS source_url TEXT;
+
+-- Add index for category filtering
+CREATE INDEX IF NOT EXISTS idx_profile_notes_category
+ON profile_notes (profile_id, category);
+
+-- Backfill: All existing notes become 'note' category
+UPDATE profile_notes SET category = 'note' WHERE category IS NULL;
+2.3 Category Design
+Category	Color	Badge Text	Description
+note	Blue	Note	General free-form notes (default)
+pm	Purple	PM	Private messages (in-room)
+dm	Indigo	DM	Direct messages (outside room)
+public_chat	Green	Chat	Pasted public chat logs
+tip_menu	Amber	Menu	Tip menu entries
+2.4 Chat Log Paste Feature
+Purpose: Manual copy/paste of public room chat for later review. User copies chat from CB room, pastes it, and it gets formatted nicely.
+
+Auto-formatting:
+
+Parse usernames from chat lines (pattern: {username}{message} - no space)
+Assign consistent color to each unique username
+Strip system notices (joins, leaves, "User has..." messages)
+Keep tip notifications but highlight token amounts
+Format with alternating background for readability
+Display:
+
+Each username gets a consistent color throughout the log
+Messages grouped by user with colored username prefix
+Tip events highlighted with amber/gold styling
+Collapsible for long chat logs
+2.5 Tip Menu Paste Feature
+Supported formats:
+
+
+Item Name - 100 tokens
+100 - Item Name
+Item Name: 100
+Item Name (100)
+Storage:
+
+Raw content in content field
+Parsed/formatted HTML in formatted_content
+Parsed items stored in note for display
+Profile Overview Integration:
+
+"Tip Menu" link appears to left of Profile Details (or row above, aligned right)
+Only shows if tip_menu note exists for this profile
+Clicking opens overlay/modal with latest tip menu
+Shows formatted tip menu items with tokens
+2.6 Frontend Changes
+Notes Section Tabs:
+
+
+[ All | Notes | PM | DM | Chat | Menu ]
+Add Note Modal Enhancement:
+
+Category dropdown (default: Note)
+"Paste Chat Log" button → opens paste modal with preview
+"Paste Tip Menu" button → opens paste modal with preview
+Note Display:
+
+Category badge (colored) on each note
+formatted_content renders with user colors for chat logs
+Tip menus show as formatted table
+Profile Overview:
+
+"Tip Menu" link (if exists) → opens modal with latest tip_menu note
+2.7 Files to Modify
+File	Action
+server/src/services/profile-notes.service.ts	RENAME → notes.service.ts, add category support
+server/src/routes/profile.ts	Update imports, add category param to endpoints
+server/src/db/migrations/089_note_categories.sql	CREATE
+client/src/pages/Profile.tsx	Add category tabs, paste modals, tip menu link
+server/src/routes/visitors.ts	Update to use NotesService
+server/src/services/room-presence.service.ts	Update to use NotesService
+Phase 3: Expandable Attributes with History
+STATUS: APPROVED FOR IMPLEMENTATION
+
+Terminology Decision
+Unified name: "Attributes" (not "flags" or "fast flags")
+Tables: attribute_definitions, attribute_lookup, attribute_history
+Service: AttributeService
+UI section: "Attributes" (was "Fast Flags")
+Current State Analysis
+8 attributes stored as BOOLEAN columns in profiles table
+Manual: smoke_on_cam, leather_fetish, had_interaction, room_banned, watch_list, banned_me, banned_by_me
+Auto-derived: profile_smoke (from smoke_drink field, read-only)
+Display types:
+Badges (pills): banned_me, profile_smoke - show prominently in header
+Checkboxes: All others - in "Fast Flags" section
+No history tracking - only profiles.updated_at changes
+Files:
+server/src/services/profile.service.ts:600-748
+server/src/routes/profile.ts:1358-1451
+client/src/pages/Profile.tsx:1789-1855
+Proposed Changes
+3.1 Database Migration (091_attribute_system.sql)
+Tables:
+
+attribute_definitions - Defines available attributes
+attribute_lookup - Links persons to their attributes (uses person_id for site-wide flexibility)
+attribute_history - Tracks all changes
+
+-- Create attribute definition table (allows adding new attributes without migration)
+CREATE TABLE IF NOT EXISTS attribute_definitions (
+  id SERIAL PRIMARY KEY,
+  key VARCHAR(50) UNIQUE NOT NULL,
+  label VARCHAR(100) NOT NULL,
+  description TEXT,
+  color VARCHAR(20) DEFAULT 'gray',    -- Tailwind color name
+  icon VARCHAR(50),                     -- Icon identifier (optional)
+  is_system BOOLEAN DEFAULT false,      -- System attributes cannot be deleted
+  is_auto_derived BOOLEAN DEFAULT false,-- Auto-populated (read-only in UI)
+  show_as_badge BOOLEAN DEFAULT false,  -- Show as pill badge vs checkbox
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Seed existing attributes with badge display settings
+INSERT INTO attribute_definitions (key, label, color, is_system, is_auto_derived, show_as_badge, sort_order) VALUES
+  ('watch_list', 'Watchlist', 'yellow', true, false, false, 1),
+  ('banned_me', 'Banned Me', 'red', true, false, true, 2),        -- Badge
+  ('banned_by_me', 'Banned User', 'orange', true, false, false, 3),
+  ('room_banned', 'Room Banned', 'red', true, false, false, 4),
+  ('smoke_on_cam', 'Smoking', 'gray', true, false, false, 5),
+  ('leather_fetish', 'Fetish Gear', 'purple', true, false, false, 6),
+  ('had_interaction', 'Interaction', 'emerald', true, false, false, 7),
+  ('profile_smoke', 'Profile Smoke', 'amber', true, true, true, 8); -- Auto-derived, Badge
+
+-- Create attribute lookup table (uses person_id for site-wide flexibility)
+-- Allows assigning attributes to anyone we've seen, even without a full profile
+CREATE TABLE IF NOT EXISTS attribute_lookup (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  person_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+  attribute_key VARCHAR(50) NOT NULL REFERENCES attribute_definitions(key) ON DELETE CASCADE,
+  value BOOLEAN NOT NULL DEFAULT true,
+  set_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE (person_id, attribute_key)
+);
+
+-- Create attribute history table
+CREATE TABLE IF NOT EXISTS attribute_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  person_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+  attribute_key VARCHAR(50) NOT NULL,
+  old_value BOOLEAN,
+  new_value BOOLEAN NOT NULL,
+  changed_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Indexes for efficient querying
+CREATE INDEX idx_attribute_lookup_person ON attribute_lookup(person_id);
+CREATE INDEX idx_attribute_lookup_key ON attribute_lookup(attribute_key);
+CREATE INDEX idx_attribute_history_person ON attribute_history(person_id);
+CREATE INDEX idx_attribute_history_key ON attribute_history(attribute_key);
+
+-- Trigger to track attribute changes
+CREATE OR REPLACE FUNCTION log_attribute_change()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    INSERT INTO attribute_history (person_id, attribute_key, old_value, new_value)
+    VALUES (NEW.person_id, NEW.attribute_key, NULL, NEW.value);
+  ELSIF TG_OP = 'UPDATE' AND OLD.value != NEW.value THEN
+    INSERT INTO attribute_history (person_id, attribute_key, old_value, new_value)
+    VALUES (NEW.person_id, NEW.attribute_key, OLD.value, NEW.value);
+  ELSIF TG_OP = 'DELETE' THEN
+    INSERT INTO attribute_history (person_id, attribute_key, old_value, new_value)
+    VALUES (OLD.person_id, OLD.attribute_key, OLD.value, false);
+  END IF;
+  RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_attribute_history
+AFTER INSERT OR UPDATE OR DELETE ON attribute_lookup
+FOR EACH ROW EXECUTE FUNCTION log_attribute_change();
+
+-- Migrate existing data from boolean columns (join profiles to get person_id)
+INSERT INTO attribute_lookup (person_id, attribute_key, value, set_at)
+SELECT person_id, 'watch_list', true, updated_at FROM profiles WHERE watch_list = true AND person_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+INSERT INTO attribute_lookup (person_id, attribute_key, value, set_at)
+SELECT person_id, 'banned_me', true, updated_at FROM profiles WHERE banned_me = true AND person_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+INSERT INTO attribute_lookup (person_id, attribute_key, value, set_at)
+SELECT person_id, 'banned_by_me', true, updated_at FROM profiles WHERE banned_by_me = true AND person_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+INSERT INTO attribute_lookup (person_id, attribute_key, value, set_at)
+SELECT person_id, 'room_banned', true, updated_at FROM profiles WHERE room_banned = true AND person_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+INSERT INTO attribute_lookup (person_id, attribute_key, value, set_at)
+SELECT person_id, 'smoke_on_cam', true, updated_at FROM profiles WHERE smoke_on_cam = true AND person_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+INSERT INTO attribute_lookup (person_id, attribute_key, value, set_at)
+SELECT person_id, 'leather_fetish', true, updated_at FROM profiles WHERE leather_fetish = true AND person_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+INSERT INTO attribute_lookup (person_id, attribute_key, value, set_at)
+SELECT person_id, 'had_interaction', true, updated_at FROM profiles WHERE had_interaction = true AND person_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+INSERT INTO attribute_lookup (person_id, attribute_key, value, set_at)
+SELECT person_id, 'profile_smoke', true, updated_at FROM profiles WHERE profile_smoke = true AND person_id IS NOT NULL
+ON CONFLICT DO NOTHING;
+3.2 Backend Changes
+New Service: server/src/services/attribute.service.ts
+
+
+export interface AttributeDefinition {
+  id: number;
+  key: string;
+  label: string;
+  description?: string;
+  color: string;
+  icon?: string;
+  isSystem: boolean;
+  isAutoDerived: boolean;
+  showAsBadge: boolean;
+  sortOrder: number;
+}
+
+export interface PersonAttribute {
+  key: string;
+  value: boolean;
+  setAt: Date;
+  definition: AttributeDefinition;
+}
+
+export interface AttributeHistoryEntry {
+  attributeKey: string;
+  oldValue: boolean | null;
+  newValue: boolean;
+  changedAt: Date;
+}
+
+export class AttributeService {
+  // Attribute definitions CRUD
+  static async getDefinitions(): Promise<AttributeDefinition[]>
+  static async getDefinition(key: string): Promise<AttributeDefinition | null>
+  static async createDefinition(data: Omit<AttributeDefinition, 'id'>): Promise<AttributeDefinition>
+  static async updateDefinition(key: string, data: Partial<AttributeDefinition>): Promise<AttributeDefinition>
+  static async deleteDefinition(key: string): Promise<boolean>  // Only non-system
+
+  // Person attribute operations (uses person_id for site-wide flexibility)
+  static async getAttributes(personId: string): Promise<PersonAttribute[]>
+  static async getAttribute(personId: string, key: string): Promise<boolean>
+  static async setAttribute(personId: string, key: string, value: boolean): Promise<void>
+  static async setAttributes(personId: string, attrs: Record<string, boolean>): Promise<void>
+
+  // History
+  static async getHistory(personId: string, key?: string): Promise<AttributeHistoryEntry[]>
+
+  // Badge attributes (show_as_badge = true, for header display)
+  static async getBadgeAttributes(personId: string): Promise<PersonAttribute[]>
+
+  // Checkbox attributes (show_as_badge = false, for attributes section)
+  static async getCheckboxAttributes(personId: string): Promise<PersonAttribute[]>
+}
+New Routes: server/src/routes/attributes.ts
+
+
+// Attribute definitions (admin)
+GET    /api/attributes/definitions              // List all definitions
+POST   /api/attributes/definitions              // Create new definition
+PATCH  /api/attributes/definitions/:key         // Update definition
+DELETE /api/attributes/definitions/:key         // Delete (non-system only)
+
+// Profile attributes
+GET    /api/profile/:username/attributes        // Get all attributes for profile
+PATCH  /api/profile/:username/attributes        // Update attributes { key: boolean, ... }
+GET    /api/profile/:username/attributes/history // Get attribute change history
+3.3 Frontend Changes
+Profile.tsx Updates:
+
+Badge attributes - Render in header row (where banned_me badge currently is)
+
+Query show_as_badge = true attributes
+Style as colored pills with icon
+Checkbox attributes - Render in "Attributes" section (renamed from "Fast Flags")
+
+Query show_as_badge = false attributes
+Auto-derived attributes show as disabled/read-only
+Color from definition
+History display (Both tooltip + expandable):
+
+Tooltip on hover - Quick view of last 5 changes with timestamps
+Expandable section - Full history below attributes section (click to expand)
+"Manage Attributes" modal (via Admin or Profile settings)
+
+List all custom (non-system) attributes
+Create new: key, label, color, badge vs checkbox
+Delete custom attributes (with confirmation)
+New Component: client/src/components/AttributeBadge.tsx
+
+
+interface AttributeBadgeProps {
+  attribute: ProfileAttribute;
+  onToggle?: (value: boolean) => void;  // undefined = read-only
+}
+New Component: client/src/components/AttributeCheckbox.tsx
+
+
+interface AttributeCheckboxProps {
+  attribute: ProfileAttribute;
+  onToggle: (value: boolean) => void;
+  disabled?: boolean;  // For auto-derived
+}
+3.4 Migration Strategy
+Create new tables with trigger and indexes
+Migrate existing data from boolean columns
+Update AttributeService to read/write new tables
+Keep boolean columns temporarily for backward compatibility
+Update Profile.tsx to use new components
+Future migration to drop boolean columns (after validation)
+3.5 Files to Create/Modify
+File	Action
+server/src/db/migrations/091_attribute_system.sql	CREATE
+server/src/services/attribute.service.ts	CREATE
+server/src/routes/attributes.ts	CREATE
+server/src/routes/index.ts	Add attributes routes
+client/src/components/AttributeBadge.tsx	CREATE
+client/src/components/AttributeCheckbox.tsx	CREATE
+client/src/pages/Profile.tsx	Update to use new components
+server/src/services/profile.service.ts	Deprecate old attribute methods
+Phase 4: Relationship Management
+Current State Analysis
+No dedicated relationship system exists
+profile_seen_with captures co-appearances but not relationship type
+service_relationships table exists but for different purpose
+Proposed Changes
+4.1 Database Migration (091_relationships.sql)
+
+-- Relationship type enum
+CREATE TYPE relationship_type AS ENUM ('friend', 'dom', 'sub', 'partner', 'acquaintance', 'blocked');
+
+-- Relationship tier (strength/closeness)
+CREATE TYPE relationship_tier AS ENUM ('tier1', 'tier2', 'tier3');
+
+-- Main relationships table
+CREATE TABLE IF NOT EXISTS profile_relationships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  related_person_id UUID NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+  relationship_type relationship_type NOT NULL,
+  tier relationship_tier DEFAULT 'tier1',
+  notes TEXT,
+  started_at DATE,  -- Optional: when relationship began
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE (profile_id, related_person_id, relationship_type)
+);
+
+-- Relationship history for tracking changes
+CREATE TABLE IF NOT EXISTS profile_relationship_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  profile_id INTEGER NOT NULL,
+  related_person_id UUID NOT NULL,
+  old_type relationship_type,
+  new_type relationship_type,
+  old_tier relationship_tier,
+  new_tier relationship_tier,
+  changed_at TIMESTAMP DEFAULT NOW()
+);
+4.2 Backend Changes
+New RelationshipService:
+getRelationships(profileId) - All relationships for a profile
+setRelationship(profileId, personId, type, tier) - Create/update
+removeRelationship(profileId, personId, type) - Delete
+getRelationshipHistory(profileId) - Change log
+4.3 Frontend Changes
+Relationship section in Profile UI
+Dropdown for type selection (Friend/Dom/Sub/Partner/Acquaintance)
+Tier indicator (stars or badges)
+Quick filter: "Show my Doms", "Show my Subs", etc.
+Phase 5: Profile Service Compartmentalization
+Current Monolithic Structure
+profile.service.ts handles: attributes, stats, scraping, everything
+profile.ts route file is 2800+ lines
+Profile.tsx component is 3200+ lines
+Proposed Service Split
+New Service	Responsibilities	From
+ProfileCoreService	Basic CRUD, person/profile linking	profile.service.ts
+ProfileNotesService	Notes CRUD (already exists)	profile-notes.service.ts
+ProfileFlagsService	Flag management + history	profile.service.ts
+ProfileSeenWithService	Seen-with relationships	profile.ts routes
+ProfileRelationshipService	Dom/Sub/Friend relationships	NEW
+ProfileStatsService	Stats, viewer counts, rankings	profile.service.ts
+ProfileScrapingService	CB profile scraping logic	profile.service.ts
+Route File Split
+New Route File	Endpoints
+profile-core.ts	GET/PATCH /profile/:username
+profile-notes.ts	/profile/:username/notes/*
+profile-flags.ts	/profile/:username/flags/*
+profile-seen-with.ts	/profile/:username/seen-with/*
+profile-relationships.ts	/profile/:username/relationships/*
+profile-stats.ts	/profile/:username/stats/*
+Phase 6: Profile UI Reorganization
+Current UI Structure
+Single massive component (3200+ lines)
+Fixed layout with many inline sections
+No progressive disclosure
+Proposed UI Changes
+6.1 Collapsible Sections
+Each major section becomes collapsible with persist state:
+
+Header (always visible): Avatar, name, online status, quick flags
+Quick Stats (default open): Followers, rank, last seen
+Flags (default open): All flag checkboxes
+Notes (default open): Notes list with category tabs
+Relationships (default collapsed): Dom/Sub/Friend list
+Seen With (default collapsed): Co-appearance list
+Images (default open): Image gallery
+Broadcast History (default collapsed): Past streams
+Activity Log (default collapsed): Events timeline
+6.2 Component Extraction
+New Component	Purpose
+ProfileHeader.tsx	Avatar, name, status, external links
+ProfileQuickStats.tsx	Follower count, rank, last seen
+ProfileFlags.tsx	Flag checkboxes grid
+ProfileNotes.tsx	Notes list with tabs
+ProfileRelationships.tsx	Relationship management
+ProfileSeenWith.tsx	Seen-with list
+ProfileImages.tsx	Image gallery
+ProfileBroadcasts.tsx	Stream history
+CollapsibleSection.tsx	Reusable wrapper component
+Implementation Order
+User Priority: Bidirectional Seen With FIRST
+
+Phase 1: Bidirectional Seen With - Make seen-with work both directions
+Phase 2: Note Categories - Add PM/DM/Chat Log categories
+Phase 3: Flags with History - Expandable flags with change tracking
+Phase 4: Relationships - Dom/Sub/Friend relationships with tiers
+Phase 5: Service Split - Refactoring, no user-visible changes
+Phase 6: UI Reorganization - Depends on services being stable
+Critical Files Summary
+File	Action
+server/src/db/migrations/088_bidirectional_seen_with.sql	CREATE
+server/src/db/migrations/089_note_categories.sql	CREATE
+server/src/db/migrations/090_flag_history.sql	CREATE
+server/src/db/migrations/091_relationships.sql	CREATE
+server/src/services/profile-flags.service.ts	CREATE
+server/src/services/profile-seen-with.service.ts	CREATE
+server/src/services/profile-relationship.service.ts	CREATE
+server/src/routes/profile-flags.ts	CREATE
+server/src/routes/profile-seen-with.ts	CREATE
+server/src/routes/profile-relationships.ts	CREATE
+client/src/components/profile/ProfileFlags.tsx	CREATE
+client/src/components/profile/ProfileNotes.tsx	CREATE
+client/src/components/profile/ProfileRelationships.tsx	CREATE
+client/src/components/profile/ProfileSeenWith.tsx	CREATE
+client/src/components/profile/CollapsibleSection.tsx	CREATE
+Verification
+After Each Phase
+ npm run build succeeds (both client and server)
+ Existing profile pages load without errors
+ New features work as expected
+ No regression in existing functionality
+Database Verification
+
+-- Check flag history is recording
+SELECT * FROM profile_flag_history ORDER BY changed_at DESC LIMIT 10;
+
+-- Check note categories
+SELECT category, COUNT(*) FROM profile_notes GROUP BY category;
+
+-- Check bidirectional seen-with
+SELECT a.profile_id, a.seen_with_username, a.is_inverse,
+       b.profile_id as inverse_profile, b.is_inverse as inverse_flag
+FROM profile_seen_with a
+LEFT JOIN profile_seen_with b ON a.seen_with_person_id = (SELECT person_id FROM profiles WHERE id = b.profile_id)
+WHERE a.is_inverse = false;
+ARCHIVED: Media Storage Consolidation Plan (COMPLETED)
+Phase 7: Create Consolidated MediaService
+7.1 New Service: MediaService
+File: server/src/services/media.service.ts
+
+Create a single service that handles ALL media operations. Method names include "Media" for clarity when called externally:
+
+
+export interface MediaDownloadOptions {
+  url: string;           // Source URL to download from
+  username: string;      // For path construction: people/{username}/...
+  personId: string;      // FK to persons table
+  source: MediaSource;   // 'affiliate_api' | 'upload' | 'profile' | 'screensnap'
+  mimeType?: string;     // Defaults to 'image/jpeg'
+}
+
+export interface MediaQueryOptions {
+  source?: MediaSource;  // Filter by source
+  limit?: number;        // Max records to return
+}
+
+export type MediaSource = 'affiliate_api' | 'upload' | 'profile' | 'screensnap';
+
+export class MediaService {
+  // === Core Operations ===
+  static async downloadAndSaveMedia(options: MediaDownloadOptions): Promise<MediaRecord | null>
+  static async getMediaFilePath(mediaId: string): Promise<string | null>
+  static async getMediaURL(mediaId: string): Promise<string | null>
+  static async isMediaPlaceholder(data: Buffer | string): Promise<boolean>
+
+  // === CRUD Operations ===
+  static async createMediaRecord(options: CreateMediaOptions): Promise<MediaRecord>
+  static async getMediaById(id: string): Promise<MediaRecord | null>
+  static async getMediaByPersonId(personId: string, options?: MediaQueryOptions): Promise<MediaRecord[]>
+  static async getMediaByUsername(username: string, options?: MediaQueryOptions): Promise<MediaRecord[]>
+  static async hasMediaSourceUrl(personId: string, sourceUrl: string): Promise<boolean>
+  static async findMediaBySha256(sha256: string): Promise<MediaRecord | null>
+
+  // === Primary/Current Management ===
+  static async setPrimaryMedia(mediaId: string): Promise<void>  // Sets is_primary=true, clears others for same person
+  static async getPrimaryMedia(personId: string): Promise<MediaRecord | null>
+
+  // === Deletion ===
+  static async softDeleteMedia(mediaId: string): Promise<void>  // Sets deleted_at, moves file to QUARANTINE
+  static async hardDeleteMedia(mediaId: string): Promise<void>  // Actually removes record and file (requires explicit call)
+
+  // === Deduplication ===
+  static async findDuplicateMediaRecords(): Promise<DuplicateGroup[]>
+  static async removeDuplicateMediaRecord(duplicateId: string, keepId: string): Promise<void>
+
+  // === Consistency Checks ===
+  static async countMediaRecords(): Promise<number>
+  static async findMissingMediaFiles(): Promise<MediaRecord[]>  // DB records where file doesn't exist in S3
+  static async findUnregisteredMediaFiles(): Promise<string[]>  // S3 files with no media_locator record
+}
+7.2 Migrate Functionality From
+Source File	Functions to Move
+profile-images.service.ts	All methods (no prefix needed - already in MediaService namespace)
+broadcast-session.service.ts	downloadAndSaveImage() → downloadAndSave(), isPlaceholderUrl()/isPlaceholderBySize() → isPlaceholder()
+storage.service.ts	Keep as-is (low-level storage), MediaService calls it
+s3-provider.ts	Keep as-is (low-level S3), MediaService calls it
+7.3 Files That Will Import MediaService
+File	Current Import	Change To
+broadcast-session.service.ts	ProfileImagesService	MediaService
+profile.ts	direct DB queries	MediaService.getByPersonId()
+follower-scraper.service.ts	ProfileImagesService	MediaService
+person.service.ts	direct DB queries	MediaService
+legacy-image-import.service.ts	ProfileImagesService	MediaService
+live-screenshot.job.ts	ProfileImagesService	MediaService
+system.ts	direct DB queries	MediaService
+Phase 8: Database Renames
+Migration 087: Rename Tables and Columns
+File: server/src/db/migrations/087_rename_to_media.sql
+
+
+-- Step 1: Rename profile_images table to media_locator
+ALTER TABLE profile_images RENAME TO media_locator;
+
+-- Step 2: Rename FK column and constraint
+ALTER TABLE affiliate_api_snapshots
+  DROP CONSTRAINT IF EXISTS affiliate_api_snapshots_profile_image_id_fkey;
+ALTER TABLE affiliate_api_snapshots
+  RENAME COLUMN profile_image_id TO media_locator_id;
+ALTER TABLE affiliate_api_snapshots
+  ADD CONSTRAINT affiliate_api_snapshots_media_locator_id_fkey
+  FOREIGN KEY (media_locator_id) REFERENCES media_locator(id) ON DELETE SET NULL;
+
+-- Step 3: Drop image_path column (not from CB API, path lives in media_locator)
+-- First rename to make it clear it's deprecated, then drop in future migration
+ALTER TABLE affiliate_api_snapshots
+  RENAME COLUMN image_path TO deprecated_image_path;
+COMMENT ON COLUMN affiliate_api_snapshots.deprecated_image_path IS
+  'DEPRECATED: Will be removed. Path now lives in media_locator via media_locator_id FK.';
+
+-- Step 4: Rename image_url back to CB API field name
+ALTER TABLE affiliate_api_snapshots
+  RENAME COLUMN image_url TO image_url_360x270;
+
+-- Step 5: Update comments
+COMMENT ON TABLE media_locator IS
+  'Single source of truth for all media files (images, videos)';
+COMMENT ON COLUMN affiliate_api_snapshots.media_locator_id IS
+  'FK to media_locator - the authoritative source for file paths';
+COMMENT ON COLUMN affiliate_api_snapshots.image_url_360x270 IS
+  'Original Chaturbate URL for the 360x270 thumbnail (from CB Affiliate API)';
+
+-- Step 6: Update indexes
+ALTER INDEX IF EXISTS idx_affiliate_profile_image_id
+  RENAME TO idx_affiliate_media_locator_id;
+8.2 Update All Code References
+After migration, update all TypeScript/SQL to use new names:
+
+profile_images → media_locator
+profile_image_id → media_locator_id
+ProfileImagesService → MediaService
+ProfileImage type → MediaRecord type
+image_path in affiliate_api_snapshots → removed (use media_locator_id FK instead)
+image_url in affiliate_api_snapshots → image_url_360x270 (matches CB API)
+Phase 9: Code Updates
+9.1 Files to Update (Comprehensive List)
+Services:
+
+server/src/services/profile-images.service.ts → DELETE (replaced by media.service.ts)
+server/src/services/broadcast-session.service.ts - Use MediaService
+server/src/services/person.service.ts - Use MediaService
+server/src/services/follower-scraper.service.ts - Use MediaService
+server/src/services/legacy-image-import.service.ts - Use MediaService
+Routes:
+
+server/src/routes/profile.ts - Update table/column names
+server/src/routes/storage.ts - Update if references profile_images
+server/src/routes/system.ts - Update table name in counts
+Jobs:
+
+server/src/jobs/live-screenshot.job.ts - Use MediaService
+Scripts:
+
+server/src/scripts/backfill-profile-image-ids.ts - Update table/column names
+server/src/scripts/compute-sha256.ts - Update table name
+server/src/scripts/image-verification.ts - Update table name
+server/src/scripts/fix-filename-only-paths.ts - Update column name
+server/src/scripts/verify-missing-files.ts - Update table name
+Types:
+
+Create server/src/types/media.ts with MediaRecord, MediaDownloadOptions, etc.
+9.2 Automated Test Suite
+File: server/src/scripts/media-verification-test.ts
+
+Create a strict pass/fail test suite that runs before AND after each phase:
+
+
+// Fixed test URLs (known state)
+const TEST_URLS = [
+  '/profile/alex_lord_',
+  '/profile/david_stain',
+  '/profile/liiamspears',   // Control - 0 broken
+  '/profile/bricktiger',
+  '/profile/mattiufr',
+];
+
+// 5 random users selected at test start (stored in baseline)
+const RANDOM_USERS = await selectRandomUsers(5);
+
+interface TestResult {
+  username: string;
+  totalImages: number;
+  workingImages: number;
+  brokenImages: number;
+  primaryImage: string | null;
+}
+
+// Test expectations:
+// - BEFORE run: Record baseline for all 10 users
+// - AFTER run: Compare to baseline
+// - PASS: All users have same or FEWER broken images
+// - FAIL: ANY user has MORE broken images OR FEWER working images
+// - NO EXCEPTIONS: 99% pass is still FAIL
+Usage:
+
+
+# Record baseline before changes
+npx tsx server/src/scripts/media-verification-test.ts baseline
+
+# Run after changes - compares to baseline, exits non-zero on failure
+npx tsx server/src/scripts/media-verification-test.ts verify
+
+# Must pass before proceeding to next phase
+Phase 10: SHA256 Deduplication
+10.1 Find Duplicates
+
+SELECT sha256, COUNT(*) as count, array_agg(id) as ids
+FROM media_locator
+WHERE sha256 IS NOT NULL
+GROUP BY sha256
+HAVING COUNT(*) > 1
+ORDER BY count DESC;
+10.2 Deduplication Strategy
+For each duplicate group:
+
+Keep the record with the most references (linked to most affiliate_api_snapshots)
+Update all FKs pointing to duplicates to point to the kept record
+Move duplicate files to QUARANTINE in S3
+Soft-delete duplicate records (or hard delete after quarantine verified)
+Phase 11: Consistency Check & Orphan Cleanup
+11.1 Consistency Check
+Before cleanup, verify counts match:
+
+
+-- Count media_locator records
+SELECT COUNT(*) FROM media_locator WHERE deleted_at IS NULL;
+
+-- Compare to S3 file count in storage path (excluding QUARANTINE)
+-- If media_locator > S3: We have missing files → investigate
+-- If media_locator < S3: We have orphan files → import to media_locator
+Rules:
+
+Missing files (DB record exists, S3 file missing): Flag for investigation, do NOT delete record
+Orphan files (S3 file exists, no DB record): Create media_locator record with source = 'affiliate_api' (default if unknown)
+11.2 Identify Orphaned S3 Files (READ-ONLY)
+File: server/src/scripts/find-orphan-files.ts
+
+List all S3 objects in mhc/media/people/ (excluding QUARANTINE)
+Compare against media_locator.file_path
+Generate report: reports/orphan-files-TIMESTAMP.json
+DO NOT MOVE OR DELETE - output list for review only
+11.3 Register Unregistered Files (Auto-Create DB Entries)
+File: server/src/scripts/register-unregistered-files.ts
+
+For each unregistered S3 file:
+
+Parse filename to extract username: {username}_{timestamp}_{hash}.{ext}
+Look up person_id from persons table by username
+If username found:
+Create media_locator record with source = 'affiliate_api'
+Remove from unregistered list
+If username NOT found:
+Log to reports/unregistered-unknown-username-TIMESTAMP.json
+These require manual review (may be deleted users or typos)
+11.4 Quarantine Remaining Orphans (REQUIRES EXPLICIT APPROVAL)
+File: server/src/scripts/quarantine-orphans.ts
+
+Only files that couldn't be registered (unknown username) need quarantine:
+
+STOP: Show remaining orphan list to user and wait for explicit approval before proceeding.
+
+Read approved list from reports/orphan-files-approved.json
+For each approved orphan:
+Copy to mhc/media/QUARANTINE/orphans/{original_path}
+Verify copy succeeded
+Delete original only after verified copy
+Log all actions to reports/quarantine-actions-TIMESTAMP.log
+Critical Files Summary
+File	Action
+server/src/services/media.service.ts	CREATE - New consolidated service
+server/src/services/profile-images.service.ts	DELETE - Replaced by MediaService
+server/src/services/broadcast-session.service.ts	UPDATE - Import MediaService, use media_locator_id
+server/src/services/person.service.ts	UPDATE - Import MediaService
+server/src/services/follower-scraper.service.ts	UPDATE - Import MediaService, query media_locator
+server/src/routes/profile.ts	UPDATE - Use media_locator table, media_locator_id FK
+server/src/routes/system.ts	UPDATE - Use media_locator table name
+server/src/db/migrations/087_rename_to_media.sql	CREATE - Rename tables/columns
+server/src/types/media.ts	CREATE - MediaRecord, MediaDownloadOptions, MediaQueryOptions
+server/src/scripts/media-verification-test.ts	CREATE - Strict pass/fail test suite
+server/src/scripts/find-orphan-files.ts	CREATE - Identify unregistered files (read-only)
+server/src/scripts/register-unregistered-files.ts	CREATE - Auto-create DB entries for parseable files
+server/src/scripts/quarantine-orphans.ts	CREATE - Move remaining orphans (requires approval)
+Verification
+Before ANY Phase
+
+# Record baseline - REQUIRED before any changes
+npx tsx server/src/scripts/media-verification-test.ts baseline
+After Phase 7 (MediaService)
+ npm run build succeeds with no TypeScript errors
+ npx tsx server/src/scripts/media-verification-test.ts verify passes (exit code 0)
+ Manual spot-check: Load 3 profile pages, images display correctly
+After Phase 8 (Database Renames)
+ Migration runs: npm run migrate
+ npm run build succeeds
+ npx tsx server/src/scripts/media-verification-test.ts verify passes
+ grep -r "profile_images" server/src --include="*.ts" returns 0 results
+ grep -r "profile_image_id" server/src --include="*.ts" returns 0 results
+After Phase 9 (Code Updates)
+ grep -r "ProfileImagesService" server/src returns 0 results
+ npx tsx server/src/scripts/media-verification-test.ts verify passes
+ All existing tests pass: npm test
+After Phase 10 (Deduplication)
+ npx tsx server/src/scripts/media-verification-test.ts verify passes
+ Query: SELECT sha256, COUNT(*) FROM media_locator WHERE sha256 IS NOT NULL GROUP BY sha256 HAVING COUNT(*) > 1 returns 0 rows
+ QUARANTINE folder contains duplicate files
+After Phase 11 (Consistency Check)
+ npx tsx server/src/scripts/media-verification-test.ts verify passes
+ media_locator count matches S3 file count (excluding QUARANTINE)
+ No orphan files remain (or explicitly approved exceptions documented)
+Pre-Migration: Auto-Stop Scraping Jobs
+Automated in code - no manual UI interaction needed.
+
+Each migration script will:
+
+Call JobService.stopMediaJobs() at startup to stop:
+Affiliate Polling
+Profile Capture
+Live Screenshot
+Verify jobs are stopped before proceeding
+If system restarts during migration, scripts auto-stop jobs again on next run
+
+// In MediaService or migration scripts
+static async stopMediaJobs(): Promise<void> {
+  await JobService.stop('affiliate-polling');
+  await JobService.stop('profile-capture');
+  await JobService.stop('live-screenshot');
+  logger.info('Media-creating jobs stopped for migration');
+}
+
+static async startMediaJobs(): Promise<void> {
+  // Called after Phase 11 verification passes
+  await JobService.start('affiliate-polling');
+  await JobService.start('profile-capture');
+  await JobService.start('live-screenshot');
+  logger.info('Media-creating jobs restarted after migration');
+}
+Jobs are restarted programmatically after Phase 11 verification passes.
+
+Safety Measures
+Stop scraping jobs - No new media during migration to ensure accurate counts
+No deletions without explicit permission (except .DS_Store)
+QUARANTINE instead of DELETE - move to quarantine folder first, verify copy, then delete original
+Strict test verification - media-verification-test.ts verify must pass (exit 0) after every phase
+Zero tolerance for regressions - If ANY test URL has more broken or fewer working images, STOP immediately
+Explicit approval for orphan moves - Generate list, show to user, wait for approval before moving
+Consistency checks - media_locator count must match S3 file count; investigate discrepancies
+Rollback capability - Migration can be reversed; deprecated columns preserved temporarily
+Naming consistency - All FKs use media_locator_id, all table refs use media_locator, all service calls use MediaService

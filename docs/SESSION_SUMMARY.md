@@ -1,121 +1,127 @@
-# Session Summary - v2.0.0
+# Session Summary - v2.1.0
 
-**Date**: 2026-01-18
+**Date**: 2026-01-20
 **Mode**: BUILD
 
 ## What Was Accomplished
 
-### v2.0.0 - Media Consolidation & Collaborations
+### v2.1.0 - Attributes System & Notes Categories
 
-#### 1. Collaborations System (Phase 1 Complete)
-Replaced the one-way "Seen With" feature with a bidirectional "Collaborations" system.
+#### 1. Phase 3: Attributes System (Complete)
+
+Full profile attribute management system with history tracking.
 
 **Database Changes:**
-- Created `collaborations` table with symmetric relationship model
-- Uses ordered UUID pairs (person_a_id < person_b_id) to prevent duplicates
-- Single row represents relationship in both directions
-- Created `collaborations_view` for easy bidirectional queries
-- Helper functions: `add_collaboration()`, `remove_collaboration()`
-- Migrated existing `profile_seen_with` data
+- `attribute_definitions` table - stores attribute metadata (key, label, color, display type, system flag)
+- `person_attributes` table - stores person-to-attribute values
+- `attribute_history` table - tracks all changes with timestamps
+- System attributes: `banned_me`, `banned_by_me`, `room_banned`, `watch_list`, `had_interaction`
+- Auto-derived attributes from person data (e.g., `is_friend`, `is_dom`, `is_sub`)
 
 **Backend:**
-- New `CollaborationsService` with methods:
-  - `getCollaborators(personId)` - Get all collaborators
-  - `addCollaboration(person1Id, person2Id, notes?)` - Add collaboration
-  - `removeCollaboration(person1Id, person2Id)` - Remove collaboration
-  - `areCollaborators(person1Id, person2Id)` - Check relationship
-  - `addCollaborationGroup(personIds[], notes?)` - Bulk add
-- API routes in `profile.ts`:
-  - GET `/api/profile/:username/collaborations`
-  - POST `/api/profile/:username/collaborations`
-  - DELETE `/api/profile/:username/collaborations/:collaboratorUsername`
+- `AttributeService` with methods:
+  - `getDefinitions()` - Get all attribute definitions
+  - `createDefinition()` - Create custom attribute
+  - `updateDefinition()` / `deleteDefinition()` - Manage definitions
+  - `getPersonAttributes(username)` - Get attributes for a person
+  - `setPersonAttribute(username, key, value)` - Set an attribute
+  - `getAttributeHistory(username)` - Get change history
+- API routes at `/api/attributes/*`
+
+**Frontend Components:**
+- `AttributeBadge.tsx` - Standalone badge pill, read-only when no onToggle
+- `AttributeCheckbox.tsx` - Toggle checkbox for editable attributes
+- `AttributeHistoryTooltip.tsx` - Hover tooltip showing last 5 changes
+- `ManageAttributesModal.tsx` - Modal for managing attribute definitions
+- `ProfileAttributes.tsx` - Profile page attributes section using all components
+- `types/attributes.ts` - TypeScript type definitions
+- `utils/attributeColors.ts` - Color utilities for attribute badges
+
+#### 2. Phase 2: Notes Categories (Partial)
+
+Enhanced chat log parsing for notes.
+
+**Chat Log Parsing:**
+- Multi-format support:
+  - Standard CB format: `username: message`
+  - Bookmarklet format: `Timestamp: [...] | Username: [...] | Message: [...] | isBroadcaster: [...]`
+  - Rating badge format: `username|100| message`
+  - No-colon format: `usernameMessage` (heuristic parsing)
+- Broadcaster messages displayed on right with orange styling
+- Other users displayed on left with colored usernames
+- Tip extraction and tip menu parsing
 
 **Frontend:**
-- Updated Profile.tsx to use new collaborations API
-- Renamed "Seen With" to "Collaborators" in UI
-- Bidirectional display working (adding A→B shows B→A automatically)
+- Unified paste modal for PM, DM, and Public Chat
+- Add Note modal simplified: Note button for text, arrow buttons for paste modals
+- Category-aware note saving
 
-#### 2. S3 Verification (Phase 11 In Progress)
-- Created `verify-s3-files.ts` script
-- Verifies each active media_locator record has S3 file
-- Updates `s3_verified` and `s3_verified_at` columns
-- Currently running: ~30,000/416,177 verified (all exist so far)
-- Estimated completion: ~7 hours
+#### 3. Room Presence Improvements
 
-#### 3. MediaService Consolidation
-- Created consolidated `media.service.ts` for all media operations
-- SHA256 deduplication removed 38,820 duplicate records
-- Quarantined 38,831 soft-deleted files to S3 QUARANTINE folder
+- Added `last_seen_at` tracking for visitors
+- Enhanced visitor endpoints with recency filtering
 
 ## Files Created
 
 | File | Purpose |
 |------|---------|
-| `server/src/db/migrations/088_collaborations.sql` | Collaborations table and functions |
-| `server/src/services/collaborations.service.ts` | Collaborations business logic |
-| `server/src/services/media.service.ts` | Consolidated media service |
-| `server/src/scripts/verify-s3-files.ts` | S3 verification script |
-| `server/src/scripts/s3-directory-report.ts` | S3 directory analysis |
+| `client/src/components/AttributeBadge.tsx` | Badge pill component |
+| `client/src/components/AttributeCheckbox.tsx` | Checkbox toggle component |
+| `client/src/components/AttributeHistoryTooltip.tsx` | History hover tooltip |
+| `client/src/components/ManageAttributesModal.tsx` | Admin management modal |
+| `client/src/components/ProfileAttributes.tsx` | Profile attributes section |
+| `client/src/types/attributes.ts` | TypeScript types for attributes |
+| `client/src/utils/attributeColors.ts` | Color utilities |
+| `server/src/routes/attributes.ts` | Attributes API routes |
+| `server/src/services/attribute.service.ts` | Attribute business logic |
+| `server/src/services/notes.service.ts` | Notes service with parsing |
+| `docs/PLAN_FORWARD.md` | Multi-phase implementation plan |
 
 ## Files Modified
 
 | File | Changes |
 |------|---------|
-| `server/src/routes/profile.ts` | Added collaborations endpoints |
-| `server/src/services/storage/index.ts` | Fixed type exports |
-| `client/src/pages/Profile.tsx` | Updated to use collaborations API |
+| `client/src/pages/Profile.tsx` | Integrated ProfileAttributes, unified paste modal |
+| `client/src/components/CollapsibleSection.tsx` | Styling updates |
+| `client/src/components/Modal.tsx` | Z-index adjustments |
+| `server/src/app.ts` | Added attributes routes |
+| `server/src/routes/profile.ts` | Note parsing endpoints |
+| `server/src/routes/visitors.ts` | Enhanced visitor queries |
+| `server/src/services/room-presence.service.ts` | Last seen tracking |
 
 ## Current State
 
 - **Docker containers**: Running (rebuilt after changes)
-- **Git**: On main branch with uncommitted changes
-- **API**: Fully functional, collaborations tested
-- **S3 Verification**: Running in background (~7 hours total)
-
-## Verification Results
-
-### Collaborations API Test
-```bash
-# Adding justin_badd → alex_lord_ collaboration
-POST /api/profile/justin_badd/collaborations {"collaboratorUsername": "alex_lord_"}
-# Result: Collaboration created
-
-# Verifying bidirectional
-GET /api/profile/alex_lord_/collaborations
-# Result: Shows justin_badd as collaborator (same collaboration ID)
-
-# Deletion test
-DELETE /api/profile/justin_badd/collaborations/alex_lord_
-# Result: Removed from both profiles
-```
-
-### S3 Verification Progress
-- 416,177 active records to verify
-- ~30,000 verified so far
-- 0 missing files found
-- Running in background: `/tmp/s3-verify.log`
+- **Git**: On main branch, releasing v2.1.0
+- **API**: Fully functional, attributes and notes tested
+- **Phase 3**: 100% Complete
+- **Phase 2**: Notes parsing complete, tab restructure pending
 
 ## Next Steps
 
-1. S3 verification will complete in ~6-7 more hours
-2. After verification: Run `verify-s3-files.ts report` to see results
-3. Phase 2-10 of Profile System Refactoring are tabled for now:
-   - Phase 2: Note Categories
-   - Phase 3: Expandable Fast Flags with History
-   - Phase 4: Relationship Management
-   - Phase 5: Profile Service Compartmentalization
-   - Phase 6: Profile UI Reorganization
+Per `docs/PLAN_FORWARD.md`:
 
-## Commands for Monitoring
+1. **Phase 2 Remaining**: Tab restructure in Notes section
+   - Change from `[ General | Public Chat | Tips | Tip Menu ]` to `[ Notes | PM | DM | Public Chat | Tips | Tip Menu ]`
+   - Show PM/DM tabs even with 0 count
+
+2. **Phase 4**: Relationship Management (already implemented in v2.0.0)
+
+3. **Phase 6**: Profile UI Reorganization - needs review before implementation
+
+4. **Phase 11.1**: S3 Consistency Check - analysis of untracked files pending
+
+## Verification Commands
 
 ```bash
-# Check S3 verification progress
-tail -10 /tmp/s3-verify.log
+# Test attributes API
+curl -s "http://localhost:8080/api/attributes/definitions" | jq
 
-# Check verification status in DB
-docker exec mhc-db psql -U mhc_user -d mhc_control_panel -c \
-  "SELECT s3_verified, COUNT(*) FROM media_locator WHERE deleted_at IS NULL GROUP BY s3_verified;"
+# Test person attributes
+curl -s "http://localhost:8080/api/attributes/person/french_huge_cock" | jq
 
-# Test collaborations API
-curl -s "http://localhost:8080/api/profile/justin_badd/collaborations" | jq
+# Test chat parsing
+curl -X POST "http://localhost:8080/api/profile/french_huge_cock/notes/parse-chat" \
+  -H "Content-Type: application/json" \
+  -d '{"rawText": "username: hello world"}'
 ```

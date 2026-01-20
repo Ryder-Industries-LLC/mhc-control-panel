@@ -2,6 +2,56 @@
 
 All notable changes to MHC Control Panel.
 
+## [2.1.0] - 2026-01-20
+
+### Added
+- **Attributes System (Phase 3)** - Complete profile attribute management
+  - New `attribute_definitions` and `person_attributes` tables
+  - History tracking in `attribute_history` table
+  - `AttributeService` with full CRUD operations
+  - API endpoints at `/api/attributes/*`
+  - System attributes: `banned_me`, `banned_by_me`, `room_banned`, `watch_list`, `had_interaction`
+  - Auto-derived attributes from person data (e.g., `is_friend`, `is_dom`, `is_sub`)
+  - Custom user-defined attributes support
+  - New frontend components:
+    - `AttributeBadge.tsx` - Standalone badge pill component
+    - `AttributeCheckbox.tsx` - Toggle checkbox component
+    - `AttributeHistoryTooltip.tsx` - Hover tooltip showing last 5 changes
+    - `ManageAttributesModal.tsx` - Admin modal for managing attribute definitions
+    - `ProfileAttributes.tsx` - Profile page attributes section
+
+- **Notes Categories System (Phase 2)** - Enhanced note categorization
+  - Note categories: `note`, `pm`, `dm`, `public_chat`, `tips`, `tip_menu`
+  - `NotesService` with category support and parsing
+  - Chat log parsing with multiple format support:
+    - Standard CB copy/paste format
+    - Bookmarklet format: `Timestamp: [...] | Username: [...] | Message: [...] | isBroadcaster: [...]`
+    - Rating badge format: `username|100| message`
+    - No-colon format: `usernameMessage`
+  - Chat bubbles with broadcaster on right, others on left
+  - Unified paste modal for PM, DM, and Public Chat
+  - Tip extraction and tip menu parsing
+
+- **Room Presence Improvements**
+  - Added `last_seen_at` tracking for visitors
+  - Enhanced visitor endpoints with recency filtering
+
+### Changed
+- Profile.tsx Add Note modal simplified:
+  - Single "Note" button for direct text entry
+  - Arrow buttons (PM →, DM →, Public Chat →) open paste modals
+- CollapsibleSection component styling updates
+- Modal z-index adjustments for proper layering
+
+### Database
+- Migration 089: `note_category` enum type
+- Migration 090: `attribute_definitions` table for attribute metadata
+- Migration 090: `person_attributes` table for person-attribute values
+- Migration 090: `attribute_history` table for change tracking
+- Migration 091: Note categories on `profile_notes` table
+
+---
+
 ## [2.0.0] - 2026-01-18
 
 ### Added

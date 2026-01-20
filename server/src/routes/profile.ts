@@ -14,7 +14,7 @@ import {
   RelationshipHistoryService,
   type HistoryFieldType,
 } from '../services/relationship-history.service.js';
-import { ProfileNotesService } from '../services/profile-notes.service.js';
+import { NotesService, type NoteCategory } from '../services/notes.service.js';
 import { MediaService } from '../services/media.service.js';
 import { CollaborationsService } from '../services/collaborations.service.js';
 import { SocialLinksService, type SocialPlatform } from '../services/social-links.service.js';
@@ -821,15 +821,21 @@ router.get('/:username/member-info', async (req: Request, res: Response) => {
 
 /**
  * GET /api/profile/:username/notes
- * Get all notes for a profile (paginated)
+ * Get all notes for a profile (paginated, optionally filtered by category)
  */
 router.get('/:username/notes', async (req: Request, res: Response) => {
   try {
     const { username } = req.params;
-    const { limit = '20', offset = '0' } = req.query;
+    const { limit = '20', offset = '0', category } = req.query;
 
     if (!username) {
       return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Validate category if provided
+    const validCategories: NoteCategory[] = ['note', 'pm', 'dm', 'public_chat', 'tip_menu', 'tips'];
+    if (category && !validCategories.includes(category as NoteCategory)) {
+      return res.status(400).json({ error: 'Invalid category. Must be one of: note, pm, dm, public_chat, tip_menu, tips' });
     }
 
     // Get person and profile
@@ -844,11 +850,11 @@ router.get('/:username/notes', async (req: Request, res: Response) => {
     }
 
     const profileId = profileResult.rows[0].id;
-    const result = await ProfileNotesService.getNotes(
-      profileId,
-      parseInt(limit as string, 10),
-      parseInt(offset as string, 10)
-    );
+    const result = await NotesService.getNotes(profileId, {
+      category: category as NoteCategory | undefined,
+      limit: parseInt(limit as string, 10),
+      offset: parseInt(offset as string, 10),
+    });
 
     res.json(result);
   } catch (error) {
@@ -860,11 +866,12 @@ router.get('/:username/notes', async (req: Request, res: Response) => {
 /**
  * POST /api/profile/:username/notes
  * Add a new note to a profile
+ * Body: { content, category?, formatted_content?, source_url? }
  */
 router.post('/:username/notes', async (req: Request, res: Response) => {
   try {
     const { username } = req.params;
-    const { content } = req.body;
+    const { content, category, formatted_content, source_url } = req.body;
 
     if (!username) {
       return res.status(400).json({ error: 'Username is required' });
@@ -872,6 +879,12 @@ router.post('/:username/notes', async (req: Request, res: Response) => {
 
     if (!content || typeof content !== 'string' || content.trim().length === 0) {
       return res.status(400).json({ error: 'Note content is required' });
+    }
+
+    // Validate category if provided
+    const validCategories: NoteCategory[] = ['note', 'pm', 'dm', 'public_chat', 'tip_menu', 'tips'];
+    if (category && !validCategories.includes(category as NoteCategory)) {
+      return res.status(400).json({ error: 'Invalid category. Must be one of: note, pm, dm, public_chat, tip_menu, tips' });
     }
 
     // Get or create person
@@ -888,7 +901,13 @@ router.post('/:username/notes', async (req: Request, res: Response) => {
     }
 
     const profileId = profileResult.rows[0].id;
-    const note = await ProfileNotesService.addNote(profileId, content.trim());
+    const note = await NotesService.addNote(
+      profileId,
+      content.trim(),
+      category || 'note',
+      formatted_content,
+      source_url
+    );
 
     res.status(201).json(note);
   } catch (error) {
@@ -899,21 +918,27 @@ router.post('/:username/notes', async (req: Request, res: Response) => {
 
 /**
  * PATCH /api/profile/:username/notes/:noteId
- * Update an existing note (content and/or created_at date)
+ * Update an existing note (content, category, formatted_content, source_url, created_at)
  */
 router.patch('/:username/notes/:noteId', async (req: Request, res: Response) => {
   try {
     const { noteId } = req.params;
-    const { content, created_at } = req.body;
+    const { content, category, formatted_content, source_url, created_at } = req.body;
 
     // At least one field must be provided
-    if (!content && !created_at) {
-      return res.status(400).json({ error: 'At least content or created_at is required' });
+    if (content === undefined && category === undefined && formatted_content === undefined && source_url === undefined && created_at === undefined) {
+      return res.status(400).json({ error: 'At least one field is required (content, category, formatted_content, source_url, or created_at)' });
     }
 
     // Validate content if provided
     if (content !== undefined && (typeof content !== 'string' || content.trim().length === 0)) {
       return res.status(400).json({ error: 'Note content cannot be empty' });
+    }
+
+    // Validate category if provided
+    const validCategories: NoteCategory[] = ['note', 'pm', 'dm', 'public_chat', 'tip_menu', 'tips'];
+    if (category !== undefined && !validCategories.includes(category as NoteCategory)) {
+      return res.status(400).json({ error: 'Invalid category. Must be one of: note, pm, dm, public_chat, tip_menu, tips' });
     }
 
     // Validate created_at if provided
@@ -925,8 +950,11 @@ router.patch('/:username/notes/:noteId', async (req: Request, res: Response) => 
       }
     }
 
-    const note = await ProfileNotesService.updateNote(noteId, {
+    const note = await NotesService.updateNote(noteId, {
       content: content?.trim(),
+      category: category as NoteCategory | undefined,
+      formatted_content,
+      source_url,
       created_at: parsedDate,
     });
 
@@ -949,7 +977,7 @@ router.delete('/:username/notes/:noteId', async (req: Request, res: Response) =>
   try {
     const { noteId } = req.params;
 
-    const deleted = await ProfileNotesService.deleteNote(noteId);
+    const deleted = await NotesService.deleteNote(noteId);
     if (!deleted) {
       return res.status(404).json({ error: 'Note not found' });
     }
@@ -957,6 +985,156 @@ router.delete('/:username/notes/:noteId', async (req: Request, res: Response) =>
     res.json({ success: true });
   } catch (error) {
     logger.error('Error deleting profile note', { error, noteId: req.params.noteId });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/profile/:username/tip-menu
+ * Get the latest tip menu note for a profile
+ */
+router.get('/:username/tip-menu', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person and profile
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      return res.json(null);
+    }
+
+    const profileId = profileResult.rows[0].id;
+    const tipMenu = await NotesService.getLatestTipMenu(profileId);
+
+    res.json(tipMenu);
+  } catch (error) {
+    logger.error('Error getting tip menu', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/profile/:username/has-tip-menu
+ * Check if a profile has any tip menu notes
+ */
+router.get('/:username/has-tip-menu', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person and profile
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.json({ hasTipMenu: false });
+    }
+
+    const profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
+    if (profileResult.rows.length === 0) {
+      return res.json({ hasTipMenu: false });
+    }
+
+    const profileId = profileResult.rows[0].id;
+    const hasTipMenu = await NotesService.hasTipMenu(profileId);
+
+    res.json({ hasTipMenu });
+  } catch (error) {
+    logger.error('Error checking tip menu', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/:username/notes/parse-chat
+ * Parse raw chat log text and return formatted HTML
+ */
+router.post('/:username/notes/parse-chat', async (req: Request, res: Response) => {
+  try {
+    const { content, broadcaster } = req.body;
+
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Chat content is required' });
+    }
+
+    // Use the profile username as the broadcaster if not explicitly provided
+    const broadcasterUsername = broadcaster || req.params.username;
+    const parsed = NotesService.parseChatLog(content, broadcasterUsername);
+
+    res.json({
+      formatted: parsed.formatted,
+      userCount: parsed.userColors.size,
+      messageCount: parsed.messageCount,
+      // Extracted data for auto-creating additional notes
+      extractedTips: parsed.extractedTips,
+      extractedTipMenu: parsed.extractedTipMenu,
+      tipsFormatted: parsed.tipsFormatted,
+      tipMenuFormatted: parsed.tipMenuFormatted,
+    });
+  } catch (error) {
+    logger.error('Error parsing chat log', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/:username/notes/parse-tip-menu
+ * Parse raw tip menu text and return formatted HTML
+ */
+router.post('/:username/notes/parse-tip-menu', async (req: Request, res: Response) => {
+  try {
+    const { content } = req.body;
+
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return res.status(400).json({ error: 'Tip menu content is required' });
+    }
+
+    const parsed = NotesService.parseTipMenu(content);
+
+    res.json({
+      formatted: parsed.formatted,
+      items: parsed.items,
+      itemCount: parsed.items.length,
+    });
+  } catch (error) {
+    logger.error('Error parsing tip menu', { error });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/:username/notes/parse-pm
+ * Parse raw PM or DM conversation text and return formatted HTML
+ */
+router.post('/:username/notes/parse-pm', async (req: Request, res: Response) => {
+  try {
+    const { content, category } = req.body;
+
+    if (!content || typeof content !== 'string' || content.trim().length === 0) {
+      return res.status(400).json({ error: 'PM/DM content is required' });
+    }
+
+    // Validate category is pm or dm
+    const validCategory = category === 'dm' ? 'dm' : 'pm';
+    const parsed = NotesService.parsePMLog(content, validCategory);
+
+    res.json({
+      formatted: parsed.formatted,
+      messageCount: parsed.messageCount,
+      participants: parsed.participants,
+    });
+  } catch (error) {
+    logger.error('Error parsing PM/DM log', { error });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

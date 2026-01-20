@@ -8,6 +8,8 @@ const router = Router();
 /**
  * GET /api/visitors/recent
  * Get recent visitors with enriched profile data
+ * Note: Uses SQL subquery for notes_preview (not NotesService) for performance -
+ * avoids N+1 queries when fetching multiple visitors at once.
  */
 router.get('/recent', async (req: Request, res: Response) => {
   try {
@@ -114,6 +116,8 @@ router.get('/recent', async (req: Request, res: Response) => {
 /**
  * GET /api/visitors/top
  * Get top visitors of all time with enriched data
+ * Note: Uses SQL subquery for notes_preview (not NotesService) for performance -
+ * avoids N+1 queries when fetching multiple visitors at once.
  */
 router.get('/top', async (req: Request, res: Response) => {
   try {

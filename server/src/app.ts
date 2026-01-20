@@ -32,6 +32,7 @@ import storageRoutes from './routes/storage.js';
 import imageConsolidationRoutes from './routes/image-consolidation.js';
 import backupRoutes from './routes/backup.js';
 import legacyImportRoutes from './routes/legacy-import.js';
+import attributesRoutes from './routes/attributes.js';
 
 export function createApp() {
   const app = express();
@@ -150,6 +151,7 @@ export function createApp() {
   app.use('/api/image-consolidation', imageConsolidationRoutes);
   app.use('/api/backup', backupRoutes);
   app.use('/api/legacy-import', legacyImportRoutes);
+  app.use('/api/attributes', attributesRoutes);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {
