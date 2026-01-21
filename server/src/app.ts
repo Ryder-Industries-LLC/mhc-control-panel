@@ -60,6 +60,7 @@ export function createApp() {
   app.use(provideCsrfToken);
 
   // Primary image route - S3 primary, Docker fallback for legacy paths
+  // Proxy images through the server instead of redirecting to presigned URLs
   app.use('/images', async (req, res, _next) => {
     const relativePath = req.path.startsWith('/') ? req.path.slice(1) : req.path;
 
@@ -69,14 +70,17 @@ export function createApp() {
     // Check if this looks like a legacy UUID path (UUID/filename format)
     const isLegacyUuidPath = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\//i.test(relativePath);
 
-    // S3 is the primary storage location
+    // S3 is the primary storage location - proxy through server
     try {
       const s3Provider = storageService.getS3Provider();
       if (s3Provider && !isLegacyUuidPath) {
-        // For non-legacy paths, try S3 first
-        const presignedUrl = await s3Provider.getPresignedUrl(relativePath);
-        if (presignedUrl) {
-          return res.redirect(302, presignedUrl);
+        // For non-legacy paths, read from S3 and proxy
+        const result = await s3Provider.read(relativePath);
+        if (result) {
+          res.set('Content-Type', result.mimeType);
+          res.set('Content-Length', result.size.toString());
+          res.set('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+          return res.send(result.data);
         }
       }
     } catch (error) {

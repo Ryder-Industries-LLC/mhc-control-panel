@@ -2,6 +2,26 @@
 
 All notable changes to MHC Control Panel.
 
+## [2.2.1] - 2026-01-21
+
+### Fixed
+
+- **S3 Image Serving** - Changed from presigned URL redirects to server-side proxy
+  - Fixes 403 Forbidden errors caused by bucket policy restrictions on presigned URLs
+  - Images now served through Express with proper cache headers (1 year)
+- **Profile Images Deduplication** - Fixed duplicate images appearing in API response
+  - Same images from both `media_locator` and `affiliate_api_snapshots` joins now deduplicated by ID
+  - Added `deleted_at IS NULL` filter for affiliate images
+- **Legacy S3 Prefix Migration** - Moved 21 orphaned files from `mhc-media/` to `mhc/media/` prefix
+  - Files from Jan 16, 2026 were uploaded to wrong S3 prefix
+  - All 21 files now accessible and marked as `s3_verified = true`
+
+### Added
+
+- `scripts/move-legacy-s3-files.js` - ES module script for migrating files between S3 prefixes
+
+---
+
 ## [2.2.0] - 2026-01-20
 
 ### Added

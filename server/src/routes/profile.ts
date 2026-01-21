@@ -1704,6 +1704,7 @@ router.get('/:username/images', async (req: Request, res: Response) => {
       JOIN media_locator ml ON ml.id = aas.media_locator_id
       WHERE aas.person_id = $1
         AND aas.media_locator_id IS NOT NULL
+        AND ml.deleted_at IS NULL
       ORDER BY ml.file_path, aas.observed_at DESC
       LIMIT 50
     `;
@@ -1745,18 +1746,27 @@ router.get('/:username/images', async (req: Request, res: Response) => {
       title: record.title,
     }));
 
-    // Combine and sort by date
-    const allImages = [...uploadedImages, ...affiliateImages].sort((a, b) => {
-      const dateA = new Date(a.captured_at || a.uploaded_at).getTime();
-      const dateB = new Date(b.captured_at || b.uploaded_at).getTime();
-      return dateB - dateA;
-    });
+    // Combine and deduplicate by ID (affiliate images appear in both queries)
+    const seenIds = new Set<string>();
+    const allImages = [...uploadedImages, ...affiliateImages]
+      .filter(img => {
+        if (seenIds.has(img.id)) {
+          return false;
+        }
+        seenIds.add(img.id);
+        return true;
+      })
+      .sort((a, b) => {
+        const dateA = new Date(a.captured_at || a.uploaded_at).getTime();
+        const dateB = new Date(b.captured_at || b.uploaded_at).getTime();
+        return dateB - dateA;
+      });
 
     res.json({
       images: allImages,
       uploadedCount: uploadedResult.total,
       affiliateCount: affiliateImages.length,
-      total: uploadedResult.total + affiliateImages.length,
+      total: allImages.length,
     });
   } catch (error) {
     logger.error('Error getting profile images', { error, username: req.params.username });

@@ -1,110 +1,85 @@
-# Session Summary - v2.2.0
+# Session Summary - v2.2.1
 
-**Date**: 2026-01-20
-**Mode**: BUILD
+**Date**: 2026-01-21
+**Mode**: DEBUG → RELEASE
 
 ## What Was Accomplished
 
-### v2.2.0 - Media Favorites & Tab Reorganization
+### v2.2.1 - S3 Image Serving Fixes
 
-#### 1. Media Favorites System (Complete)
+#### 1. S3 Presigned URL Fix (Complete)
 
-Full system for marking images/videos as favorites with dedicated viewing page.
+Changed image serving from S3 presigned URL redirects to server-side proxy.
 
-**Database Changes:**
+**Problem:**
+- S3 presigned URLs returning 403 Forbidden due to bucket policy restrictions
+- Images not loading on profile pages
 
-- Migration 092: `is_favorite` boolean column on `media_locator` table
-- Partial index on `is_favorite` for efficient queries
-- Index on `(person_id, is_favorite)` for person-specific favorite queries
+**Solution:**
+- Modified `/images` route in `server/src/app.ts` to proxy images through Express
+- Server reads from S3 using `s3Provider.read()` and streams to client
+- Added proper cache headers (1 year) for performance
 
-**Backend:**
+#### 2. Profile Images Deduplication (Complete)
 
-- `MediaService` extended with methods:
-  - `toggleFavorite(mediaId)` - Toggle favorite status
-  - `setFavorite(mediaId, isFavorite)` - Explicitly set favorite status
-  - `getFavorites(options)` - Get all favorites with pagination
-  - `getFavoriteStats()` - Get counts by media type
-- New API routes at `/api/media/*`:
-  - `GET /favorites` - List favorites with pagination and type filter
-  - `GET /favorites/stats` - Get favorite counts
-  - `POST /:mediaId/favorite` - Toggle favorite
-  - `PUT /:mediaId/favorite` - Set favorite status
+Fixed duplicate images appearing in profile API responses.
 
-**Frontend:**
+**Problem:**
+- Same images returned from both `media_locator` query and `affiliate_api_snapshots` join
+- 33 images returned when only 23 unique existed
 
-- `FavoriteIcon.tsx` - Reusable heart icon component with toggle animation
-- `StarRating.tsx` - Reusable star rating component
-- `Favorites.tsx` - New page at `/favorites` with:
-  - Grid view of all favorite media
-  - Filter by media type (All/Images/Videos)
-  - Stats showing total, image, and video counts
-  - Click-through to user profiles
-  - Pagination support
-- Profile page updated with favorite icons on images and videos
-- Navigation updated with Favorites link
+**Solution:**
+- Added deduplication by ID in `server/src/routes/profile.ts`
+- Added `deleted_at IS NULL` filter for affiliate images query
 
-#### 2. People/Directory Tab Reorganization (Complete)
+#### 3. Legacy S3 Prefix Migration (Complete)
 
-Simplified tab structure with cleaner card filters.
+Moved 21 files from wrong S3 prefix to correct location.
 
-**Changes:**
+**Problem:**
+- 21 files uploaded to `mhc-media/` prefix on Jan 16, 2026
+- Should have been at `mhc/media/` prefix
+- IAM credentials only had access to `mhc/media/*`
 
-- Main tabs reduced to: Directory, Following, Followers, Doms, Friends, Bans, Watchlist
-- Removed from main tabs: Unfollowed, Subs, Tipped By Me, Tipped Me
-- Hidden tabs still accessible via URL params (e.g., `/people?tab=unfollowed`)
-- Card filters simplified to: All, Live Now, With Images, With Videos, Rated, Models, Viewers, Following
-- Removed from card filters: Watchlist, Friends (now main tabs)
-
-#### 3. Bug Fixes
-
-- **Profile Not Found**: Fixed crash when navigating to non-existent profiles
-- **Quick Filter Sorting**: Added sort reset to "Last Active (Newest)" when using quick filters
-- **Watchlist Tab**: Added full filtering and sorting support with sort dropdown
-
-## Files Created
-
-| File | Purpose |
-|------|---------|
-| `client/src/components/FavoriteIcon.tsx` | Heart icon toggle component |
-| `client/src/components/StarRating.tsx` | Star rating component |
-| `client/src/pages/Favorites.tsx` | Favorites gallery page |
-| `server/src/routes/media.ts` | Media API routes |
-| `server/src/db/migrations/092_add_media_favorites.sql` | Favorites migration |
+**Solution:**
+- Created `scripts/move-legacy-s3-files.js` migration script (ES module)
+- User ran script with admin credentials
+- All 21 files moved successfully
+- Database records marked as `s3_verified = true`
 
 ## Files Modified
 
 | File | Changes |
 |------|---------|
-| `client/src/App.tsx` | Added Favorites route and nav link |
-| `client/src/api/client.ts` | Added favorite API methods |
-| `client/src/pages/Profile.tsx` | Added favorite icons, fixed not-found handling |
-| `client/src/pages/Users.tsx` | Tab reorganization, filter fixes |
-| `client/src/types/people.ts` | Updated SEGMENTS, StatFilter, buildStandardCounts |
-| `server/src/app.ts` | Registered media routes |
-| `server/src/services/media.service.ts` | Added favorite methods |
+| `server/src/app.ts` | Changed image serving from S3 redirect to proxy |
+| `server/src/routes/profile.ts` | Added deduplication and deleted_at filter |
+| `scripts/move-legacy-s3-files.js` | New file - S3 prefix migration script |
+| `docs/CHANGELOG.md` | Added v2.2.1 release notes |
 
 ## Current State
 
-- **Docker containers**: Running (rebuilt after changes)
-- **Git**: On main branch, releasing v2.2.0
-- **API**: Fully functional, favorites tested
-- **All features**: Complete and tested
+- **Docker containers**: Running
+- **Git**: On main branch, releasing v2.2.1
+- **API**: All image endpoints working correctly
+- **S3**: Legacy prefix `mhc-media/` is now empty, all files in `mhc/media/`
 
 ## Next Steps
 
-1. Continue with Phase 2 remaining work (Notes tab restructure)
-2. Phase 6: Profile UI Reorganization
-3. Phase 11.1: S3 Consistency Check
+1. Continue monitoring for any additional missing images
+2. Consider running S3 verification on remaining 16,500+ unverified records
+3. Phase 2 remaining work (Notes tab restructure)
 
 ## Verification Commands
 
 ```bash
-# Test favorites API
-curl -s "http://localhost:8080/api/media/favorites" | jq
+# Test image serving
+curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/images/people/jerknchill_/auto/1768608232754_6da9d6b7.jpg"
 
-# Test favorites stats
-curl -s "http://localhost:8080/api/media/favorites/stats" | jq
-
-# Toggle favorite
-curl -X POST "http://localhost:8080/api/media/{mediaId}/favorite"
+# Verify legacy prefix is empty
+node -e "
+import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
+const s3 = new S3Client({ region: 'us-east-2' });
+const result = await s3.send(new ListObjectsV2Command({ Bucket: 'mhc-media-prod', Prefix: 'mhc-media/' }));
+console.log('Legacy files:', result.Contents?.length || 0);
+"
 ```
