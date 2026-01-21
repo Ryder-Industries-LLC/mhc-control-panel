@@ -17,6 +17,7 @@ import {
 import { NotesService, type NoteCategory } from '../services/notes.service.js';
 import { MediaService } from '../services/media.service.js';
 import { CollaborationsService } from '../services/collaborations.service.js';
+import { AlternateAccountsService } from '../services/alternate-accounts.service.js';
 import { SocialLinksService, type SocialPlatform } from '../services/social-links.service.js';
 import { SnapshotService } from '../services/snapshot.service.js';
 import { RoomVisitsService } from '../services/room-visits.service.js';
@@ -1075,6 +1076,8 @@ router.post('/:username/notes/parse-chat', async (req: Request, res: Response) =
       formatted: parsed.formatted,
       userCount: parsed.userColors.size,
       messageCount: parsed.messageCount,
+      // Detected chat type from bookmarklet format (pm, public_chat, or null)
+      detectedChatType: parsed.detectedChatType,
       // Extracted data for auto-creating additional notes
       extractedTips: parsed.extractedTips,
       extractedTipMenu: parsed.extractedTipMenu,
@@ -2942,6 +2945,147 @@ router.delete('/:username/collaborations/:collaboratorUsername', async (req: Req
     res.json({ success: true, removedCollaborator: collaboratorUsername });
   } catch (error) {
     logger.error('Error removing collaboration', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// ALTERNATE ACCOUNTS ENDPOINTS
+// ============================================================
+
+/**
+ * GET /api/profile/:username/alternate-accounts
+ * Get all alternate accounts for a profile (bidirectional)
+ */
+router.get('/:username/alternate-accounts', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+
+    // Get person
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    // Get alternate accounts (bidirectional via view)
+    const alternateAccounts = await AlternateAccountsService.getAlternateAccounts(person.id);
+
+    res.json({
+      alternateAccounts: alternateAccounts.map((aa) => ({
+        id: aa.id,
+        alternateUsername: aa.alternateUsername,
+        alternatePersonId: aa.alternatePersonId,
+        notes: aa.notes,
+        createdAt: aa.createdAt,
+      })),
+    });
+  } catch (error) {
+    logger.error('Error getting alternate accounts', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/profile/:username/alternate-accounts
+ * Add an alternate account link for a profile
+ */
+router.post('/:username/alternate-accounts', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const { alternateUsername, notes } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required' });
+    }
+    if (!alternateUsername || typeof alternateUsername !== 'string') {
+      return res.status(400).json({ error: 'alternateUsername is required and must be a string' });
+    }
+
+    const normalizedUsername = username.toLowerCase().trim();
+    const normalizedAlternateUsername = alternateUsername.toLowerCase().trim();
+
+    // Prevent self-linking
+    if (normalizedUsername === normalizedAlternateUsername) {
+      return res.status(400).json({ error: 'Cannot link yourself as an alternate account' });
+    }
+
+    // Get or create person
+    const person = await PersonService.findOrCreate({ username: normalizedUsername, role: 'MODEL' });
+    if (!person) {
+      return res.status(500).json({ error: 'Failed to get person record' });
+    }
+
+    // Get or create alternate person
+    const alternatePerson = await PersonService.findOrCreate({ username: normalizedAlternateUsername, role: 'MODEL' });
+    if (!alternatePerson) {
+      return res.status(500).json({ error: 'Failed to get alternate person record' });
+    }
+
+    // Add alternate account link
+    const linkId = await AlternateAccountsService.addAlternateAccount(
+      person.id,
+      alternatePerson.id,
+      notes || null
+    );
+
+    if (!linkId) {
+      return res.status(400).json({ error: 'Failed to add alternate account link (may already exist)' });
+    }
+
+    logger.info('Alternate account link added', {
+      username: normalizedUsername,
+      alternateUsername: normalizedAlternateUsername,
+      linkId,
+    });
+
+    res.json({
+      alternateAccount: {
+        id: linkId,
+        alternatePersonId: alternatePerson.id,
+        alternateUsername: normalizedAlternateUsername,
+        notes: notes || null,
+      },
+    });
+  } catch (error) {
+    logger.error('Error adding alternate account', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * DELETE /api/profile/:username/alternate-accounts/:alternateUsername
+ * Remove an alternate account link between two profiles
+ */
+router.delete('/:username/alternate-accounts/:alternateUsername', async (req: Request, res: Response) => {
+  try {
+    const { username, alternateUsername } = req.params;
+
+    // Get both persons
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const alternatePerson = await PersonService.findByUsername(alternateUsername);
+    if (!alternatePerson) {
+      return res.status(404).json({ error: 'Alternate account not found' });
+    }
+
+    // Remove alternate account link
+    const removed = await AlternateAccountsService.removeAlternateAccount(person.id, alternatePerson.id);
+
+    if (!removed) {
+      return res.status(404).json({ error: 'Alternate account link not found' });
+    }
+
+    logger.info('Alternate account link removed', { username, alternateUsername });
+    res.json({ success: true, removedAlternateAccount: alternateUsername });
+  } catch (error) {
+    logger.error('Error removing alternate account', { error, username: req.params.username });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

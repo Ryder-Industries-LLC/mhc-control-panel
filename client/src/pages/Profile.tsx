@@ -56,6 +56,7 @@ interface ParsedChatResult {
   formatted: string;
   userCount: number;
   messageCount: number;
+  detectedChatType: 'pm' | 'public_chat' | 'tips' | null;
   extractedTips: TipEvent[];
   extractedTipMenu: TipMenuItem[];
   tipsFormatted: string | null;
@@ -253,6 +254,16 @@ const Profile: React.FC<ProfilePageProps> = () => {
     Array<{ username: string; id: string }>
   >([]);
 
+  // Alternate accounts state (same person, different usernames)
+  const [alternateAccounts, setAlternateAccounts] = useState<
+    Array<{ id: string; alternateUsername: string; alternatePersonId: string; notes?: string | null; createdAt: string }>
+  >([]);
+  const [alternateAccountsLoading, setAlternateAccountsLoading] = useState(false);
+  const [alternateAccountInput, setAlternateAccountInput] = useState('');
+  const [alternateAccountSuggestions, setAlternateAccountSuggestions] = useState<
+    Array<{ username: string; id: string }>
+  >([]);
+
   // Top mover badge state
   const [topMoverStatus, setTopMoverStatus] = useState<'gainer' | 'loser' | null>(null);
 
@@ -391,6 +402,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
       setCurrentProfileImage(null);
       setProfileNotes([]);
       setCollaborators([]);
+      setAlternateAccounts([]);
 
       fetch(`/api/profile/${urlUsername}`)
         .then((response) => {
@@ -584,6 +596,23 @@ const Profile: React.FC<ProfilePageProps> = () => {
         }
       };
       fetchCollaboratorsData();
+
+      // Fetch alternate accounts data
+      const fetchAlternateAccountsData = async () => {
+        setAlternateAccountsLoading(true);
+        try {
+          const response = await fetch(`/api/profile/${profileData.person.username}/alternate-accounts`);
+          if (response.ok) {
+            const data = await response.json();
+            setAlternateAccounts(data.alternateAccounts || []);
+          }
+        } catch (err) {
+          console.error('Error fetching alternate accounts:', err);
+        } finally {
+          setAlternateAccountsLoading(false);
+        }
+      };
+      fetchAlternateAccountsData();
     }
   }, [profileData?.person?.username]);
 
@@ -750,8 +779,15 @@ const Profile: React.FC<ProfilePageProps> = () => {
       if (response.ok) {
         const data: ParsedChatResult = await response.json();
         setParsedChatPreview(data);
+        // Auto-set category based on detected chat type (if available)
+        // Only set for PM or public_chat - tips detection enables tips checkbox instead
+        if (data.detectedChatType && data.detectedChatType !== 'tips') {
+          setPasteChatCategory(data.detectedChatType);
+        }
         // Auto-check boxes based on what was extracted
-        setCreateChatNote(data.messageCount > 0);
+        // For TIPS-only paste, disable chat note and enable tips note
+        const isTipsOnly = data.detectedChatType === 'tips';
+        setCreateChatNote(!isTipsOnly && data.messageCount > 0);
         setCreateTipsNote(data.extractedTips?.length > 0);
         setCreateTipMenuNote(data.extractedTipMenu?.length > 0);
       }
@@ -1299,6 +1335,88 @@ const Profile: React.FC<ProfilePageProps> = () => {
       }
     } else {
       setCollaboratorSuggestions([]);
+    }
+  };
+
+  // Alternate accounts handlers
+  const fetchAlternateAccounts = async () => {
+    if (!profileData?.person?.username) return;
+    setAlternateAccountsLoading(true);
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/alternate-accounts`);
+      if (response.ok) {
+        const data = await response.json();
+        setAlternateAccounts(data.alternateAccounts || []);
+      }
+    } catch (err) {
+      console.error('Error fetching alternate accounts:', err);
+    } finally {
+      setAlternateAccountsLoading(false);
+    }
+  };
+
+  const handleAddAlternateAccount = async (username: string) => {
+    if (!profileData?.person?.username || !username.trim()) return;
+    try {
+      const response = await fetch(`/api/profile/${profileData.person.username}/alternate-accounts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alternateUsername: username.trim() }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        // Add the new alternate account to the list
+        setAlternateAccounts((prev) => [{
+          id: data.alternateAccount.id,
+          alternateUsername: data.alternateAccount.alternateUsername,
+          alternatePersonId: data.alternateAccount.alternatePersonId,
+          notes: data.alternateAccount.notes,
+          createdAt: new Date().toISOString(),
+        }, ...prev]);
+        setAlternateAccountInput('');
+        setAlternateAccountSuggestions([]);
+      }
+    } catch (err) {
+      console.error('Error adding alternate account:', err);
+    }
+  };
+
+  const handleRemoveAlternateAccount = async (alternateUsername: string) => {
+    if (!profileData?.person?.username) return;
+    try {
+      const response = await fetch(
+        `/api/profile/${profileData.person.username}/alternate-accounts/${alternateUsername}`,
+        {
+          method: 'DELETE',
+        }
+      );
+      if (response.ok) {
+        setAlternateAccounts((prev) => prev.filter((a) => a.alternateUsername !== alternateUsername));
+      }
+    } catch (err) {
+      console.error('Error removing alternate account:', err);
+    }
+  };
+
+  const handleAlternateAccountInputChange = async (value: string) => {
+    setAlternateAccountInput(value);
+    if (value.trim().length >= 2) {
+      // Fetch autocomplete suggestions from directory
+      try {
+        const response = await fetch(
+          `/api/person/search?q=${encodeURIComponent(value.trim())}&limit=5`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          setAlternateAccountSuggestions(
+            data.usernames?.map((username: string) => ({ username, id: null })) || []
+          );
+        }
+      } catch (err) {
+        setAlternateAccountSuggestions([]);
+      }
+    } else {
+      setAlternateAccountSuggestions([]);
     }
   };
 
@@ -1923,6 +2041,59 @@ const Profile: React.FC<ProfilePageProps> = () => {
                     )}
                   </div>
                   {collaboratorsLoading && <span className="text-white/40 text-sm">Loading...</span>}
+                </div>
+
+                {/* Row 8: Alternate Accounts - same person, different usernames */}
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span className="text-sm text-white/70 font-medium">Alternate Accounts:</span>
+                  {alternateAccounts.map((alt) => (
+                    <span
+                      key={alt.id}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-500/20 text-purple-300 rounded text-sm"
+                    >
+                      <a href={`/profile/${alt.alternateUsername}`} className="hover:underline">
+                        {alt.alternateUsername}
+                      </a>
+                      <button
+                        onClick={() => handleRemoveAlternateAccount(alt.alternateUsername)}
+                        className="ml-1 text-purple-400 hover:text-red-400 text-lg leading-none"
+                        title="Remove"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  {/* Add username input with autocomplete */}
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={alternateAccountInput}
+                      onChange={(e) => handleAlternateAccountInputChange(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && alternateAccountInput.trim()) {
+                          handleAddAlternateAccount(alternateAccountInput);
+                        }
+                      }}
+                      placeholder="+ Add"
+                      className="px-2.5 py-1 bg-white/10 text-white text-sm rounded border border-white/20 focus:border-mhc-primary focus:outline-none w-24"
+                    />
+                    {alternateAccountSuggestions.length > 0 && (
+                      <div className="absolute top-full left-0 mt-1 w-48 bg-mhc-surface border border-white/20 rounded shadow-lg z-10 max-h-32 overflow-y-auto">
+                        {alternateAccountSuggestions.map((suggestion) => (
+                          <button
+                            key={suggestion.username}
+                            onClick={() => {
+                              handleAddAlternateAccount(suggestion.username);
+                            }}
+                            className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-mhc-primary/20"
+                          >
+                            {suggestion.username}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {alternateAccountsLoading && <span className="text-white/40 text-sm">Loading...</span>}
                 </div>
 
                 {/* Profile Details link - bottom right of column 2 */}
@@ -3291,20 +3462,28 @@ const Profile: React.FC<ProfilePageProps> = () => {
             >
               Note
             </button>
-            {/* PM, DM, and Public Chat open paste modal for chat log parsing */}
-            {(['pm', 'dm', 'public_chat'] as const).map((cat) => (
-              <button
-                key={`paste-${cat}`}
-                onClick={() => {
-                  setShowAddNoteModal(false);
-                  setPasteChatCategory(cat);
-                  setShowPasteChatModal(true);
-                }}
-                className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-white/5 text-white/60 hover:text-white hover:bg-white/10"
-              >
-                {CATEGORY_CONFIG[cat].label} →
-              </button>
-            ))}
+            {/* Paste Chat - auto-detects PM vs Public Chat from bookmarklet format */}
+            <button
+              onClick={() => {
+                setShowAddNoteModal(false);
+                setPasteChatCategory('public_chat'); // Default, will be auto-detected from content
+                setShowPasteChatModal(true);
+              }}
+              className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-white/5 text-white/60 hover:text-white hover:bg-white/10"
+            >
+              Paste Chat →
+            </button>
+            {/* DM stays separate */}
+            <button
+              onClick={() => {
+                setShowAddNoteModal(false);
+                setPasteChatCategory('dm');
+                setShowPasteChatModal(true);
+              }}
+              className="px-3 py-1.5 rounded-md text-sm font-medium transition-colors bg-white/5 text-white/60 hover:text-white hover:bg-white/10"
+            >
+              {CATEGORY_CONFIG.dm.label} →
+            </button>
           </div>
 
           <textarea
@@ -3358,7 +3537,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
       {/* Paste Chat Log Modal - Used for PM, DM, and Public Chat */}
       <Modal
         isOpen={showPasteChatModal}
-        title={`Paste ${CATEGORY_CONFIG[pasteChatCategory].label}`}
+        title={pasteChatCategory === 'dm' ? 'Paste DM' : (parsedChatPreview?.detectedChatType ? `Paste ${CATEGORY_CONFIG[parsedChatPreview.detectedChatType].label}` : 'Paste Chat')}
         onClose={() => {
           setShowPasteChatModal(false);
           setPasteContent('');
@@ -3368,8 +3547,9 @@ const Profile: React.FC<ProfilePageProps> = () => {
       >
         <div className="space-y-4">
           <p className="text-white/60 text-sm">
-            Paste a chat log. The system will auto-format it with colored usernames and detect participants.
-            {pasteChatCategory === 'public_chat' && ' Tips and tip menu items will also be extracted.'}
+            {pasteChatCategory === 'dm'
+              ? 'Paste a DM conversation. The system will auto-format it with colored usernames.'
+              : 'Paste a chat log from the bookmarklet. The system will auto-detect PM vs Public Chat and format with colored usernames.'}
           </p>
           <textarea
             value={pasteContent}
@@ -3397,6 +3577,16 @@ const Profile: React.FC<ProfilePageProps> = () => {
           {/* Preview Section */}
           {parsedChatPreview && (
             <div className="space-y-4">
+              {/* Auto-detected chat type indicator (for non-DM) */}
+              {pasteChatCategory !== 'dm' && parsedChatPreview.detectedChatType && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-white/50">Detected as:</span>
+                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${CATEGORY_CONFIG[parsedChatPreview.detectedChatType].bgColor} ${CATEGORY_CONFIG[parsedChatPreview.detectedChatType].color}`}>
+                    {CATEGORY_CONFIG[parsedChatPreview.detectedChatType].label}
+                  </span>
+                </div>
+              )}
+
               {/* Summary of what was extracted */}
               <div className="p-3 bg-white/5 rounded-lg border border-white/10">
                 <h4 className="text-white/80 text-sm font-medium mb-3">Extracted from chat:</h4>

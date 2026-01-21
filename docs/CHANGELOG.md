@@ -2,6 +2,36 @@
 
 All notable changes to MHC Control Panel.
 
+## [2.2.2] - 2026-01-21
+
+### Added
+
+- **Alternate Accounts Feature** - Link profiles belonging to the same person
+  - New `alternate_accounts` table with bidirectional symmetric linking (same pattern as collaborations)
+  - `AlternateAccountsService` with full CRUD operations
+  - API endpoints: `GET/POST/DELETE /api/profile/:username/alternate-accounts`
+  - Frontend UI with purple pills below Collaborators section
+  - Removed unused `person_aliases` table (0 records, superseded)
+
+- **TIPS Chat Type Parsing** - Support for bookmarklet `ChatType: [TIPS]` format
+  - Extracts tip data: username, token amount, optional message
+  - Generates formatted HTML table summary of tips
+  - Auto-toggles "Create Tips Note" when tips detected
+
+### Changed
+
+- **Tip Menu Parsing Improvements**
+  - Filter out text emojis (words starting with `:` like `:berenjena333`) from tip menu items
+  - Filter out Lovense toy-related lines (vibes, lush, toy levels, duration patterns)
+  - Better pattern matching for CB text emoji format
+
+### Database
+
+- Migration 093: `alternate_accounts` table with bidirectional view and helper functions
+- Dropped `person_aliases` table (unused, 0 records)
+
+---
+
 ## [2.2.1] - 2026-01-21
 
 ### Fixed

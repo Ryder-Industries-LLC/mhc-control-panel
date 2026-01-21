@@ -69,9 +69,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Person not found' });
     }
 
-    const aliases = await PersonService.getAliases(id);
-
-    res.json({ person, aliases });
+    res.json({ person });
   } catch (error) {
     logger.error('Get person error', { error });
     res.status(500).json({ error: 'Internal server error' });

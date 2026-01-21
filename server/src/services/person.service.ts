@@ -1,6 +1,6 @@
 import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
-import type { Person, PersonRole, Platform, PersonAlias } from '../types/models.js';
+import type { Person, PersonRole, Platform } from '../types/models.js';
 
 export interface CreatePersonParams {
   username: string;
@@ -20,7 +20,7 @@ export class PersonService {
   }
 
   /**
-   * Find person by username (checks both persons.username and person_aliases.alias)
+   * Find person by username
    */
   static async findByUsername(
     username: string,
@@ -28,21 +28,8 @@ export class PersonService {
   ): Promise<Person | null> {
     const normalizedUsername = username.toLowerCase();
 
-    // First check direct username match
-    let result = await query<Person>(
+    const result = await query<Person>(
       'SELECT * FROM persons WHERE LOWER(username) = $1 AND platform = $2',
-      [normalizedUsername, platform]
-    );
-
-    if (result.rows.length > 0) {
-      return result.rows[0];
-    }
-
-    // Check aliases
-    result = await query<Person>(
-      `SELECT p.* FROM persons p
-       INNER JOIN person_aliases pa ON p.id = pa.person_id
-       WHERE LOWER(pa.alias) = $1 AND pa.platform = $2`,
       [normalizedUsername, platform]
     );
 
@@ -133,47 +120,6 @@ export class PersonService {
     );
 
     return result.rows[0] || null;
-  }
-
-  /**
-   * Add an alias for a person (username change tracking)
-   */
-  static async addAlias(
-    personId: string,
-    alias: string,
-    platform: Platform = 'chaturbate'
-  ): Promise<PersonAlias> {
-    const normalizedAlias = alias.toLowerCase();
-
-    // Invalidate any current aliases
-    await query(
-      `UPDATE person_aliases
-       SET valid_to = NOW()
-       WHERE person_id = $1 AND platform = $2 AND valid_to IS NULL`,
-      [personId, platform]
-    );
-
-    // Create new alias
-    const result = await query<PersonAlias>(
-      `INSERT INTO person_aliases (person_id, alias, platform, valid_from)
-       VALUES ($1, $2, $3, NOW())
-       RETURNING *`,
-      [personId, normalizedAlias, platform]
-    );
-
-    logger.info(`Added alias for person ${personId}: ${normalizedAlias}`);
-    return result.rows[0];
-  }
-
-  /**
-   * Get all aliases for a person
-   */
-  static async getAliases(personId: string): Promise<PersonAlias[]> {
-    const result = await query<PersonAlias>(
-      'SELECT * FROM person_aliases WHERE person_id = $1 ORDER BY valid_from DESC',
-      [personId]
-    );
-    return result.rows;
   }
 
   /**

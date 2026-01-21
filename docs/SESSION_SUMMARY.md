@@ -1,85 +1,81 @@
-# Session Summary - v2.2.1
+# Session Summary - v2.2.2
 
 **Date**: 2026-01-21
-**Mode**: DEBUG → RELEASE
+**Mode**: BUILD → RELEASE
 
 ## What Was Accomplished
 
-### v2.2.1 - S3 Image Serving Fixes
+### v2.2.2 - Alternate Accounts & TIPS Parsing
 
-#### 1. S3 Presigned URL Fix (Complete)
+#### 1. Alternate Accounts Feature (Complete)
 
-Changed image serving from S3 presigned URL redirects to server-side proxy.
+Added ability to link two separate profile records as being the same person with different usernames.
 
-**Problem:**
-- S3 presigned URLs returning 403 Forbidden due to bucket policy restrictions
-- Images not loading on profile pages
+**Implementation:**
+- New `alternate_accounts` table with bidirectional symmetric linking (same pattern as collaborations)
+- `AlternateAccountsService` with full CRUD operations
+- API endpoints: `GET/POST/DELETE /api/profile/:username/alternate-accounts`
+- Frontend UI with purple pills below Collaborators section
+- View and helper functions for bidirectional queries
+- Removed unused `person_aliases` table (0 records, superseded by this feature)
 
-**Solution:**
-- Modified `/images` route in `server/src/app.ts` to proxy images through Express
-- Server reads from S3 using `s3Provider.read()` and streams to client
-- Added proper cache headers (1 year) for performance
+**Files:**
+- `server/src/db/migrations/093_add_alternate_accounts.sql`
+- `server/src/services/alternate-accounts.service.ts` (new)
+- `server/src/routes/profile.ts` - Added 3 API endpoints
+- `server/src/services/person.service.ts` - Removed alias methods
+- `server/src/routes/person.ts` - Removed alias from response
+- `client/src/pages/Profile.tsx` - Added UI section
 
-#### 2. Profile Images Deduplication (Complete)
+#### 2. TIPS Chat Type Parsing (Complete)
 
-Fixed duplicate images appearing in profile API responses.
+Added support for bookmarklet `ChatType: [TIPS]` format.
 
-**Problem:**
-- Same images returned from both `media_locator` query and `affiliate_api_snapshots` join
-- 33 images returned when only 23 unique existed
+**Implementation:**
+- Updated regex to detect TIPS chat type
+- Extracts tip data: username, token amount, optional message
+- Generates formatted HTML table summary
+- Auto-toggles "Create Tips Note" when tips detected
+- Updated TypeScript interfaces for tips type
 
-**Solution:**
-- Added deduplication by ID in `server/src/routes/profile.ts`
-- Added `deleted_at IS NULL` filter for affiliate images query
+**Files:**
+- `server/src/services/notes.service.ts` - TIPS parsing logic
+- `client/src/pages/Profile.tsx` - Tips type handling
 
-#### 3. Legacy S3 Prefix Migration (Complete)
+#### 3. Tip Menu Parsing Improvements (Complete)
 
-Moved 21 files from wrong S3 prefix to correct location.
+Enhanced tip menu parsing with better filtering.
 
-**Problem:**
-- 21 files uploaded to `mhc-media/` prefix on Jan 16, 2026
-- Should have been at `mhc/media/` prefix
-- IAM credentials only had access to `mhc/media/*`
+**Changes:**
+- Filter out text emojis (words starting with `:` like `:berenjena333`)
+- Filter out Lovense toy-related lines (vibes, lush, toy levels, duration patterns)
+- Better pattern matching for CB text emoji format
 
-**Solution:**
-- Created `scripts/move-legacy-s3-files.js` migration script (ES module)
-- User ran script with admin credentials
-- All 21 files moved successfully
-- Database records marked as `s3_verified = true`
+**Files:**
+- `server/src/services/notes.service.ts` - Filtering logic
 
 ## Files Modified
 
 | File | Changes |
 |------|---------|
-| `server/src/app.ts` | Changed image serving from S3 redirect to proxy |
-| `server/src/routes/profile.ts` | Added deduplication and deleted_at filter |
-| `scripts/move-legacy-s3-files.js` | New file - S3 prefix migration script |
-| `docs/CHANGELOG.md` | Added v2.2.1 release notes |
+| `server/src/db/migrations/093_add_alternate_accounts.sql` | New migration |
+| `server/src/services/alternate-accounts.service.ts` | New service |
+| `server/src/services/notes.service.ts` | TIPS parsing, text emoji filtering, Lovense filtering |
+| `server/src/services/person.service.ts` | Removed alias methods |
+| `server/src/routes/profile.ts` | Added alternate-accounts endpoints |
+| `server/src/routes/person.ts` | Removed aliases from response |
+| `client/src/pages/Profile.tsx` | Alternate accounts UI, tips type handling |
+| `docs/CHANGELOG.md` | Added v2.2.2 release notes |
+| `docs/TODO.md` | Updated version |
 
 ## Current State
 
 - **Docker containers**: Running
-- **Git**: On main branch, releasing v2.2.1
-- **API**: All image endpoints working correctly
-- **S3**: Legacy prefix `mhc-media/` is now empty, all files in `mhc/media/`
+- **Git**: On main branch, releasing v2.2.2
+- **API**: All endpoints working correctly
 
 ## Next Steps
 
-1. Continue monitoring for any additional missing images
-2. Consider running S3 verification on remaining 16,500+ unverified records
-3. Phase 2 remaining work (Notes tab restructure)
-
-## Verification Commands
-
-```bash
-# Test image serving
-curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/images/people/jerknchill_/auto/1768608232754_6da9d6b7.jpg"
-
-# Verify legacy prefix is empty
-node -e "
-import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
-const s3 = new S3Client({ region: 'us-east-2' });
-const result = await s3.send(new ListObjectsV2Command({ Bucket: 'mhc-media-prod', Prefix: 'mhc-media/' }));
-console.log('Legacy files:', result.Contents?.length || 0);
-"
-```
+1. Notes tab restructure: separate tabs for Notes, PM, DM, Public Chat, Tips, Tip Menu
+2. Fix PM/DM parsing timestamp format detection
+3. Profile page overhaul

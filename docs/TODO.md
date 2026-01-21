@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-21 (v2.2.1)
+**Last Updated**: 2026-01-21 (v2.2.2)
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -244,6 +244,13 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 
 - [ ] Identify exactly what data is coming from Statbate that we can't get elsewhere (subscription expires soon)
 - [ ] See what is pulling from CB Hours, CB Rewards, etc. - investigate if we can get more data
+
+### Notifications & Alerts
+
+- [ ] Consider Pushover for push notifications ($4.99 one-time fee per platform)
+  - https://pushover.net/pricing
+  - Create AlertService to push periodic stats (e.g., daily session summaries, follower changes)
+  - Could alert on specific events (new followers, tips over threshold, etc.)
 
 ---
 

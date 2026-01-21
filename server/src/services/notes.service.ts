@@ -42,6 +42,8 @@ export interface ParsedChatLog {
   formatted: string;
   userColors: Map<string, string>;
   messageCount: number;
+  // Detected chat type from bookmarklet format (null if not detected)
+  detectedChatType: 'pm' | 'public_chat' | 'tips' | null;
   // Extracted data for auto-creating additional notes
   extractedTips: TipEvent[];
   extractedTipMenu: TipMenuItem[];
@@ -313,6 +315,7 @@ export class NotesService {
   /**
    * Parse a pasted chat log and format it with chat bubbles
    * - Supports bookmarklet format: "Timestamp: [...] | Username: [...] | Message: [...] | isBroadcaster: [...]"
+   * - Also supports new bookmarklet format with ChatType: "ChatType: [PM|PUBLIC] | Timestamp: [...] | ..."
    * - Filters out noise (notices, rules, join/leave, tip menus, Lovense, etc.)
    * - Uses knownBroadcaster (profile username) as primary broadcaster identifier
    * - Falls back to detecting broadcaster from "Broadcaster X has left" if not provided
@@ -324,10 +327,12 @@ export class NotesService {
     const lines = rawText.split('\n');
 
     // Check if this is bookmarklet format (structured with Timestamp/Username/Message/isBroadcaster)
-    // Format: "Timestamp: [21:42:31] | Username: [yiyo10_] | Message: [hello] | isBroadcaster: [true]"
-    const bookmarkletPattern = /^Timestamp:\s*\[([^\]]*)\]\s*\|\s*Username:\s*\[([^\]]*)\]\s*\|\s*Message:\s*\[([^\]]*)\]\s*\|\s*isBroadcaster:\s*\[(true|false)\]/i;
+    // Old format: "Timestamp: [21:42:31] | Username: [yiyo10_] | Message: [hello] | isBroadcaster: [true]"
+    // New format: "ChatType: [PM] | Timestamp: [21:42:31] | Username: [yiyo10_] | Message: [hello] | isBroadcaster: [true]"
+    const bookmarkletPatternOld = /^Timestamp:\s*\[([^\]]*)\]\s*\|\s*Username:\s*\[([^\]]*)\]\s*\|\s*Message:\s*\[([^\]]*)\]\s*\|\s*isBroadcaster:\s*\[(true|false)\]/i;
+    const bookmarkletPatternNew = /^ChatType:\s*\[(PM|PUBLIC|TIPS)\]\s*\|\s*Timestamp:\s*\[([^\]]*)\]\s*\|\s*Username:\s*\[([^\]]*)\]\s*\|\s*Message:\s*\[([^\]]*)\]\s*\|\s*isBroadcaster:\s*\[(true|false)\]/i;
     const firstNonEmptyLine = lines.find(l => l.trim().length > 0);
-    if (firstNonEmptyLine && bookmarkletPattern.test(firstNonEmptyLine)) {
+    if (firstNonEmptyLine && (bookmarkletPatternOld.test(firstNonEmptyLine) || bookmarkletPatternNew.test(firstNonEmptyLine))) {
       return this.parseBookmarkletFormat(lines, knownBroadcaster);
     }
 
@@ -795,6 +800,7 @@ export class NotesService {
       formatted: `${chatCss}<div class="chat-log-bubbles">${formattedLines.join('')}</div>`,
       userColors,
       messageCount: formattedLines.length,
+      detectedChatType: null, // Standard parser doesn't detect chat type
       extractedTips,
       extractedTipMenu,
       tipsFormatted,
@@ -804,7 +810,8 @@ export class NotesService {
 
   /**
    * Parse chat log in bookmarklet format
-   * Format: "Timestamp: [21:42:31] | Username: [yiyo10_] | Message: [hello] | isBroadcaster: [true]"
+   * Old format: "Timestamp: [21:42:31] | Username: [yiyo10_] | Message: [hello] | isBroadcaster: [true]"
+   * New format: "ChatType: [PM] | Timestamp: [21:42:31] | Username: [yiyo10_] | Message: [hello] | isBroadcaster: [true]"
    * This format is much more reliable as it preserves structure from the DOM
    */
   private static parseBookmarkletFormat(lines: string[], knownBroadcaster?: string): ParsedChatLog {
@@ -812,20 +819,73 @@ export class NotesService {
     let colorIndex = 0;
     const formattedLines: string[] = [];
 
-    const bookmarkletPattern = /^Timestamp:\s*\[([^\]]*)\]\s*\|\s*Username:\s*\[([^\]]*)\]\s*\|\s*Message:\s*\[([^\]]*)\]\s*\|\s*isBroadcaster:\s*\[(true|false)\]/i;
+    // Track detected chat type from the first line that has ChatType
+    let detectedChatType: 'pm' | 'public_chat' | 'tips' | null = null;
+
+    // Collect extracted tips from TIPS chat type
+    const extractedTips: TipEvent[] = [];
+
+    // Support both old and new bookmarklet formats
+    const bookmarkletPatternOld = /^Timestamp:\s*\[([^\]]*)\]\s*\|\s*Username:\s*\[([^\]]*)\]\s*\|\s*Message:\s*\[([^\]]*)\]\s*\|\s*isBroadcaster:\s*\[(true|false)\]/i;
+    const bookmarkletPatternNew = /^ChatType:\s*\[(PM|PUBLIC|TIPS)\]\s*\|\s*Timestamp:\s*\[([^\]]*)\]\s*\|\s*Username:\s*\[([^\]]*)\]\s*\|\s*Message:\s*\[([^\]]*)\]\s*\|\s*isBroadcaster:\s*\[(true|false)\]/i;
 
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
 
-      const match = trimmed.match(bookmarkletPattern);
-      if (!match) continue;
+      // Try new format first, then old format
+      let timestamp: string;
+      let username: string;
+      let message: string;
+      let isBroadcasterStr: string;
 
-      const [, timestamp, username, message, isBroadcasterStr] = match;
+      const matchNew = trimmed.match(bookmarkletPatternNew);
+      let currentLineType: 'PM' | 'PUBLIC' | 'TIPS' | null = null;
+      if (matchNew) {
+        const chatTypeRaw = matchNew[1].toUpperCase() as 'PM' | 'PUBLIC' | 'TIPS';
+        currentLineType = chatTypeRaw;
+        // Detect chat type from first matching line
+        if (detectedChatType === null) {
+          if (chatTypeRaw === 'PM') {
+            detectedChatType = 'pm';
+          } else if (chatTypeRaw === 'PUBLIC') {
+            detectedChatType = 'public_chat';
+          } else if (chatTypeRaw === 'TIPS') {
+            detectedChatType = 'tips';
+          }
+        }
+        [, , timestamp, username, message, isBroadcasterStr] = matchNew;
+      } else {
+        const matchOld = trimmed.match(bookmarkletPatternOld);
+        if (!matchOld) continue;
+        [, timestamp, username, message, isBroadcasterStr] = matchOld;
+      }
+
       const isBroadcaster = isBroadcasterStr.toLowerCase() === 'true';
 
       // Skip empty messages
       if (!message || !message.trim()) continue;
+
+      // Skip Chaturbate caution/warning messages
+      if (message.includes('Chaturbate Team will NEVER contact you') ||
+          message.includes('CautionThe Chaturbate Team')) continue;
+
+      // Handle TIPS chat type - extract tip data instead of adding as chat bubble
+      if (currentLineType === 'TIPS') {
+        // Parse tip message: "username tipped X tokens" or "username tipped X tokens: message"
+        const tipMatch = message.match(/^(.+?)\s+tipped\s+(\d+)\s+tokens?(?::\s*(.*))?$/i);
+        if (tipMatch) {
+          const tipUsername = tipMatch[1].trim();
+          const tokens = parseInt(tipMatch[2], 10);
+          const tipMessage = tipMatch[3]?.trim() || undefined;
+          extractedTips.push({
+            username: tipUsername,
+            tokens,
+            message: tipMessage,
+          });
+        }
+        continue; // Don't add TIPS as chat bubbles
+      }
 
       const lowerUsername = username.toLowerCase();
 
@@ -884,13 +944,58 @@ export class NotesService {
       </style>
     `;
 
+    // Generate formatted HTML for tips (if any extracted from TIPS chat type)
+    let tipsFormatted: string | null = null;
+    if (extractedTips.length > 0) {
+      // Sort by tokens descending
+      const sortedTips = [...extractedTips].sort((a, b) => b.tokens - a.tokens);
+      const totalTokens = sortedTips.reduce((sum, t) => sum + t.tokens, 0);
+
+      const tipsCss = `
+        <style>
+          .tips-tracker { width: 100%; }
+          .tips-summary { padding: 12px; background: rgba(245, 158, 11, 0.1); border-radius: 8px; margin-bottom: 12px; text-align: center; }
+          .tips-total { font-size: 1.5em; font-weight: bold; color: #f59e0b; }
+          .tips-count { color: rgba(255,255,255,0.6); font-size: 0.9em; }
+          .tips-table { width: 100%; border-collapse: collapse; }
+          .tips-table th { text-align: left; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.6); font-size: 0.9em; }
+          .tips-table td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+          .tips-table .tip-user { color: rgba(255,255,255,0.9); }
+          .tips-table .tip-tokens { color: #f59e0b; font-weight: bold; text-align: right; }
+          .tips-table .tip-message { color: rgba(255,255,255,0.5); font-size: 0.9em; }
+        </style>
+      `;
+
+      const tipsRows = sortedTips.map(t => `
+        <tr>
+          <td class="tip-user">${this.escapeHtml(t.username)}</td>
+          <td class="tip-tokens">${t.tokens}</td>
+          <td class="tip-message">${t.message ? this.escapeHtml(t.message) : ''}</td>
+        </tr>
+      `).join('');
+
+      tipsFormatted = `${tipsCss}
+        <div class="tips-tracker">
+          <div class="tips-summary">
+            <div class="tips-total">${totalTokens.toLocaleString()} tokens</div>
+            <div class="tips-count">${sortedTips.length} tip${sortedTips.length !== 1 ? 's' : ''}</div>
+          </div>
+          <table class="tips-table">
+            <thead><tr><th>Tipper</th><th>Amount</th><th>Message</th></tr></thead>
+            <tbody>${tipsRows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
     return {
       formatted: `${chatCss}<div class="chat-log-bubbles">${formattedLines.join('')}</div>`,
       userColors,
       messageCount: formattedLines.length,
-      extractedTips: [],       // Bookmarklet format doesn't include tips
+      detectedChatType,        // PM, public_chat, tips, or null if old format without ChatType
+      extractedTips,           // Tips extracted from TIPS chat type
       extractedTipMenu: [],    // Bookmarklet format doesn't include tip menu
-      tipsFormatted: null,
+      tipsFormatted,
       tipMenuFormatted: null,
     };
   }
@@ -923,13 +1028,28 @@ export class NotesService {
       let trimmedLine = line.trim();
       if (!trimmedLine) continue;
 
-      // Strip "Notice: " prefix and any leading emoji
+      // Strip "Notice: " prefix, leading unicode emojis, and leading text emojis (e.g., :berenjena333)
       trimmedLine = trimmedLine
         .replace(/^Notice:\s*/i, '')
         .replace(/^[⭐⚡🔥💎✨🎯•]\s*/, '')
+        .replace(/^:\w+\s+/, '') // Strip leading text emoji like ":berenjena333 "
         .trim();
 
       if (!trimmedLine) continue;
+
+      // Skip Lovense toy level/pattern lines (not tip menu items)
+      // These contain patterns like "vibes X tks", "X seconds", toy names, level indicators
+      const lowerLine = trimmedLine.toLowerCase();
+      if (
+        lowerLine.includes('vibes') ||
+        lowerLine.includes('lovense') ||
+        lowerLine.includes('lush') ||
+        lowerLine.includes('toy level') ||
+        /\d+\s*sec(onds?)?/i.test(trimmedLine) ||  // "45 sec", "1 second"
+        /:wm_toy_|:ls(lvl|pattern)/i.test(trimmedLine) // Lovense text emojis
+      ) {
+        continue;
+      }
 
       let matched = false;
 
@@ -938,8 +1058,11 @@ export class NotesService {
         if (match) {
           // Pattern 2 has tokens first, others have item first
           const isTokensFirst = pattern === patterns[1];
-          const item = isTokensFirst ? match[2].trim() : match[1].trim();
+          let item = isTokensFirst ? match[2].trim() : match[1].trim();
           const tokens = parseInt(isTokensFirst ? match[1] : match[2], 10);
+
+          // Filter out text emojis (words starting with :) e.g., ":berenjena333 Pm" → "Pm"
+          item = item.split(/\s+/).filter(word => !word.startsWith(':')).join(' ').trim();
 
           if (item && !isNaN(tokens) && tokens > 0) {
             items.push({ item, tokens });
@@ -954,7 +1077,9 @@ export class NotesService {
         const numberMatch = trimmedLine.match(/(\d+)/);
         if (numberMatch) {
           const tokens = parseInt(numberMatch[1], 10);
-          const item = trimmedLine.replace(/\d+\s*(?:tokens?|tk)?/gi, '').trim();
+          let item = trimmedLine.replace(/\d+\s*(?:tokens?|tk)?/gi, '').trim();
+          // Filter out text emojis (words starting with :) e.g., ":berenjena333 Pm" → "Pm"
+          item = item.split(/\s+/).filter(word => !word.startsWith(':')).join(' ').trim();
           if (item && tokens > 0) {
             items.push({ item, tokens });
           }
