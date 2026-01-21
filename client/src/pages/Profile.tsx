@@ -1502,7 +1502,7 @@ const Profile: React.FC<ProfilePageProps> = () => {
               {/* Profile image section - always show with placeholder fallback */}
               <div className="flex-shrink-0 flex flex-col items-start">
                 {/* Above image row: Following | Follows Me (left) | Timestamp (right) */}
-                <div className="flex items-center w-[440px] mb-1">
+                <div className="flex items-center w-[560px] mb-1">
                   <div className="flex items-center gap-2">
                     {profileData.profile?.following && (
                       <span
@@ -1551,13 +1551,13 @@ const Profile: React.FC<ProfilePageProps> = () => {
                           getPlaceholderImage(profileData.person.role)
                     }
                     alt={profileData.person.username}
-                    className="w-[440px] h-[330px] rounded-lg object-cover shadow-lg border-4 border-white/30"
-                    width="440"
-                    height="330"
+                    className="w-[560px] h-[315px] rounded-lg object-contain shadow-lg border-4 border-white/30 bg-black/20"
+                    width="560"
+                    height="315"
                   />
                 </div>
                 {/* Below image row: CB | UN (left) | Rating (centered) | Add Note (right) */}
-                <div className="flex items-center justify-between w-[440px] mt-1">
+                <div className="flex items-center justify-between w-[560px] mt-1">
                   {/* CB/UN external links - left side */}
                   <div className="flex gap-1.5">
                     <a
