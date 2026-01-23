@@ -81,26 +81,36 @@ const Users: React.FC = () => {
   const [followingLoading, setFollowingLoading] = useState(false);
   const [, setFollowingStats] = useState<any>(null);
   const [followingFilter, setFollowingFilter] = useState<StandardFilter>('all');
+  const [followingSortField, setFollowingSortField] = useState<keyof BasePerson>('session_observed_at');
+  const [followingSortDirection, setFollowingSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Followers tab state
   const [followerUsers, setFollowerUsers] = useState<FollowerPerson[]>([]);
   const [followersLoading, setFollowersLoading] = useState(false);
   const [, setFollowersStats] = useState<any>(null);
   const [followersFilter, setFollowersFilter] = useState<StandardFilter>('all');
+  const [followersSortField, setFollowersSortField] = useState<keyof BasePerson>('session_observed_at');
+  const [followersSortDirection, setFollowersSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Unfollowed tab state
   const [unfollowedUsers, setUnfollowedUsers] = useState<UnfollowedPerson[]>([]);
   const [unfollowedLoading, setUnfollowedLoading] = useState(false);
   const [timeframeFilter, setTimeframeFilter] = useState<number>(30);
+  const [unfollowedSortField, setUnfollowedSortField] = useState<keyof BasePerson>('session_observed_at');
+  const [unfollowedSortDirection, setUnfollowedSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Unified Relationships state (Friends/Subs/Doms use same data structure)
   const [relationshipUsers, setRelationshipUsers] = useState<RelationshipPerson[]>([]);
   const [relationshipsLoading, setRelationshipsLoading] = useState(false);
   const [relationshipStatusFilter, setRelationshipStatusFilter] = useState<RelationshipStatus | 'all'>('all');
+  const [relationshipsSortField, setRelationshipsSortField] = useState<keyof BasePerson>('session_observed_at');
+  const [relationshipsSortDirection, setRelationshipsSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Bans tab state
   const [bannedUsers, setBannedUsers] = useState<BannedPerson[]>([]);
   const [bansLoading, setBansLoading] = useState(false);
+  const [bansSortField, setBansSortField] = useState<keyof BasePerson>('session_observed_at');
+  const [bansSortDirection, setBansSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Watchlist tab state
   const [watchlistUsers, setWatchlistUsers] = useState<BasePerson[]>([]);
@@ -112,8 +122,12 @@ const Users: React.FC = () => {
   // Tippers tabs state
   const [tippedByMeUsers, setTippedByMeUsers] = useState<TipperPerson[]>([]);
   const [tippedByMeLoading, setTippedByMeLoading] = useState(false);
+  const [tippedByMeSortField, setTippedByMeSortField] = useState<keyof BasePerson>('session_observed_at');
+  const [tippedByMeSortDirection, setTippedByMeSortDirection] = useState<'asc' | 'desc'>('desc');
   const [tippedMeUsers, setTippedMeUsers] = useState<TipperPerson[]>([]);
   const [tippedMeLoading, setTippedMeLoading] = useState(false);
+  const [tippedMeSortField, setTippedMeSortField] = useState<keyof BasePerson>('session_observed_at');
+  const [tippedMeSortDirection, setTippedMeSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // View mode state (list or grid)
   const [viewMode, setViewMode] = useState<'list' | 'grid'>(() => {
@@ -758,6 +772,31 @@ const Users: React.FC = () => {
     </>
   );
 
+  // Generic sort function for tab data
+  const sortData = <T extends BasePerson>(
+    data: T[],
+    field: keyof BasePerson,
+    direction: 'asc' | 'desc'
+  ): T[] => {
+    return [...data].sort((a, b) => {
+      const aValue = a[field];
+      const bValue = b[field];
+      if (aValue === null || aValue === undefined) return 1;
+      if (bValue === null || bValue === undefined) return -1;
+      let comparison = 0;
+      if (field === 'session_observed_at' || field === 'last_seen_at' || field === 'first_seen_at') {
+        const aDate = new Date(aValue as string).getTime();
+        const bDate = new Date(bValue as string).getTime();
+        comparison = aDate - bDate;
+      } else if (typeof aValue === 'string' && typeof bValue === 'string') {
+        comparison = aValue.localeCompare(bValue);
+      } else if (typeof aValue === 'number' && typeof bValue === 'number') {
+        comparison = aValue - bValue;
+      }
+      return direction === 'asc' ? comparison : -comparison;
+    });
+  };
+
   // Render Following Tab
   const renderFollowingTab = () => {
     // Use standard 8-filter set
@@ -776,6 +815,9 @@ const Users: React.FC = () => {
         default: return true;
       }
     });
+
+    // Sort filtered data
+    const sortedFollowing = sortData(filteredFollowing, followingSortField, followingSortDirection);
 
     const followingColumns = getFollowingColumns(handleRatingChange);
 
@@ -801,7 +843,7 @@ const Users: React.FC = () => {
 
         <ActiveFiltersBar
           filters={activeFilters}
-          resultCount={filteredFollowing.length}
+          resultCount={sortedFollowing.length}
           onRemoveFilter={() => setFollowingFilter('all')}
           onClearAll={() => setFollowingFilter('all')}
           className="mt-4"
@@ -810,17 +852,24 @@ const Users: React.FC = () => {
         <ResultsToolbar
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          totalItems={filteredFollowing.length}
+          sortOptions={DIRECTORY_SORT_OPTIONS}
+          sortValue={`${followingSortField}-${followingSortDirection}`}
+          onSortChange={(value) => {
+            const [field, dir] = value.split('-') as [keyof BasePerson, 'asc' | 'desc'];
+            setFollowingSortField(field);
+            setFollowingSortDirection(dir);
+          }}
+          totalItems={sortedFollowing.length}
           className="mt-4"
         />
 
         {followingLoading ? (
           <div className="p-12 text-center text-white/50">Loading following users...</div>
         ) : viewMode === 'grid' ? (
-          <PeopleGrid data={filteredFollowing} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
+          <PeopleGrid data={sortedFollowing} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
         ) : (
           <PeopleTable
-            data={filteredFollowing}
+            data={sortedFollowing}
             columns={followingColumns}
             emptyMessage="No following users found."
             className="mt-4"
@@ -849,6 +898,9 @@ const Users: React.FC = () => {
       }
     });
 
+    // Sort filtered data
+    const sortedFollowers = sortData(filteredFollowers, followersSortField, followersSortDirection);
+
     const followersColumns = getFollowersColumns(handleRatingChange);
 
     const activeFilters: ActiveFilter[] = followersFilter !== 'all'
@@ -873,7 +925,7 @@ const Users: React.FC = () => {
 
         <ActiveFiltersBar
           filters={activeFilters}
-          resultCount={filteredFollowers.length}
+          resultCount={sortedFollowers.length}
           onRemoveFilter={() => setFollowersFilter('all')}
           onClearAll={() => setFollowersFilter('all')}
           className="mt-4"
@@ -882,17 +934,24 @@ const Users: React.FC = () => {
         <ResultsToolbar
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          totalItems={filteredFollowers.length}
+          sortOptions={DIRECTORY_SORT_OPTIONS}
+          sortValue={`${followersSortField}-${followersSortDirection}`}
+          onSortChange={(value) => {
+            const [field, dir] = value.split('-') as [keyof BasePerson, 'asc' | 'desc'];
+            setFollowersSortField(field);
+            setFollowersSortDirection(dir);
+          }}
+          totalItems={sortedFollowers.length}
           className="mt-4"
         />
 
         {followersLoading ? (
           <div className="p-12 text-center text-white/50">Loading followers...</div>
         ) : viewMode === 'grid' ? (
-          <PeopleGrid data={filteredFollowers} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
+          <PeopleGrid data={sortedFollowers} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
         ) : (
           <PeopleTable
-            data={filteredFollowers}
+            data={sortedFollowers}
             columns={followersColumns}
             emptyMessage="No followers found."
             className="mt-4"
@@ -919,6 +978,9 @@ const Users: React.FC = () => {
       ? filteredUsers
       : filteredUsers.filter(u => u.relationship?.status === relationshipStatusFilter);
 
+    // Sort filtered data
+    const sortedUsers = sortData(displayUsers, relationshipsSortField, relationshipsSortDirection);
+
     const statusOptions: RelationshipStatus[] = [
       'Active', 'Potential', 'Occasional', 'On Hold', 'Inactive', 'Decommissioned', 'Banished'
     ];
@@ -933,7 +995,7 @@ const Users: React.FC = () => {
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">{label} ({formatNumber(displayUsers.length)})</h2>
+          <h2 className="text-2xl text-white font-semibold">{label} ({formatNumber(sortedUsers.length)})</h2>
         </div>
 
         <FiltersPanel
@@ -968,7 +1030,7 @@ const Users: React.FC = () => {
 
         <ActiveFiltersBar
           filters={activeFilters}
-          resultCount={displayUsers.length}
+          resultCount={sortedUsers.length}
           onRemoveFilter={() => setRelationshipStatusFilter('all')}
           onClearAll={() => setRelationshipStatusFilter('all')}
           className="mt-4"
@@ -977,17 +1039,24 @@ const Users: React.FC = () => {
         <ResultsToolbar
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          totalItems={displayUsers.length}
+          sortOptions={DIRECTORY_SORT_OPTIONS}
+          sortValue={`${relationshipsSortField}-${relationshipsSortDirection}`}
+          onSortChange={(value) => {
+            const [field, dir] = value.split('-') as [keyof BasePerson, 'asc' | 'desc'];
+            setRelationshipsSortField(field);
+            setRelationshipsSortDirection(dir);
+          }}
+          totalItems={sortedUsers.length}
           className="mt-4"
         />
 
         {relationshipsLoading ? (
           <div className="p-12 text-center text-white/50">Loading {label.toLowerCase()}...</div>
         ) : viewMode === 'grid' ? (
-          <PeopleGrid data={displayUsers} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
+          <PeopleGrid data={sortedUsers} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
         ) : (
           <PeopleTable
-            data={displayUsers}
+            data={sortedUsers}
             columns={columns}
             emptyMessage={`No ${label.toLowerCase()} found.`}
             emptySubMessage="Create relationships from user profile pages."
@@ -1013,8 +1082,11 @@ const Users: React.FC = () => {
       return daysAgo <= timeframeFilter;
     });
 
+    // Sort filtered data
+    const sortedUnfollowed = sortData(filteredUnfollowed, unfollowedSortField, unfollowedSortDirection);
+
     // Build standard counts for unfollowed users
-    const unfollowedCounts = buildStandardCounts(filteredUnfollowed, { allLabel: 'All Unfollowed' });
+    const unfollowedCounts = buildStandardCounts(sortedUnfollowed, { allLabel: 'All Unfollowed' });
     const unfollowedColumns = getUnfollowedColumns(handleRatingChange);
 
     const activeFilters: ActiveFilter[] = [
@@ -1024,7 +1096,7 @@ const Users: React.FC = () => {
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Unfollowed ({formatNumber(filteredUnfollowed.length)})</h2>
+          <h2 className="text-2xl text-white font-semibold">Unfollowed ({formatNumber(sortedUnfollowed.length)})</h2>
         </div>
 
         <FiltersPanel
@@ -1051,7 +1123,7 @@ const Users: React.FC = () => {
 
         <ActiveFiltersBar
           filters={activeFilters}
-          resultCount={filteredUnfollowed.length}
+          resultCount={sortedUnfollowed.length}
           onRemoveFilter={() => setTimeframeFilter(30)}
           onClearAll={() => setTimeframeFilter(30)}
           className="mt-4"
@@ -1060,17 +1132,24 @@ const Users: React.FC = () => {
         <ResultsToolbar
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          totalItems={filteredUnfollowed.length}
+          sortOptions={DIRECTORY_SORT_OPTIONS}
+          sortValue={`${unfollowedSortField}-${unfollowedSortDirection}`}
+          onSortChange={(value) => {
+            const [field, dir] = value.split('-') as [keyof BasePerson, 'asc' | 'desc'];
+            setUnfollowedSortField(field);
+            setUnfollowedSortDirection(dir);
+          }}
+          totalItems={sortedUnfollowed.length}
           className="mt-4"
         />
 
         {unfollowedLoading ? (
           <div className="p-12 text-center text-white/50">Loading unfollowed users...</div>
         ) : viewMode === 'grid' ? (
-          <PeopleGrid data={filteredUnfollowed} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
+          <PeopleGrid data={sortedUnfollowed} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
         ) : (
           <PeopleTable
-            data={filteredUnfollowed}
+            data={sortedUnfollowed}
             columns={unfollowedColumns}
             emptyMessage="No unfollowed users in this timeframe."
             className="mt-4"
@@ -1082,13 +1161,16 @@ const Users: React.FC = () => {
 
   // Render Bans Tab
   const renderBansTab = () => {
-    const bansCounts = buildStandardCounts(bannedUsers, { allLabel: 'All Banned' });
+    // Sort data
+    const sortedBans = sortData(bannedUsers, bansSortField, bansSortDirection);
+
+    const bansCounts = buildStandardCounts(sortedBans, { allLabel: 'All Banned' });
     const bansColumns = getBansColumns(handleRatingChange);
 
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Bans ({formatNumber(bannedUsers.length)})</h2>
+          <h2 className="text-2xl text-white font-semibold">Bans ({formatNumber(sortedBans.length)})</h2>
         </div>
 
         <FiltersPanel
@@ -1099,7 +1181,7 @@ const Users: React.FC = () => {
 
         <ActiveFiltersBar
           filters={[]}
-          resultCount={bannedUsers.length}
+          resultCount={sortedBans.length}
           onRemoveFilter={() => {}}
           onClearAll={() => {}}
           className="mt-4"
@@ -1108,17 +1190,24 @@ const Users: React.FC = () => {
         <ResultsToolbar
           viewMode={viewMode}
           onViewModeChange={setViewMode}
-          totalItems={bannedUsers.length}
+          sortOptions={DIRECTORY_SORT_OPTIONS}
+          sortValue={`${bansSortField}-${bansSortDirection}`}
+          onSortChange={(value) => {
+            const [field, dir] = value.split('-') as [keyof BasePerson, 'asc' | 'desc'];
+            setBansSortField(field);
+            setBansSortDirection(dir);
+          }}
+          totalItems={sortedBans.length}
           className="mt-4"
         />
 
         {bansLoading ? (
           <div className="p-12 text-center text-white/50">Loading banned users...</div>
         ) : viewMode === 'grid' ? (
-          <PeopleGrid data={bannedUsers} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
+          <PeopleGrid data={sortedBans} onTagClick={setTagFilter} onRatingChange={handleRatingChange} className="mt-4" />
         ) : (
           <PeopleTable
-            data={bannedUsers}
+            data={sortedBans}
             columns={bansColumns}
             emptyMessage="No banned users found."
             className="mt-4"
@@ -1262,13 +1351,16 @@ const Users: React.FC = () => {
 
   // Render Tipped By Me Tab
   const renderTippedByMeTab = () => {
-    const tippedByMeCounts = buildStandardCounts(tippedByMeUsers, { allLabel: 'All Tipped' });
+    // Sort data
+    const sortedTippedByMe = sortData(tippedByMeUsers, tippedByMeSortField, tippedByMeSortDirection);
+
+    const tippedByMeCounts = buildStandardCounts(sortedTippedByMe, { allLabel: 'All Tipped' });
     const tippedByMeColumns = getTippedByMeColumns(handleRatingChange);
 
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Tipped By Me ({formatNumber(tippedByMeUsers.length)})</h2>
+          <h2 className="text-2xl text-white font-semibold">Tipped By Me ({formatNumber(sortedTippedByMe.length)})</h2>
         </div>
 
         <FiltersPanel
@@ -1279,7 +1371,7 @@ const Users: React.FC = () => {
 
         <ActiveFiltersBar
           filters={[]}
-          resultCount={tippedByMeUsers.length}
+          resultCount={sortedTippedByMe.length}
           onRemoveFilter={() => {}}
           onClearAll={() => {}}
           className="mt-4"
@@ -1288,7 +1380,14 @@ const Users: React.FC = () => {
         <ResultsToolbar
           viewMode="list"
           onViewModeChange={() => {}}
-          totalItems={tippedByMeUsers.length}
+          sortOptions={DIRECTORY_SORT_OPTIONS}
+          sortValue={`${tippedByMeSortField}-${tippedByMeSortDirection}`}
+          onSortChange={(value) => {
+            const [field, dir] = value.split('-') as [keyof BasePerson, 'asc' | 'desc'];
+            setTippedByMeSortField(field);
+            setTippedByMeSortDirection(dir);
+          }}
+          totalItems={sortedTippedByMe.length}
           showViewToggle={false}
           className="mt-4"
         />
@@ -1297,7 +1396,7 @@ const Users: React.FC = () => {
           <div className="p-12 text-center text-white/50">Loading users you tipped...</div>
         ) : (
           <PeopleTable
-            data={tippedByMeUsers}
+            data={sortedTippedByMe}
             columns={tippedByMeColumns}
             emptyMessage="No tip records found."
             className="mt-4"
@@ -1309,13 +1408,16 @@ const Users: React.FC = () => {
 
   // Render Tipped Me Tab
   const renderTippedMeTab = () => {
-    const tippedMeCounts = buildStandardCounts(tippedMeUsers, { allLabel: 'All Tippers' });
+    // Sort data
+    const sortedTippedMe = sortData(tippedMeUsers, tippedMeSortField, tippedMeSortDirection);
+
+    const tippedMeCounts = buildStandardCounts(sortedTippedMe, { allLabel: 'All Tippers' });
     const tippedMeColumns = getTippedMeColumns(handleRatingChange);
 
     return (
       <>
         <div className="flex justify-between items-center my-6">
-          <h2 className="text-2xl text-white font-semibold">Tipped Me ({formatNumber(tippedMeUsers.length)})</h2>
+          <h2 className="text-2xl text-white font-semibold">Tipped Me ({formatNumber(sortedTippedMe.length)})</h2>
         </div>
 
         <FiltersPanel
@@ -1326,7 +1428,7 @@ const Users: React.FC = () => {
 
         <ActiveFiltersBar
           filters={[]}
-          resultCount={tippedMeUsers.length}
+          resultCount={sortedTippedMe.length}
           onRemoveFilter={() => {}}
           onClearAll={() => {}}
           className="mt-4"
@@ -1335,7 +1437,14 @@ const Users: React.FC = () => {
         <ResultsToolbar
           viewMode="list"
           onViewModeChange={() => {}}
-          totalItems={tippedMeUsers.length}
+          sortOptions={DIRECTORY_SORT_OPTIONS}
+          sortValue={`${tippedMeSortField}-${tippedMeSortDirection}`}
+          onSortChange={(value) => {
+            const [field, dir] = value.split('-') as [keyof BasePerson, 'asc' | 'desc'];
+            setTippedMeSortField(field);
+            setTippedMeSortDirection(dir);
+          }}
+          totalItems={sortedTippedMe.length}
           showViewToggle={false}
           className="mt-4"
         />
@@ -1344,7 +1453,7 @@ const Users: React.FC = () => {
           <div className="p-12 text-center text-white/50">Loading users who tipped you...</div>
         ) : (
           <PeopleTable
-            data={tippedMeUsers}
+            data={sortedTippedMe}
             columns={tippedMeColumns}
             emptyMessage="No tip records found."
             className="mt-4"

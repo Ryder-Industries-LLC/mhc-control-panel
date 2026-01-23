@@ -82,7 +82,7 @@ router.get('/list', async (req: Request, res: Response) => {
         p.notes as person_notes,
         p.session_observed_at,
         p.current_show,
-        p.banned_me,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
         p.following,
         p.follower,
         p.friend_tier

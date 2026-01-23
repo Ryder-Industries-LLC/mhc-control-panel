@@ -262,7 +262,7 @@ export class FollowerScraperService {
         pr.follower,
         pr.following_since,
         pr.follower_since,
-        pr.banned_me,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
@@ -290,7 +290,7 @@ export class FollowerScraperService {
         pr.follower,
         pr.following_since,
         pr.follower_since,
-        pr.banned_me,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
@@ -318,7 +318,7 @@ export class FollowerScraperService {
         pr.following,
         pr.follower,
         pr.following_since,
-        pr.banned_me,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
         EXTRACT(EPOCH FROM (pr.unfollower_at - pr.follower_since))/86400 as days_followed,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
@@ -372,8 +372,8 @@ export class FollowerScraperService {
         pr.friend_tier,
         pr.following,
         pr.follower,
-        pr.banned_me,
-        pr.watch_list,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'watch_list') as watch_list,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
@@ -406,8 +406,8 @@ export class FollowerScraperService {
         pr.last_service_date,
         pr.following,
         pr.follower,
-        pr.banned_me,
-        pr.watch_list,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'watch_list') as watch_list,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
@@ -431,14 +431,14 @@ export class FollowerScraperService {
     const result = await query(
       `SELECT
         p.*,
-        pr.banned_me,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
         pr.banned_at,
         pr.notes,
         pr.friend_tier,
         pr.active_sub,
         pr.following,
         pr.follower,
-        pr.watch_list,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'watch_list') as watch_list,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
@@ -447,7 +447,7 @@ export class FollowerScraperService {
         (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
-       WHERE pr.banned_me = TRUE
+       INNER JOIN attribute_lookup al_ban ON al_ban.person_id = p.id AND al_ban.attribute_key = 'banned_me' AND al_ban.value = true
        ORDER BY pr.banned_at DESC NULLS LAST, p.last_seen_at DESC`
     );
     return result.rows;
@@ -460,7 +460,7 @@ export class FollowerScraperService {
     const result = await query(
       `SELECT
         p.*,
-        pr.watch_list,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'watch_list') as watch_list,
         pr.notes,
         pr.friend_tier,
         pr.active_sub,
@@ -468,7 +468,7 @@ export class FollowerScraperService {
         pr.last_service_date,
         pr.following,
         pr.follower,
-        pr.banned_me,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
@@ -477,7 +477,7 @@ export class FollowerScraperService {
         (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
-       WHERE pr.watch_list = TRUE
+       INNER JOIN attribute_lookup al_wl ON al_wl.person_id = p.id AND al_wl.attribute_key = 'watch_list' AND al_wl.value = true
        ORDER BY p.last_seen_at DESC`
     );
     return result.rows;
@@ -500,10 +500,10 @@ export class FollowerScraperService {
         p.*,
         pr.following,
         pr.follower,
-        pr.banned_me,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
         pr.active_sub,
         pr.friend_tier,
-        pr.watch_list,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'watch_list') as watch_list,
         pr.notes,
         sr.service_level,
         sr.service_types,
@@ -536,10 +536,10 @@ export class FollowerScraperService {
         p.*,
         pr.following,
         pr.follower,
-        pr.banned_me,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
         pr.active_sub,
         pr.friend_tier,
-        pr.watch_list,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'watch_list') as watch_list,
         pr.notes,
         SUM((i.metadata->>'tokens')::int) as total_tokens_received,
         COUNT(*) as tip_count,
@@ -578,10 +578,10 @@ export class FollowerScraperService {
         model_person.first_seen_at,
         model_pr.following,
         model_pr.follower,
-        model_pr.banned_me,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = model_person.id AND al.attribute_key = 'banned_me') as banned_me,
         model_pr.active_sub,
         model_pr.friend_tier,
-        model_pr.watch_list,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = model_person.id AND al.attribute_key = 'watch_list') as watch_list,
         model_pr.notes,
         SUM((i.metadata->>'tokens')::int) as total_tokens_sent,
         COUNT(*) as tip_count,

@@ -1,6 +1,6 @@
 # MHC Control Panel - TODO
 
-**Last Updated**: 2026-01-21 (v2.2.2)
+**Last Updated**: 2026-01-23 (v2.3.0)
 
 This document tracks remaining tasks for the MHC Control Panel, organized by feature area and sorted by effort/risk (lowest first within each section).
 
@@ -217,6 +217,9 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] Fully deprecate double image columns - remove DB entries, column, UI refs, storage duplicates _(v1.35.0 - all images now in S3 with unified path structure)_
 - [x] Quarantine soft-deleted files in S3 _(v2.0.0 - 38,831 files moved to QUARANTINE)_
 - [x] S3 Verification - verify all media_locator records have S3 files _(v2.0.0 - completed)_
+- [x] Dismantle legacy attribute boolean columns from profiles table _(v2.3.0 - migration 094, all queries migrated to attribute_lookup)_
+- [x] Database size optimization - prune snapshots, vacuum tables _(v2.3.0 - 648 MB reclaimed)_
+- [ ] Table rename: `snapshots` → `statbate_api_polling`, `affiliate_api_snapshots` → `affiliate_api_polling`
 - [ ] Render Migration Planning - S3-only storage, Render.com for DB and containers
 
 ---

@@ -2,6 +2,47 @@
 
 All notable changes to MHC Control Panel.
 
+## [2.3.0] - 2026-01-23
+
+### Added
+
+- **Profile Trends Charts** - Follower and rank history visualizations on Profile page
+  - New `ProfileHistoryChart.tsx` reusable Recharts component
+  - "Trends" collapsible section with period selector (7d / 14d / 30d / 60d)
+  - Follower count chart with growth stats (total growth, avg/day, current count)
+  - Rank chart with global rank and gender rank (inverted Y-axis)
+  - API endpoints: `GET /api/profile/:username/follower-history`, `rank-history`
+
+- **Directory Page Column Sorting** - Clickable column headers across all tabs
+  - Generic sort function supporting date, string, and numeric fields
+  - Sort state per tab (Following, Followers, Unfollowed, Relationships, Bans, Tippers)
+
+### Changed
+
+- **Legacy Attribute System Dismantled** - All reads now use `attribute_lookup` table
+  - Dropped 8 boolean columns and 7 indexes from profiles table (migration 094)
+  - Migrated all SQL queries for `banned_me`, `watch_list` to attribute_lookup subqueries
+  - Removed `ProfileService.getAttributes()` and `ProfileService.updateAttributes()`
+  - Updated: visitors, system stats, relationships, follower scraper, profile scrape job
+
+- **Statbate Job Stats** - Renamed confusing stat fields
+  - `lastRunRefreshed` → `currentRunRefreshed`, `lastRunFailed` → `currentRunFailed`
+  - Removed unhelpful `totalRefreshed`/`totalFailed` cumulative counters
+
+- **Snapshot Service** - Maintains only 2 rows per person per source (oldest baseline + latest)
+  - `create()` now upserts latest row, preserving oldest as baseline
+  - `getDelta()` compares latest vs baseline ("since first observed")
+  - Removed unused `getLatestN()` and `deleteOlderThan()` methods
+
+### Database
+
+- Migration 094: Drop 8 legacy boolean columns and 7 indexes from profiles table
+- Migration 095: Prune snapshots to oldest+latest per person per source (397K → 46K rows, 595 MB saved)
+- Deleted 30K zero-delta rows from follower_count_history (22 MB saved)
+- Total database reduction: ~648 MB reclaimed
+
+---
+
 ## [2.2.2] - 2026-01-21
 
 ### Added

@@ -63,10 +63,8 @@ export class StatbateRefreshJob {
   private stats = {
     lastRun: null as Date | null,
     totalRuns: 0,
-    totalRefreshed: 0,
-    totalFailed: 0,
-    lastRunRefreshed: 0,
-    lastRunFailed: 0,
+    currentRunRefreshed: 0,
+    currentRunFailed: 0,
     currentUsername: null as string | null,
     progress: 0,
     total: 0,
@@ -157,10 +155,8 @@ export class StatbateRefreshJob {
     this.stats = {
       lastRun: null,
       totalRuns: 0,
-      totalRefreshed: 0,
-      totalFailed: 0,
-      lastRunRefreshed: 0,
-      lastRunFailed: 0,
+      currentRunRefreshed: 0,
+      currentRunFailed: 0,
       currentUsername: null,
       progress: 0,
       total: 0,
@@ -353,8 +349,8 @@ export class StatbateRefreshJob {
   private async getWatchlistPersons(): Promise<any[]> {
     const result = await query(
       `SELECT p.* FROM persons p
-       JOIN profiles pr ON pr.person_id = p.id
-       WHERE p.is_excluded = false AND pr.watch_list = true
+       JOIN attribute_lookup al ON al.person_id = p.id AND al.attribute_key = 'watch_list' AND al.value = true
+       WHERE p.is_excluded = false
        ORDER BY p.last_seen_at DESC`
     );
     return result.rows;
@@ -392,8 +388,8 @@ export class StatbateRefreshJob {
   private async getBannedPersons(): Promise<any[]> {
     const result = await query(
       `SELECT p.* FROM persons p
-       JOIN profiles pr ON pr.person_id = p.id
-       WHERE p.is_excluded = false AND pr.banned_me = true
+       JOIN attribute_lookup al ON al.person_id = p.id AND al.attribute_key = 'banned_me' AND al.value = true
+       WHERE p.is_excluded = false
        ORDER BY p.last_seen_at DESC`
     );
     return result.rows;
@@ -492,8 +488,8 @@ export class StatbateRefreshJob {
       logger.info('Starting Statbate refresh cycle');
 
       // Reset run stats
-      this.stats.lastRunRefreshed = 0;
-      this.stats.lastRunFailed = 0;
+      this.stats.currentRunRefreshed = 0;
+      this.stats.currentRunFailed = 0;
       this.stats.currentUsername = null;
 
       // Get prioritized persons
@@ -519,13 +515,11 @@ export class StatbateRefreshJob {
       // Update completion stats
       this.stats.totalRuns++;
       this.stats.lastRun = new Date();
-      this.stats.totalRefreshed += this.stats.lastRunRefreshed;
-      this.stats.totalFailed += this.stats.lastRunFailed;
       this.stats.currentUsername = null;
 
       logger.info('Statbate refresh cycle completed', {
-        refreshed: this.stats.lastRunRefreshed,
-        failed: this.stats.lastRunFailed,
+        refreshed: this.stats.currentRunRefreshed,
+        failed: this.stats.currentRunFailed,
       });
     } catch (error) {
       logger.error('Error in Statbate refresh cycle', { error });
@@ -543,13 +537,13 @@ export class StatbateRefreshJob {
         this.stats.currentUsername = person.username;
         const success = await this.refreshPerson(person);
         if (success) {
-          this.stats.lastRunRefreshed++;
+          this.stats.currentRunRefreshed++;
         } else {
-          this.stats.lastRunFailed++;
+          this.stats.currentRunFailed++;
         }
         await this.sleep(this.config.delayBetweenRequests);
       } catch (error) {
-        this.stats.lastRunFailed++;
+        this.stats.currentRunFailed++;
         logger.error('Error refreshing person', {
           personId: person.id,
           username: person.username,

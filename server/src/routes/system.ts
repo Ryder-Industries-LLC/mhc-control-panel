@@ -55,9 +55,9 @@ router.get('/stats', async (_req: Request, res: Response) => {
           COUNT(*) FILTER (WHERE following = true) as following_count,
           COUNT(*) FILTER (WHERE follower = true) as follower_count,
           COUNT(*) FILTER (WHERE active_sub = true) as subs_count,
-          COUNT(*) FILTER (WHERE banned_me = true) as banned_count,
+          (SELECT COUNT(*) FROM attribute_lookup WHERE attribute_key = 'banned_me' AND value = true) as banned_count,
           COUNT(*) FILTER (WHERE friend_tier IS NOT NULL) as friends_count,
-          COUNT(*) FILTER (WHERE watch_list = true) as watchlist_count,
+          (SELECT COUNT(*) FROM attribute_lookup WHERE attribute_key = 'watch_list' AND value = true) as watchlist_count,
           (SELECT COUNT(DISTINCT profile_id) FROM service_relationships WHERE service_role = 'dom' AND service_level = 'Actively Serving') as active_doms_count
         FROM profiles
       `),

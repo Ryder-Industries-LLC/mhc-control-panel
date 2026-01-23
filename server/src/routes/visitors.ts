@@ -47,8 +47,8 @@ router.get('/recent', async (req: Request, res: Response) => {
         prof.friend_tier,
         prof.following,
         prof.follower as is_follower,
-        prof.banned_me,
-        prof.watch_list,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'watch_list') as watch_list,
         (SELECT service_level FROM service_relationships WHERE profile_id = prof.id AND service_role = 'sub' LIMIT 1) as sub_level,
         (SELECT service_level FROM service_relationships WHERE profile_id = prof.id AND service_role = 'dom' LIMIT 1) as dom_level,
         (SELECT content FROM profile_notes pn
@@ -134,8 +134,8 @@ router.get('/top', async (req: Request, res: Response) => {
         prof.friend_tier,
         prof.following,
         prof.follower as is_follower,
-        prof.banned_me,
-        prof.watch_list,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
+        (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'watch_list') as watch_list,
         (SELECT service_level FROM service_relationships WHERE profile_id = prof.id AND service_role = 'sub' LIMIT 1) as sub_level,
         (SELECT service_level FROM service_relationships WHERE profile_id = prof.id AND service_role = 'dom' LIMIT 1) as dom_level,
         (SELECT content FROM profile_notes pn

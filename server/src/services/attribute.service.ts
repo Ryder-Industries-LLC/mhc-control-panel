@@ -437,49 +437,6 @@ export class AttributeService {
     }
   }
 
-  // ==================== Sync with Legacy Boolean Columns ====================
-
-  /**
-   * Sync attributes from legacy boolean columns in profiles table
-   * Called when updating legacy columns to keep attribute_lookup in sync
-   */
-  static async syncFromLegacyColumns(personId: string, legacyAttrs: Record<string, boolean>): Promise<void> {
-    try {
-      for (const [key, value] of Object.entries(legacyAttrs)) {
-        await this.setAttribute(personId, key, value);
-      }
-    } catch (error) {
-      logger.error('Error syncing from legacy columns', { error, personId });
-    }
-  }
-
-  /**
-   * Get attributes as legacy format (for backward compatibility during transition)
-   * Returns object matching the old profiles table boolean columns
-   */
-  static async getAsLegacyFormat(personId: string): Promise<{
-    watch_list: boolean;
-    banned_me: boolean;
-    banned_by_me: boolean;
-    room_banned: boolean;
-    smoke_on_cam: boolean;
-    leather_fetish: boolean;
-    had_interaction: boolean;
-    profile_smoke: boolean;
-  }> {
-    const attrs = await this.getAttributesAsObject(personId);
-    return {
-      watch_list: attrs.watch_list ?? false,
-      banned_me: attrs.banned_me ?? false,
-      banned_by_me: attrs.banned_by_me ?? false,
-      room_banned: attrs.room_banned ?? false,
-      smoke_on_cam: attrs.smoke_on_cam ?? false,
-      leather_fetish: attrs.leather_fetish ?? false,
-      had_interaction: attrs.had_interaction ?? false,
-      profile_smoke: attrs.profile_smoke ?? false,
-    };
-  }
-
   // ==================== Helper Methods ====================
 
   private static mapDefinitionRow(row: Record<string, unknown>): AttributeDefinition {

@@ -194,7 +194,8 @@ export class PersonService {
         (SELECT follower_since FROM profiles WHERE person_id = p.id LIMIT 1) as follower_since,
         (SELECT unfollowed_at FROM profiles WHERE person_id = p.id LIMIT 1) as unfollowed_at,
         (SELECT unfollower_at FROM profiles WHERE person_id = p.id LIMIT 1) as unfollower_at,
-        (SELECT banned_me FROM profiles WHERE person_id = p.id LIMIT 1) as banned_me,
+        (SELECT value FROM attribute_lookup WHERE person_id = p.id AND attribute_key = 'banned_me' LIMIT 1) as banned_me,
+        (SELECT value FROM attribute_lookup WHERE person_id = p.id AND attribute_key = 'watch_list' LIMIT 1) as watch_list,
         (SELECT has_videos FROM profiles WHERE person_id = p.id LIMIT 1) as has_videos,
         (SELECT rating FROM profiles WHERE person_id = p.id LIMIT 1) as rating
        FROM persons p

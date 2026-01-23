@@ -18,9 +18,12 @@ import { NotesService, type NoteCategory } from '../services/notes.service.js';
 import { MediaService } from '../services/media.service.js';
 import { CollaborationsService } from '../services/collaborations.service.js';
 import { AlternateAccountsService } from '../services/alternate-accounts.service.js';
+import { AttributeService } from '../services/attribute.service.js';
 import { SocialLinksService, type SocialPlatform } from '../services/social-links.service.js';
 import { SnapshotService } from '../services/snapshot.service.js';
 import { RoomVisitsService } from '../services/room-visits.service.js';
+import { FollowerHistoryService } from '../services/follower-history.service.js';
+import { CBHoursStatsService } from '../services/cbhours-stats.service.js';
 import { statbateClient } from '../api/statbate/client.js';
 import { normalizeModelInfo, normalizeMemberInfo } from '../api/statbate/normalizer.js';
 import { cbhoursClient, type CBHoursLiveModel } from '../api/cbhours/cbhours-client.js';
@@ -116,10 +119,24 @@ router.get('/:username', async (req: Request, res: Response) => {
     const snapshotResult = await query(snapshotSql, [person.id]);
     const latestSnapshot = snapshotResult.rows[0] || null;
 
+    // Get attribute values and overlay onto profile for backward compatibility
+    const attrValues = await AttributeService.getAttributesAsObject(person.id);
+    const profileWithAttrs = {
+      ...(profile || {}),
+      banned_me: attrValues.banned_me ?? false,
+      banned_by_me: attrValues.banned_by_me ?? false,
+      watch_list: attrValues.watch_list ?? false,
+      room_banned: attrValues.room_banned ?? false,
+      smoke_on_cam: attrValues.smoke_on_cam ?? false,
+      leather_fetish: attrValues.leather_fetish ?? false,
+      had_interaction: attrValues.had_interaction ?? false,
+      profile_smoke: attrValues.profile_smoke ?? false,
+    };
+
     // Compile response - merge all data sources
     const response = {
       person,
-      profile,
+      profile: profileWithAttrs,
       latestSession,
       sessionStats,
       sessions,
@@ -605,19 +622,7 @@ router.patch('/:username', async (req: Request, res: Response) => {
       values.push(notes);
     }
 
-    if (banned_me !== undefined) {
-      updates.push(`banned_me = $${paramIndex++}`);
-      values.push(banned_me);
-      // Auto-set banned_at when setting banned_me to true
-      if (banned_me === true) {
-        updates.push(`banned_at = COALESCE(banned_at, NOW())`);
-      }
-    }
-
-    if (banned_by_me !== undefined) {
-      updates.push(`banned_by_me = $${paramIndex++}`);
-      values.push(banned_by_me);
-    }
+    // banned_me, banned_by_me, watch_list are now handled via attribute system (below)
 
     if (active_sub !== undefined) {
       updates.push(`active_sub = $${paramIndex++}`);
@@ -648,11 +653,6 @@ router.patch('/:username', async (req: Request, res: Response) => {
       values.push(stream_summary);
     }
 
-    if (watch_list !== undefined) {
-      updates.push(`watch_list = $${paramIndex++}`);
-      values.push(watch_list);
-    }
-
     if (rating !== undefined) {
       const ratingValue = parseInt(rating, 10);
       if (isNaN(ratingValue) || ratingValue < 0 || ratingValue > 5) {
@@ -662,11 +662,15 @@ router.patch('/:username', async (req: Request, res: Response) => {
       values.push(ratingValue);
     }
 
-    if (updates.length === 0) {
+    // Check if we have attribute changes to apply
+    const attrChanges: Record<string, boolean> = {};
+    if (banned_me !== undefined) attrChanges.banned_me = banned_me;
+    if (banned_by_me !== undefined) attrChanges.banned_by_me = banned_by_me;
+    if (watch_list !== undefined) attrChanges.watch_list = watch_list;
+
+    if (updates.length === 0 && Object.keys(attrChanges).length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
-
-    updates.push('updated_at = NOW()');
 
     // First ensure profile exists using UPSERT
     const existingProfile = await query('SELECT id FROM profiles WHERE person_id = $1', [
@@ -675,62 +679,66 @@ router.patch('/:username', async (req: Request, res: Response) => {
     if (existingProfile.rows.length === 0) {
       // Create minimal profile if it doesn't exist
       await query(
-        `INSERT INTO profiles (person_id, notes, banned_me, banned_by_me, active_sub, first_service_date, last_service_date, friend_tier, stream_summary, watch_list, rating)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        `INSERT INTO profiles (person_id, notes, active_sub, first_service_date, last_service_date, friend_tier, stream_summary, rating)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           person.id,
           notes !== undefined ? notes : null,
-          banned_me !== undefined ? banned_me : false,
-          banned_by_me !== undefined ? banned_by_me : false,
           active_sub !== undefined ? active_sub : false,
           first_service_date !== undefined ? first_service_date : null,
           last_service_date !== undefined ? last_service_date : null,
           friend_tier !== undefined ? friend_tier : null,
           stream_summary !== undefined ? stream_summary : null,
-          watch_list !== undefined ? watch_list : false,
           rating !== undefined ? Math.min(5, Math.max(0, parseInt(rating, 10) || 0)) : 0,
         ]
       );
 
-      // Return the newly created profile
+      // Apply attribute changes
+      if (Object.keys(attrChanges).length > 0) {
+        await AttributeService.setAttributes(person.id, attrChanges);
+      }
+
       const newProfile = await query('SELECT * FROM profiles WHERE person_id = $1', [person.id]);
       const profile = newProfile.rows[0];
 
       logger.info(`Created new profile for ${username}`, {
         notes: !!notes,
-        banned_me,
-        banned_by_me,
         active_sub,
-        first_service_date,
-        last_service_date,
         friend_tier,
-        stream_summary: !!stream_summary,
+        attrChanges,
       });
 
       return res.json({ success: true, profile });
     }
 
-    // Profile exists, run UPDATE
-    values.push(person.id);
-    const sql = `
-      UPDATE profiles
-      SET ${updates.join(', ')}
-      WHERE person_id = $${paramIndex}
-      RETURNING *
-    `;
+    // Profile exists, run UPDATE (only if there are profile-level changes)
+    let profile;
+    if (updates.length > 0) {
+      updates.push('updated_at = NOW()');
+      values.push(person.id);
+      const sql = `
+        UPDATE profiles
+        SET ${updates.join(', ')}
+        WHERE person_id = $${paramIndex}
+        RETURNING *
+      `;
+      const result = await query(sql, values);
+      profile = result.rows[0];
+    } else {
+      const result = await query('SELECT * FROM profiles WHERE person_id = $1', [person.id]);
+      profile = result.rows[0];
+    }
 
-    const result = await query(sql, values);
-    const profile = result.rows[0];
+    // Apply attribute changes via attribute system
+    if (Object.keys(attrChanges).length > 0) {
+      await AttributeService.setAttributes(person.id, attrChanges);
+    }
 
     logger.info(`Updated profile for ${username}`, {
       notes: !!notes,
-      banned_me,
-      banned_by_me,
       active_sub,
-      first_service_date,
-      last_service_date,
       friend_tier,
-      stream_summary: !!stream_summary,
+      attrChanges,
     });
 
     res.json({ success: true, profile });
@@ -1539,7 +1547,7 @@ router.patch('/:username/names', async (req: Request, res: Response) => {
 
 /**
  * GET /api/profile/:username/attributes
- * Get profile attributes (smoke_on_cam, leather_fetish, profile_smoke, had_interaction, room_banned)
+ * Get profile attributes from attribute system
  */
 router.get('/:username/attributes', async (req: Request, res: Response) => {
   try {
@@ -1549,27 +1557,21 @@ router.get('/:username/attributes', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Username is required' });
     }
 
-    // Get person
     const person = await PersonService.findByUsername(username);
     if (!person) {
       return res.status(404).json({ error: 'Person not found' });
     }
 
-    const attributes = await ProfileService.getAttributes(person.id);
-    if (!attributes) {
-      // Return defaults if no profile exists
-      return res.json({
-        attributes: {
-          smoke_on_cam: false,
-          leather_fetish: false,
-          profile_smoke: false,
-          had_interaction: false,
-          room_banned: false, // MHC-1104
-        },
-      });
-    }
-
-    res.json({ attributes });
+    const attrValues = await AttributeService.getAttributesAsObject(person.id);
+    res.json({
+      attributes: {
+        smoke_on_cam: attrValues.smoke_on_cam ?? false,
+        leather_fetish: attrValues.leather_fetish ?? false,
+        profile_smoke: attrValues.profile_smoke ?? false,
+        had_interaction: attrValues.had_interaction ?? false,
+        room_banned: attrValues.room_banned ?? false,
+      },
+    });
   } catch (error) {
     logger.error('Error getting profile attributes', { error, username: req.params.username });
     res.status(500).json({ error: 'Internal server error' });
@@ -1578,8 +1580,7 @@ router.get('/:username/attributes', async (req: Request, res: Response) => {
 
 /**
  * PATCH /api/profile/:username/attributes
- * Update profile attributes (smoke_on_cam, leather_fetish, had_interaction, room_banned)
- * Note: profile_smoke is auto-populated and cannot be manually updated
+ * Update profile attributes via attribute system
  */
 router.patch('/:username/attributes', async (req: Request, res: Response) => {
   try {
@@ -1600,29 +1601,31 @@ router.patch('/:username/attributes', async (req: Request, res: Response) => {
     if (had_interaction !== undefined && typeof had_interaction !== 'boolean') {
       return res.status(400).json({ error: 'had_interaction must be a boolean' });
     }
-    // MHC-1104: room_banned validation
     if (room_banned !== undefined && typeof room_banned !== 'boolean') {
       return res.status(400).json({ error: 'room_banned must be a boolean' });
     }
 
-    // Get or create person
     const person = await PersonService.findOrCreate({ username, role: 'MODEL' });
     if (!person) {
       return res.status(500).json({ error: 'Failed to get person record' });
     }
 
-    // Ensure profile exists
-    let profileResult = await query('SELECT id FROM profiles WHERE person_id = $1', [person.id]);
-    if (profileResult.rows.length === 0) {
-      await query('INSERT INTO profiles (person_id) VALUES ($1)', [person.id]);
-    }
+    const attrs: Record<string, boolean> = {};
+    if (smoke_on_cam !== undefined) attrs.smoke_on_cam = smoke_on_cam;
+    if (leather_fetish !== undefined) attrs.leather_fetish = leather_fetish;
+    if (had_interaction !== undefined) attrs.had_interaction = had_interaction;
+    if (room_banned !== undefined) attrs.room_banned = room_banned;
 
-    const attributes = await ProfileService.updateAttributes(person.id, {
-      smoke_on_cam,
-      leather_fetish,
-      had_interaction,
-      room_banned, // MHC-1104
-    });
+    await AttributeService.setAttributes(person.id, attrs);
+
+    const attrValues = await AttributeService.getAttributesAsObject(person.id);
+    const attributes = {
+      smoke_on_cam: attrValues.smoke_on_cam ?? false,
+      leather_fetish: attrValues.leather_fetish ?? false,
+      profile_smoke: attrValues.profile_smoke ?? false,
+      had_interaction: attrValues.had_interaction ?? false,
+      room_banned: attrValues.room_banned ?? false,
+    };
 
     logger.info('Profile attributes updated', { username, attributes });
     res.json({ attributes });
@@ -3259,6 +3262,57 @@ router.delete('/:username/seen-with/:entryId', async (req: Request, res: Respons
     res.json({ success: true, removedUsername: result.rows[0].seen_with_username });
   } catch (error) {
     logger.error('Error removing seen-with entry', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ==================== History Charts ====================
+
+/**
+ * GET /api/profile/:username/follower-history
+ * Get follower count time series and growth stats for charting
+ */
+router.get('/:username/follower-history', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const days = parseInt(req.query.days as string) || 30;
+
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const [timeSeries, stats] = await Promise.all([
+      FollowerHistoryService.getTimeSeries(person.id, days),
+      FollowerHistoryService.getGrowthStats(person.id, days),
+    ]);
+
+    res.json({ timeSeries, stats });
+  } catch (error) {
+    logger.error('Error getting follower history', { error, username: req.params.username });
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/profile/:username/rank-history
+ * Get rank history from CBHours data for charting
+ */
+router.get('/:username/rank-history', async (req: Request, res: Response) => {
+  try {
+    const { username } = req.params;
+    const days = parseInt(req.query.days as string) || 7;
+
+    const person = await PersonService.findByUsername(username);
+    if (!person) {
+      return res.status(404).json({ error: 'Person not found' });
+    }
+
+    const history = await CBHoursStatsService.getRankHistory(person.id, days);
+
+    res.json({ history });
+  } catch (error) {
+    logger.error('Error getting rank history', { error, username: req.params.username });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

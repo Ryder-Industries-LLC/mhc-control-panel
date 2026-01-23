@@ -1,81 +1,76 @@
-# Session Summary - v2.2.2
+# Session Summary - v2.3.0
 
-**Date**: 2026-01-21
+**Date**: 2026-01-23
 **Mode**: BUILD → RELEASE
 
 ## What Was Accomplished
 
-### v2.2.2 - Alternate Accounts & TIPS Parsing
+### v2.3.0 - Database Optimization, Legacy Cleanup & Profile Trends
 
-#### 1. Alternate Accounts Feature (Complete)
+#### 1. Legacy Attribute System Dismantling (Complete)
 
-Added ability to link two separate profile records as being the same person with different usernames.
-
-**Implementation:**
-- New `alternate_accounts` table with bidirectional symmetric linking (same pattern as collaborations)
-- `AlternateAccountsService` with full CRUD operations
-- API endpoints: `GET/POST/DELETE /api/profile/:username/alternate-accounts`
-- Frontend UI with purple pills below Collaborators section
-- View and helper functions for bidirectional queries
-- Removed unused `person_aliases` table (0 records, superseded by this feature)
-
-**Files:**
-- `server/src/db/migrations/093_add_alternate_accounts.sql`
-- `server/src/services/alternate-accounts.service.ts` (new)
-- `server/src/routes/profile.ts` - Added 3 API endpoints
-- `server/src/services/person.service.ts` - Removed alias methods
-- `server/src/routes/person.ts` - Removed alias from response
-- `client/src/pages/Profile.tsx` - Added UI section
-
-#### 2. TIPS Chat Type Parsing (Complete)
-
-Added support for bookmarklet `ChatType: [TIPS]` format.
+Removed all reads/writes from 8 legacy boolean columns on `profiles` table, replaced with `attribute_lookup` table queries.
 
 **Implementation:**
-- Updated regex to detect TIPS chat type
-- Extracts tip data: username, token amount, optional message
-- Generates formatted HTML table summary
-- Auto-toggles "Create Tips Note" when tips detected
-- Updated TypeScript interfaces for tips type
+- Dropped 8 boolean columns and 7 indexes from profiles table (migration 094)
+- Removed `ProfileService.getAttributes()` and `ProfileService.updateAttributes()`
+- Updated `ProfileService.updateProfileSmoke()` to use `AttributeService.setAttribute()`
+- Migrated all SQL queries reading `banned_me`, `watch_list` from profiles to attribute_lookup subqueries
+- Updated: visitors.ts, system.ts, relationship.ts, follower-scraper.service.ts, profile-scrape.job.ts, room-presence.service.ts, stats-collection.service.ts
 
-**Files:**
-- `server/src/services/notes.service.ts` - TIPS parsing logic
-- `client/src/pages/Profile.tsx` - Tips type handling
+#### 2. Statbate Job Stats Renaming (Complete)
 
-#### 3. Tip Menu Parsing Improvements (Complete)
+Fixed confusing stats naming in Statbate refresh job.
 
-Enhanced tip menu parsing with better filtering.
+- Renamed `lastRunRefreshed` → `currentRunRefreshed`
+- Renamed `lastRunFailed` → `currentRunFailed`
+- Removed `totalRefreshed`/`totalFailed` (unhelpful cumulative counters)
+- Updated Admin.tsx and Jobs.tsx UI
 
-**Changes:**
-- Filter out text emojis (words starting with `:` like `:berenjena333`)
-- Filter out Lovense toy-related lines (vibes, lush, toy levels, duration patterns)
-- Better pattern matching for CB text emoji format
+#### 3. Database Size Optimization (Complete)
 
-**Files:**
-- `server/src/services/notes.service.ts` - Filtering logic
+Reduced database from 1.6 GB to ~976 MB:
 
-## Files Modified
+- **Snapshots pruning** (migration 095): 397K → 46K rows, 668 → 73 MB
+  - Keep only oldest (baseline) + latest per person per source
+  - Updated SnapshotService.create() to maintain 2-row pattern
+  - Updated getDelta() to compare latest vs baseline
+  - Removed unused getLatestN() and deleteOlderThan()
+- **Profiles vacuum**: 47 → 16 MB (after column drops)
+- **Follower history cleanup**: Deleted 30K zero-delta rows, 87 → 65 MB
+  - FollowerHistoryService already prevents future zero-delta inserts
 
-| File | Changes |
-|------|---------|
-| `server/src/db/migrations/093_add_alternate_accounts.sql` | New migration |
-| `server/src/services/alternate-accounts.service.ts` | New service |
-| `server/src/services/notes.service.ts` | TIPS parsing, text emoji filtering, Lovense filtering |
-| `server/src/services/person.service.ts` | Removed alias methods |
-| `server/src/routes/profile.ts` | Added alternate-accounts endpoints |
-| `server/src/routes/person.ts` | Removed aliases from response |
-| `client/src/pages/Profile.tsx` | Alternate accounts UI, tips type handling |
-| `docs/CHANGELOG.md` | Added v2.2.2 release notes |
-| `docs/TODO.md` | Updated version |
+#### 4. Profile Trends Charts (Complete)
+
+Added follower count and rank history charts to Profile page.
+
+**Backend:**
+- New endpoints: `GET /api/profile/:username/follower-history?days=30`
+- New endpoints: `GET /api/profile/:username/rank-history?days=7`
+
+**Frontend:**
+- New `ProfileHistoryChart.tsx` reusable Recharts component
+- "Trends" collapsible section in Profile snapshot tab
+- Period selector (7d / 14d / 30d / 60d)
+- Follower chart (emerald) with growth stats
+- Rank chart (purple = global rank, amber dashed = gender rank) with inverted Y-axis
+
+#### 5. Directory Page Sorting (Complete)
+
+Added column sorting to all tabs on Users/Directory page.
+
+- Generic `sortData()` function for date, string, and numeric fields
+- Sort state per tab (Following, Followers, Unfollowed, Relationships, Bans, Tippers)
+- Clickable column headers with asc/desc toggle
 
 ## Current State
 
-- **Docker containers**: Running
-- **Git**: On main branch, releasing v2.2.2
-- **API**: All endpoints working correctly
+- **Docker containers**: Running (frontend + web rebuilt)
+- **Git**: On main branch, releasing v2.3.0
+- **Database**: Optimized, migrations 094-095 applied
 
 ## Next Steps
 
-1. Notes tab restructure: separate tabs for Notes, PM, DM, Public Chat, Tips, Tip Menu
-2. Fix PM/DM parsing timestamp format detection
+1. Table rename backlog: `snapshots` → `statbate_api_polling`, `affiliate_api_snapshots` → `affiliate_api_polling`
+2. Notes tab restructure
 3. Profile page overhaul

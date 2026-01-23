@@ -386,7 +386,8 @@ export class ProfileScrapeJob {
       SELECT p.*
       FROM persons p
       INNER JOIN profiles prof ON prof.person_id = p.id
-      WHERE prof.watch_list = true
+      INNER JOIN attribute_lookup al_wl ON al_wl.person_id = p.id AND al_wl.attribute_key = 'watch_list' AND al_wl.value = true
+      WHERE true
         AND (
           prof.browser_scraped_at IS NULL
           OR prof.browser_scraped_at < NOW() - INTERVAL '${this.config.refreshDays} days'

@@ -170,10 +170,8 @@ interface LiveScreenshotJobStatus {
 interface StatbateStats {
   lastRun: string | null;
   totalRuns: number;
-  totalRefreshed: number;
-  totalFailed: number;
-  lastRunRefreshed: number;
-  lastRunFailed: number;
+  currentRunRefreshed: number;
+  currentRunFailed: number;
   currentUsername: string | null;
   progress: number;
   total: number;
@@ -1130,25 +1128,19 @@ const Jobs: React.FC = () => {
               <h3 className="text-sm font-semibold text-white/70 uppercase mb-3">Statistics</h3>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <StatCard value={status.stats.totalRuns} label="Total Cycles" />
-                <StatCard value={status.stats.totalRefreshed} label="Total Refreshed" />
-                <StatCard value={status.stats.totalFailed} label="Total Failed" />
+                <StatCard value={status.stats.currentRunRefreshed} label="Refreshed" />
+                <StatCard value={status.stats.currentRunFailed} label="Failed" />
                 <StatCard value={formatDate(status.stats.lastRun)} label="Last Run" />
               </div>
-              {status.stats.lastRun && (
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  <InfoRow label="Last Refreshed" value={status.stats.lastRunRefreshed} />
-                  <InfoRow label="Last Failed" value={status.stats.lastRunFailed} />
+              {(status.stats.currentRunRefreshed + status.stats.currentRunFailed > 0) && (
+                <div className="mt-3 grid grid-cols-1 gap-2">
                   <InfoRow
                     label="Success Rate"
-                    value={`${
-                      status.stats.lastRunRefreshed + status.stats.lastRunFailed > 0
-                        ? Math.round(
-                            (status.stats.lastRunRefreshed /
-                              (status.stats.lastRunRefreshed + status.stats.lastRunFailed)) *
-                              100
-                          )
-                        : 0
-                    }%`}
+                    value={`${Math.round(
+                      (status.stats.currentRunRefreshed /
+                        (status.stats.currentRunRefreshed + status.stats.currentRunFailed)) *
+                        100
+                    )}%`}
                   />
                 </div>
               )}

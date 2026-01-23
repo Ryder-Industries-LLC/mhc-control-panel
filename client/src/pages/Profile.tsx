@@ -23,6 +23,7 @@ import { StarRating } from '../components/StarRating';
 import { Modal } from '../components/Modal';
 import { ProfileAttributes } from '../components/ProfileAttributes';
 import { FavoriteIcon } from '../components/FavoriteIcon';
+import ProfileHistoryChart from '../components/ProfileHistoryChart';
 // Profile.css removed - fully migrated to Tailwind CSS
 
 interface ProfilePageProps {}
@@ -267,6 +268,11 @@ const Profile: React.FC<ProfilePageProps> = () => {
   // Top mover badge state
   const [topMoverStatus, setTopMoverStatus] = useState<'gainer' | 'loser' | null>(null);
 
+  // Trends chart state
+  const [followerHistory, setFollowerHistory] = useState<{ timeSeries: Array<{ date: string; count: number; delta: number | null }>; stats: { totalGrowth: number; averageDaily: number; firstCount: number | null; lastCount: number | null } } | null>(null);
+  const [rankHistory, setRankHistory] = useState<Array<{ timestamp: string; rank: number; grank: number }>>([]);
+  const [trendsDays, setTrendsDays] = useState(30);
+
   // Image preview modal state with delay to prevent stuck previews
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const previewTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -440,6 +446,35 @@ const Profile: React.FC<ProfilePageProps> = () => {
       setRoomBanned(profileData.profile.room_banned || false);
     }
   }, [profileData?.profile]);
+
+  // Fetch trends chart data (follower history + rank history)
+  useEffect(() => {
+    if (!profileData?.person?.username) return;
+    const fetchTrends = async () => {
+      try {
+        const [followerRes, rankRes] = await Promise.all([
+          fetch(`/api/profile/${profileData.person.username}/follower-history?days=${trendsDays}`),
+          fetch(`/api/profile/${profileData.person.username}/rank-history?days=${trendsDays}`),
+        ]);
+        if (followerRes.ok) {
+          const data = await followerRes.json();
+          setFollowerHistory(data);
+        } else {
+          setFollowerHistory(null);
+        }
+        if (rankRes.ok) {
+          const data = await rankRes.json();
+          setRankHistory(data.history || []);
+        } else {
+          setRankHistory([]);
+        }
+      } catch {
+        setFollowerHistory(null);
+        setRankHistory([]);
+      }
+    };
+    fetchTrends();
+  }, [profileData?.person?.username, trendsDays]);
 
   // Fetch note line limit setting
   useEffect(() => {
@@ -3170,6 +3205,102 @@ const Profile: React.FC<ProfilePageProps> = () => {
                           </div>
                         </CollapsibleSection>
                       )}
+
+                    {/* Trends Section */}
+                    {(followerHistory?.timeSeries?.length || rankHistory.length > 0) && (
+                      <CollapsibleSection
+                        title="Trends"
+                        defaultCollapsed={false}
+                        className="bg-mhc-surface-light"
+                      >
+                        {/* Period selector */}
+                        <div className="flex gap-1 mb-4">
+                          {[7, 14, 30, 60].map((d) => (
+                            <button
+                              key={d}
+                              onClick={() => setTrendsDays(d)}
+                              className={`px-3 py-1 text-xs rounded ${
+                                trendsDays === d
+                                  ? 'bg-mhc-primary text-white'
+                                  : 'bg-white/10 text-mhc-text-muted hover:bg-white/20'
+                              }`}
+                            >
+                              {d}d
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Follower History Chart */}
+                        {followerHistory && followerHistory.timeSeries.length > 0 && (
+                          <div className="mb-4">
+                            <ProfileHistoryChart
+                              title="Followers"
+                              data={followerHistory.timeSeries.map((p) => ({
+                                date: p.date,
+                                value: p.count,
+                                delta: p.delta,
+                              }))}
+                              color="#10b981"
+                            />
+                            {followerHistory.stats && (
+                              <div className="flex gap-4 mt-2 text-xs text-mhc-text-muted">
+                                {followerHistory.stats.lastCount !== null && (
+                                  <span>
+                                    Current:{' '}
+                                    <span className="text-mhc-text font-medium">
+                                      {followerHistory.stats.lastCount.toLocaleString()}
+                                    </span>
+                                  </span>
+                                )}
+                                <span>
+                                  Growth:{' '}
+                                  <span className={`font-medium ${followerHistory.stats.totalGrowth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {followerHistory.stats.totalGrowth >= 0 ? '+' : ''}
+                                    {followerHistory.stats.totalGrowth.toLocaleString()}
+                                  </span>
+                                </span>
+                                <span>
+                                  Avg/day:{' '}
+                                  <span className="text-mhc-text font-medium">
+                                    {followerHistory.stats.averageDaily >= 0 ? '+' : ''}
+                                    {followerHistory.stats.averageDaily.toFixed(1)}
+                                  </span>
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Rank History Chart */}
+                        {rankHistory.length > 0 && (
+                          <div>
+                            <ProfileHistoryChart
+                              title="Global Rank"
+                              data={rankHistory.map((p) => ({
+                                date: typeof p.timestamp === 'string' ? p.timestamp : new Date(p.timestamp).toISOString(),
+                                value: p.rank,
+                                value2: p.grank,
+                              }))}
+                              color="#8b5cf6"
+                              color2="#f59e0b"
+                              label2="Gender Rank"
+                              invertYAxis
+                              valueFormatter={(v) => `#${Math.round(v).toLocaleString()}`}
+                            />
+                            <div className="flex gap-3 mt-2 text-xs text-mhc-text-muted">
+                              <div className="flex items-center gap-1">
+                                <span className="w-3 h-0.5 bg-purple-500 inline-block"></span>
+                                <span>Global Rank</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="w-3 h-0.5 bg-amber-500 inline-block" style={{ backgroundImage: 'repeating-linear-gradient(90deg, #f59e0b 0, #f59e0b 4px, transparent 4px, transparent 6px)' }}></span>
+                                <span>Gender Rank</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </CollapsibleSection>
+                    )}
 
                     {/* Tags Section */}
                     {((profileData.latestSession?.tags &&

@@ -1,5 +1,6 @@
 import { query } from '../db/client.js';
 import { logger } from '../config/logger.js';
+import { AttributeService } from './attribute.service.js';
 import { FollowHistoryService } from './follow-history.service.js';
 import type { ChaturbateProfile } from './profile-scraper.service.js';
 import type { ScrapedProfileData } from './chaturbate-scraper.service.js';
@@ -38,11 +39,6 @@ export interface Profile {
   body_decorations: string | null;
   data_source: string;
   last_seen_online: Date | null;
-  // Profile attribute flags
-  smoke_on_cam: boolean;
-  leather_fetish: boolean;
-  profile_smoke: boolean;
-  had_interaction: boolean;
 }
 
 export class ProfileService {
@@ -264,11 +260,6 @@ export class ProfileService {
       body_decorations: row.body_decorations,
       data_source: row.data_source,
       last_seen_online: row.last_seen_online,
-      // Profile attribute flags
-      smoke_on_cam: row.smoke_on_cam || false,
-      leather_fetish: row.leather_fetish || false,
-      profile_smoke: row.profile_smoke || false,
-      had_interaction: row.had_interaction || false,
     };
   }
 
@@ -597,125 +588,6 @@ export class ProfileService {
     }
   }
 
-  /**
-   * Get profile attributes (smoke_on_cam, leather_fetish, profile_smoke, had_interaction, room_banned)
-   */
-  static async getAttributes(personId: string): Promise<{
-    smoke_on_cam: boolean;
-    leather_fetish: boolean;
-    profile_smoke: boolean;
-    had_interaction: boolean;
-    room_banned: boolean; // MHC-1104
-  } | null> {
-    const sql = `
-      SELECT smoke_on_cam, leather_fetish, profile_smoke, had_interaction, room_banned
-      FROM profiles
-      WHERE person_id = $1
-    `;
-
-    try {
-      const result = await query(sql, [personId]);
-      if (result.rows.length === 0) {
-        return null;
-      }
-      const row = result.rows[0];
-      return {
-        smoke_on_cam: row.smoke_on_cam || false,
-        leather_fetish: row.leather_fetish || false,
-        profile_smoke: row.profile_smoke || false,
-        had_interaction: row.had_interaction || false,
-        room_banned: row.room_banned || false, // MHC-1104
-      };
-    } catch (error) {
-      logger.error('Error getting profile attributes', { error, personId });
-      throw error;
-    }
-  }
-
-  /**
-   * Update profile attributes
-   * Only smoke_on_cam, leather_fetish, had_interaction, and room_banned can be manually updated
-   * profile_smoke is auto-populated from smoke_drink
-   */
-  static async updateAttributes(
-    personId: string,
-    attributes: {
-      smoke_on_cam?: boolean;
-      leather_fetish?: boolean;
-      had_interaction?: boolean;
-      room_banned?: boolean; // MHC-1104
-    }
-  ): Promise<{
-    smoke_on_cam: boolean;
-    leather_fetish: boolean;
-    profile_smoke: boolean;
-    had_interaction: boolean;
-    room_banned: boolean; // MHC-1104
-  }> {
-    // Build dynamic update
-    const setClauses: string[] = [];
-    const values: any[] = [];
-    let paramIndex = 1;
-
-    if ('smoke_on_cam' in attributes) {
-      setClauses.push(`smoke_on_cam = $${paramIndex++}`);
-      values.push(attributes.smoke_on_cam || false);
-    }
-
-    if ('leather_fetish' in attributes) {
-      setClauses.push(`leather_fetish = $${paramIndex++}`);
-      values.push(attributes.leather_fetish || false);
-    }
-
-    if ('had_interaction' in attributes) {
-      setClauses.push(`had_interaction = $${paramIndex++}`);
-      values.push(attributes.had_interaction || false);
-    }
-
-    // MHC-1104: room_banned attribute
-    if ('room_banned' in attributes) {
-      setClauses.push(`room_banned = $${paramIndex++}`);
-      values.push(attributes.room_banned || false);
-    }
-
-    if (setClauses.length === 0) {
-      // Nothing to update, just return current values
-      const current = await this.getAttributes(personId);
-      if (!current) {
-        throw new Error('Profile not found');
-      }
-      return current;
-    }
-
-    setClauses.push(`updated_at = NOW()`);
-    values.push(personId);
-
-    const sql = `
-      UPDATE profiles
-      SET ${setClauses.join(', ')}
-      WHERE person_id = $${paramIndex}
-      RETURNING smoke_on_cam, leather_fetish, profile_smoke, had_interaction, room_banned
-    `;
-
-    try {
-      const result = await query(sql, values);
-      if (result.rows.length === 0) {
-        throw new Error('Profile not found');
-      }
-      const row = result.rows[0];
-      logger.info('Profile attributes updated', { personId });
-      return {
-        smoke_on_cam: row.smoke_on_cam || false,
-        leather_fetish: row.leather_fetish || false,
-        profile_smoke: row.profile_smoke || false,
-        had_interaction: row.had_interaction || false,
-        room_banned: row.room_banned || false, // MHC-1104
-      };
-    } catch (error) {
-      logger.error('Error updating profile attributes', { error, personId });
-      throw error;
-    }
-  }
 
   /**
    * Parse smoke_drink field to determine if person smokes
@@ -729,20 +601,17 @@ export class ProfileService {
   }
 
   /**
-   * Auto-populate profile_smoke based on smoke_drink field
+   * Auto-populate profile_smoke attribute based on smoke_drink field
    * Called during profile scraping/update
    */
   static async updateProfileSmoke(personId: string, smokeDrink: string | null): Promise<void> {
     const profileSmoke = this.parseProfileSmoke(smokeDrink);
 
     try {
-      await query(
-        `UPDATE profiles SET profile_smoke = $1, updated_at = NOW() WHERE person_id = $2`,
-        [profileSmoke, personId]
-      );
-      logger.debug('Profile smoke status updated', { personId, profileSmoke, smokeDrink });
+      await AttributeService.setAttribute(personId, 'profile_smoke', profileSmoke);
+      logger.debug('Profile smoke attribute updated', { personId, profileSmoke, smokeDrink });
     } catch (error) {
-      logger.error('Error updating profile smoke', { error, personId });
+      logger.error('Error updating profile smoke attribute', { error, personId });
       // Don't throw - this is non-critical
     }
   }

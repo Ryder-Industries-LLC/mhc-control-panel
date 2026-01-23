@@ -16,7 +16,11 @@ export interface SnapshotDelta {
 
 export class SnapshotService {
   /**
-   * Create a new snapshot
+   * Create or update a snapshot.
+   * Maintains only two rows per person+source: the oldest (baseline) and the latest (current).
+   * - If no rows exist: insert as the first (baseline) row.
+   * - If one row exists (the baseline): insert a second row as the latest.
+   * - If two rows exist: update the latest row (preserve the oldest baseline).
    */
   static async create(params: CreateSnapshotParams): Promise<Snapshot> {
     const {
@@ -27,14 +31,35 @@ export class SnapshotService {
       normalizedMetrics = null,
     } = params;
 
-    const result = await query<Snapshot>(
-      `INSERT INTO snapshots (person_id, source, captured_at, raw_payload, normalized_metrics)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (person_id, source, captured_at) DO UPDATE
-       SET raw_payload = EXCLUDED.raw_payload, normalized_metrics = EXCLUDED.normalized_metrics
-       RETURNING *`,
-      [personId, source, capturedAt, JSON.stringify(rawPayload), JSON.stringify(normalizedMetrics)]
+    // Get existing snapshots for this person+source (ordered oldest first)
+    const existing = await query<Snapshot>(
+      `SELECT id, captured_at FROM snapshots
+       WHERE person_id = $1 AND source = $2
+       ORDER BY captured_at ASC`,
+      [personId, source]
     );
+
+    let result;
+
+    if (existing.rows.length < 2) {
+      // 0 or 1 rows exist: insert a new row
+      result = await query<Snapshot>(
+        `INSERT INTO snapshots (person_id, source, captured_at, raw_payload, normalized_metrics)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *`,
+        [personId, source, capturedAt, JSON.stringify(rawPayload), JSON.stringify(normalizedMetrics)]
+      );
+    } else {
+      // 2+ rows exist: update the latest (last in order) to keep oldest as baseline
+      const latestId = existing.rows[existing.rows.length - 1].id;
+      result = await query<Snapshot>(
+        `UPDATE snapshots
+         SET captured_at = $2, raw_payload = $3, normalized_metrics = $4
+         WHERE id = $1
+         RETURNING *`,
+        [latestId, capturedAt, JSON.stringify(rawPayload), JSON.stringify(normalizedMetrics)]
+      );
+    }
 
     logger.info(`Created snapshot for person ${personId} from source ${source}`);
     return result.rows[0];
@@ -55,24 +80,6 @@ export class SnapshotService {
       [personId, source]
     );
     return result.rows[0] || null;
-  }
-
-  /**
-   * Get multiple latest snapshots for delta computation
-   */
-  static async getLatestN(
-    personId: string,
-    source: SnapshotSource,
-    limit = 2
-  ): Promise<Snapshot[]> {
-    const result = await query<Snapshot>(
-      `SELECT * FROM snapshots
-       WHERE person_id = $1 AND source = $2
-       ORDER BY captured_at DESC
-       LIMIT $3`,
-      [personId, source, limit]
-    );
-    return result.rows;
   }
 
   /**
@@ -122,22 +129,30 @@ export class SnapshotService {
 
   /**
    * Get snapshot delta for a person
-   * Compares the two most recent snapshots
+   * Compares the latest snapshot against the oldest (baseline) snapshot
    */
   static async getDelta(
     personId: string,
     source: SnapshotSource
   ): Promise<{ delta: SnapshotDelta | null; snapshots: Snapshot[] }> {
-    const snapshots = await this.getLatestN(personId, source, 2);
+    // Get oldest (baseline) and latest
+    const result = await query<Snapshot>(
+      `(SELECT * FROM snapshots WHERE person_id = $1 AND source = $2 ORDER BY captured_at ASC LIMIT 1)
+       UNION ALL
+       (SELECT * FROM snapshots WHERE person_id = $1 AND source = $2 ORDER BY captured_at DESC LIMIT 1)`,
+      [personId, source]
+    );
 
-    if (snapshots.length < 2) {
+    const snapshots = result.rows;
+
+    if (snapshots.length < 2 || snapshots[0].id === snapshots[1].id) {
       return { delta: null, snapshots };
     }
 
-    const [newest, previous] = snapshots;
-    const delta = this.computeDelta(previous, newest);
+    const [oldest, newest] = snapshots;
+    const delta = this.computeDelta(oldest, newest);
 
-    return { delta, snapshots };
+    return { delta, snapshots: [newest, oldest] };
   }
 
   /**
@@ -251,17 +266,5 @@ export class SnapshotService {
       period2Snapshot,
       comparisonDelta,
     };
-  }
-
-  /**
-   * Delete snapshots older than a certain date (for cleanup, optional)
-   */
-  static async deleteOlderThan(date: Date): Promise<number> {
-    const result = await query(
-      'DELETE FROM snapshots WHERE captured_at < $1',
-      [date]
-    );
-    logger.info(`Deleted ${result.rowCount} snapshots older than ${date.toISOString()}`);
-    return result.rowCount || 0;
   }
 }

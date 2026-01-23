@@ -87,10 +87,8 @@ interface StatbateConfig {
 interface StatbateStats {
   lastRun: string | null;
   totalRuns: number;
-  totalRefreshed: number;
-  totalFailed: number;
-  lastRunRefreshed: number;
-  lastRunFailed: number;
+  currentRunRefreshed: number;
+  currentRunFailed: number;
   currentUsername: string | null;
   progress: number;
   total: number;
@@ -2054,34 +2052,24 @@ const Admin: React.FC = () => {
                 <div className="text-xs opacity-90 uppercase tracking-wide">Total Cycles</div>
               </div>
               <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
-                <div className="text-2xl font-bold mb-1">{statbateStatus.stats.totalRefreshed.toLocaleString()}</div>
-                <div className="text-xs opacity-90 uppercase tracking-wide">Total Refreshed</div>
+                <div className="text-2xl font-bold mb-1">{statbateStatus.stats.currentRunRefreshed.toLocaleString()}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Refreshed</div>
               </div>
               <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
-                <div className="text-2xl font-bold mb-1">{statbateStatus.stats.totalFailed.toLocaleString()}</div>
-                <div className="text-xs opacity-90 uppercase tracking-wide">Total Failed</div>
+                <div className="text-2xl font-bold mb-1">{statbateStatus.stats.currentRunFailed.toLocaleString()}</div>
+                <div className="text-xs opacity-90 uppercase tracking-wide">Failed</div>
               </div>
               <div className="text-center p-4 bg-gradient-primary rounded-lg text-white">
                 <div className="text-2xl font-bold mb-1">{statbateStatus.stats.lastRun ? new Date(statbateStatus.stats.lastRun).toLocaleString() : 'Never'}</div>
                 <div className="text-xs opacity-90 uppercase tracking-wide">Last Run</div>
               </div>
             </div>
-            {statbateStatus.stats.lastRun && (
-              <div className="grid grid-cols-3 gap-4">
-                <div className="p-3 bg-white/5 rounded-lg border border-white/10">
-                  <div className="text-sm text-white/60">Last Refreshed</div>
-                  <div className="text-lg font-semibold text-white">{statbateStatus.stats.lastRunRefreshed}</div>
-                </div>
-                <div className="p-3 bg-white/5 rounded-lg border border-white/10">
-                  <div className="text-sm text-white/60">Last Failed</div>
-                  <div className="text-lg font-semibold text-white">{statbateStatus.stats.lastRunFailed}</div>
-                </div>
+            {(statbateStatus.stats.currentRunRefreshed + statbateStatus.stats.currentRunFailed > 0) && (
+              <div className="grid grid-cols-1 gap-4">
                 <div className="p-3 bg-white/5 rounded-lg border border-white/10">
                   <div className="text-sm text-white/60">Success Rate</div>
                   <div className="text-lg font-semibold text-white">
-                    {statbateStatus.stats.lastRunRefreshed + statbateStatus.stats.lastRunFailed > 0
-                      ? Math.round((statbateStatus.stats.lastRunRefreshed / (statbateStatus.stats.lastRunRefreshed + statbateStatus.stats.lastRunFailed)) * 100)
-                      : 0}%
+                    {Math.round((statbateStatus.stats.currentRunRefreshed / (statbateStatus.stats.currentRunRefreshed + statbateStatus.stats.currentRunFailed)) * 100)}%
                   </div>
                 </div>
               </div>
@@ -2419,7 +2407,7 @@ const Admin: React.FC = () => {
           <span className="font-semibold text-white">Statbate API</span>
           {statbateStatus && (
             <span className="text-mhc-text-muted text-sm ml-auto">
-              Total: {statbateStatus.stats.totalRefreshed.toLocaleString()} refreshed
+              Total: {statbateStatus.stats.currentRunRefreshed.toLocaleString()} refreshed
             </span>
           )}
         </div>
