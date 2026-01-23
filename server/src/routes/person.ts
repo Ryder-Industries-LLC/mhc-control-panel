@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { PersonService } from '../services/person.service.js';
-import { SnapshotService } from '../services/snapshot.service.js';
+import { StatbatePollingService } from '../services/statbate-polling.service.js';
 import { InteractionService } from '../services/interaction.service.js';
 import { logger } from '../config/logger.js';
 import { env } from '../config/env.js';
@@ -102,7 +102,7 @@ router.get('/:id/snapshots', async (req: Request, res: Response) => {
     const { id } = req.params;
     const { source, limit = '50', offset = '0' } = req.query;
 
-    const snapshots = await SnapshotService.getByPerson(id, {
+    const snapshots = await StatbatePollingService.getByPerson(id, {
       source: source as any,
       limit: parseInt(limit as string, 10),
       offset: parseInt(offset as string, 10),

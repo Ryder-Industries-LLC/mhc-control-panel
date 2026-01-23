@@ -264,12 +264,12 @@ export class FollowerScraperService {
         pr.follower_since,
         (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
-        (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
+        (SELECT COUNT(*) FROM statbate_api_polling WHERE person_id = p.id) as snapshot_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
-        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
-        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
-        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+        (SELECT current_show FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
        WHERE pr.following = TRUE
@@ -292,12 +292,12 @@ export class FollowerScraperService {
         pr.follower_since,
         (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
-        (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
+        (SELECT COUNT(*) FROM statbate_api_polling WHERE person_id = p.id) as snapshot_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
-        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
-        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
-        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+        (SELECT current_show FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
        WHERE pr.follower = TRUE
@@ -321,12 +321,12 @@ export class FollowerScraperService {
         (SELECT value FROM attribute_lookup al WHERE al.person_id = p.id AND al.attribute_key = 'banned_me') as banned_me,
         EXTRACT(EPOCH FROM (pr.unfollower_at - pr.follower_since))/86400 as days_followed,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
-        (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
+        (SELECT COUNT(*) FROM statbate_api_polling WHERE person_id = p.id) as snapshot_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
-        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
-        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
-        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+        (SELECT current_show FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
        WHERE pr.unfollower_at IS NOT NULL
@@ -377,9 +377,9 @@ export class FollowerScraperService {
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
-        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
-        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
-        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+        (SELECT current_show FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
        WHERE ${whereClause}
@@ -411,9 +411,9 @@ export class FollowerScraperService {
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
-        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
-        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
-        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+        (SELECT current_show FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
        WHERE pr.friend_tier IS NOT NULL
@@ -442,9 +442,9 @@ export class FollowerScraperService {
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
-        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
-        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
-        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+        (SELECT current_show FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
        INNER JOIN attribute_lookup al_ban ON al_ban.person_id = p.id AND al_ban.attribute_key = 'banned_me' AND al_ban.value = true
@@ -472,9 +472,9 @@ export class FollowerScraperService {
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
-        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
-        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
-        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+        (SELECT current_show FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
        INNER JOIN attribute_lookup al_wl ON al_wl.person_id = p.id AND al_wl.attribute_key = 'watch_list' AND al_wl.value = true
@@ -513,9 +513,9 @@ export class FollowerScraperService {
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
-        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
-        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
-        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+        (SELECT current_show FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
        INNER JOIN service_relationships sr ON sr.profile_id = pr.id
@@ -548,9 +548,9 @@ export class FollowerScraperService {
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
-        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
-        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
-        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
+        (SELECT current_show FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM persons p
        INNER JOIN profiles pr ON pr.person_id = p.id
        INNER JOIN interactions i ON i.person_id = p.id
@@ -591,9 +591,9 @@ export class FollowerScraperService {
         (SELECT COUNT(*) FROM interactions WHERE person_id = model_person.id) as interaction_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = model_person.id) as image_count,
         (SELECT file_path FROM media_locator WHERE person_id = model_person.id ORDER BY uploaded_at DESC LIMIT 1) as image_url,
-        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = model_person.id ORDER BY observed_at DESC LIMIT 1) as current_show,
-        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = model_person.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
-        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = model_person.id ORDER BY observed_at DESC LIMIT 1) as tags
+        (SELECT current_show FROM affiliate_api_polling WHERE person_id = model_person.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_polling WHERE person_id = model_person.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_polling WHERE person_id = model_person.id ORDER BY observed_at DESC LIMIT 1) as tags
        FROM interactions i
        INNER JOIN persons my_person ON my_person.id = i.person_id AND my_person.username = 'hudson_cage'
        INNER JOIN persons model_person ON LOWER(model_person.username) = LOWER(i.metadata->>'broadcaster')

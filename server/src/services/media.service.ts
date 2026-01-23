@@ -697,10 +697,10 @@ export class MediaService {
    * Prefers records with the most FK references
    */
   private static async findBestRecordToKeep(ids: string[]): Promise<string> {
-    // Count FK references from affiliate_api_snapshots for each ID
+    // Count FK references from affiliate_api_polling for each ID
     const sql = `
       SELECT media_locator_id, COUNT(*) as ref_count
-      FROM affiliate_api_snapshots
+      FROM affiliate_api_polling
       WHERE media_locator_id = ANY($1)
       GROUP BY media_locator_id
       ORDER BY ref_count DESC
@@ -728,7 +728,7 @@ export class MediaService {
 
       // Update any FK references to point to the keeper
       await query(
-        `UPDATE affiliate_api_snapshots SET media_locator_id = $1 WHERE media_locator_id = $2`,
+        `UPDATE affiliate_api_polling SET media_locator_id = $1 WHERE media_locator_id = $2`,
         [keepId, duplicateId]
       );
 

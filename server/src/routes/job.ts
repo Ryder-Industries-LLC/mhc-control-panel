@@ -496,7 +496,7 @@ router.post('/cleanup-placeholder-images', async (_req: Request, res: Response) 
     if (deletedFiles.length > 0) {
       const placeholders = deletedFiles.map((_, i) => `$${i + 1}`).join(', ');
       // Delete from media_locator (the single source of truth)
-      // This will set media_locator_id to NULL in affiliate_api_snapshots via ON DELETE SET NULL
+      // This will set media_locator_id to NULL in affiliate_api_polling via ON DELETE SET NULL
       await pool.query(
         `DELETE FROM media_locator WHERE file_path IN (${placeholders})`,
         deletedFiles

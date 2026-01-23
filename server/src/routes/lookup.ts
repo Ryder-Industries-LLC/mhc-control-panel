@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { PersonService } from '../services/person.service.js';
-import { SnapshotService } from '../services/snapshot.service.js';
+import { StatbatePollingService } from '../services/statbate-polling.service.js';
 import { InteractionService } from '../services/interaction.service.js';
 import { statbateClient } from '../api/statbate/client.js';
 import { normalizeMemberInfo, normalizeModelInfo } from '../api/statbate/normalizer.js';
@@ -92,7 +92,7 @@ router.post('/', async (req: Request, res: Response) => {
             const modelData = await statbateClient.getModelInfo('chaturbate', primaryUsername, { range });
             if (modelData) {
               const normalized = normalizeModelInfo(modelData.data);
-              const snapshot = await SnapshotService.create({
+              const snapshot = await StatbatePollingService.create({
                 personId: person.id,
                 source: 'statbate_model',
                 rawPayload: modelData.data as unknown as Record<string, unknown>,
@@ -107,7 +107,7 @@ router.post('/', async (req: Request, res: Response) => {
                 await PersonService.update(person.id, { rid: modelData.data.rid });
               }
 
-              const deltaResult = await SnapshotService.getDelta(person.id, 'statbate_model');
+              const deltaResult = await StatbatePollingService.getDelta(person.id, 'statbate_model');
               latestSnapshot = snapshot;
               delta = deltaResult.delta;
               statbateDataFetched = true;
@@ -124,7 +124,7 @@ router.post('/', async (req: Request, res: Response) => {
             const memberData = await statbateClient.getMemberInfo('chaturbate', primaryUsername);
             if (memberData) {
               const normalized = normalizeMemberInfo(memberData.data);
-              const snapshot = await SnapshotService.create({
+              const snapshot = await StatbatePollingService.create({
                 personId: person.id,
                 source: 'statbate_member',
                 rawPayload: memberData.data as unknown as Record<string, unknown>,
@@ -139,7 +139,7 @@ router.post('/', async (req: Request, res: Response) => {
                 await PersonService.update(person.id, { did: memberData.data.did });
               }
 
-              const deltaResult = await SnapshotService.getDelta(person.id, 'statbate_member');
+              const deltaResult = await StatbatePollingService.getDelta(person.id, 'statbate_member');
               latestSnapshot = snapshot;
               delta = deltaResult.delta;
               statbateDataFetched = true;
@@ -190,7 +190,7 @@ router.post('/', async (req: Request, res: Response) => {
         const period2Start = dateRange ? new Date(dateRange.start) : new Date(0);
         const period2End = dateRange ? new Date(dateRange.end) : new Date();
 
-        const comparisonResult = await SnapshotService.compareDateRanges(
+        const comparisonResult = await StatbatePollingService.compareDateRanges(
           person.id,
           source,
           { start: period1Start, end: period1End },

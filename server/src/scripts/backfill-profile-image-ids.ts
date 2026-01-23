@@ -1,7 +1,7 @@
 /**
- * Backfill profile_image_id in affiliate_api_snapshots
+ * Backfill profile_image_id in affiliate_api_polling
  *
- * For each affiliate_api_snapshots record with image_path but no profile_image_id:
+ * For each affiliate_api_polling record with image_path but no profile_image_id:
  * 1. Check if profile_images record exists with matching file_path
  * 2. If exists: Set profile_image_id
  * 3. If not: Create profile_images record, then set FK
@@ -49,12 +49,12 @@ async function checkS3Exists(relativePath: string): Promise<boolean> {
 }
 
 async function analyze(): Promise<void> {
-  console.log('=== Analyzing affiliate_api_snapshots for profile_image_id backfill ===\n');
+  console.log('=== Analyzing affiliate_api_polling for profile_image_id backfill ===\n');
 
   // Count records needing backfill
   const needsBackfill = await query(`
     SELECT COUNT(*) as count
-    FROM affiliate_api_snapshots
+    FROM affiliate_api_polling
     WHERE image_path IS NOT NULL
       AND profile_image_id IS NULL
   `);
@@ -63,7 +63,7 @@ async function analyze(): Promise<void> {
   // Count records that already have matches in profile_images
   const hasMatch = await query(`
     SELECT COUNT(DISTINCT aas.id) as count
-    FROM affiliate_api_snapshots aas
+    FROM affiliate_api_polling aas
     JOIN profile_images pi ON pi.file_path = aas.image_path
     WHERE aas.image_path IS NOT NULL
       AND aas.profile_image_id IS NULL
@@ -73,7 +73,7 @@ async function analyze(): Promise<void> {
   // Count records that will need new profile_images created
   const needsCreate = await query(`
     SELECT COUNT(DISTINCT aas.id) as count
-    FROM affiliate_api_snapshots aas
+    FROM affiliate_api_polling aas
     WHERE aas.image_path IS NOT NULL
       AND aas.profile_image_id IS NULL
       AND NOT EXISTS (
@@ -86,7 +86,7 @@ async function analyze(): Promise<void> {
   // Get unique paths that need profile_images created
   const uniquePaths = await query(`
     SELECT COUNT(DISTINCT image_path) as count
-    FROM affiliate_api_snapshots aas
+    FROM affiliate_api_polling aas
     WHERE image_path IS NOT NULL
       AND profile_image_id IS NULL
       AND NOT EXISTS (
@@ -100,7 +100,7 @@ async function analyze(): Promise<void> {
   console.log('\nSample paths needing profile_images created:');
   const sampleResult = await query(`
     SELECT DISTINCT aas.image_path, aas.person_id, p.username
-    FROM affiliate_api_snapshots aas
+    FROM affiliate_api_polling aas
     LEFT JOIN persons p ON p.id = aas.person_id
     WHERE aas.image_path IS NOT NULL
       AND aas.profile_image_id IS NULL
@@ -132,7 +132,7 @@ async function backfill(dryRun: boolean, fast: boolean): Promise<void> {
 
   if (!dryRun) {
     const linkResult = await query(`
-      UPDATE affiliate_api_snapshots aas
+      UPDATE affiliate_api_polling aas
       SET profile_image_id = pi.id
       FROM profile_images pi
       WHERE aas.image_path = pi.file_path
@@ -143,7 +143,7 @@ async function backfill(dryRun: boolean, fast: boolean): Promise<void> {
   } else {
     const countResult = await query(`
       SELECT COUNT(DISTINCT aas.id) as count
-      FROM affiliate_api_snapshots aas
+      FROM affiliate_api_polling aas
       JOIN profile_images pi ON pi.file_path = aas.image_path
       WHERE aas.profile_image_id IS NULL
         AND aas.image_path IS NOT NULL
@@ -173,12 +173,12 @@ async function backfill(dryRun: boolean, fast: boolean): Promise<void> {
           SELECT DISTINCT ON (image_path)
             image_path,
             person_id
-          FROM affiliate_api_snapshots
+          FROM affiliate_api_polling
           WHERE image_path IS NOT NULL
             AND profile_image_id IS NULL
             AND NOT EXISTS (
               SELECT 1 FROM profile_images pi
-              WHERE pi.file_path = affiliate_api_snapshots.image_path
+              WHERE pi.file_path = affiliate_api_polling.image_path
             )
           ORDER BY image_path, observed_at DESC
         ) aas
@@ -186,16 +186,16 @@ async function backfill(dryRun: boolean, fast: boolean): Promise<void> {
       `);
       console.log(`  Created ${insertResult.rowCount} new profile_images records`);
 
-      // Link all affiliate_api_snapshots to their profile_images
+      // Link all affiliate_api_polling to their profile_images
       const linkResult2 = await query(`
-        UPDATE affiliate_api_snapshots aas
+        UPDATE affiliate_api_polling aas
         SET profile_image_id = pi.id
         FROM profile_images pi
         WHERE aas.image_path = pi.file_path
           AND aas.profile_image_id IS NULL
           AND aas.image_path IS NOT NULL
       `);
-      console.log(`  Linked ${linkResult2.rowCount} affiliate_api_snapshots records`);
+      console.log(`  Linked ${linkResult2.rowCount} affiliate_api_polling records`);
     } else {
       // Dry run - just count
       const countResult = await query(`
@@ -204,18 +204,18 @@ async function backfill(dryRun: boolean, fast: boolean): Promise<void> {
           SELECT DISTINCT ON (image_path)
             image_path,
             person_id
-          FROM affiliate_api_snapshots
+          FROM affiliate_api_polling
           WHERE image_path IS NOT NULL
             AND profile_image_id IS NULL
             AND NOT EXISTS (
               SELECT 1 FROM profile_images pi
-              WHERE pi.file_path = affiliate_api_snapshots.image_path
+              WHERE pi.file_path = affiliate_api_polling.image_path
             )
           ORDER BY image_path, observed_at DESC
         ) aas
       `);
       console.log(`  Would create ${countResult.rows[0].count} new profile_images records`);
-      console.log(`  Would then link all affiliate_api_snapshots to profile_images`);
+      console.log(`  Would then link all affiliate_api_polling to profile_images`);
     }
 
     console.log('\n=== Summary ===');
@@ -230,12 +230,12 @@ async function backfill(dryRun: boolean, fast: boolean): Promise<void> {
       SELECT DISTINCT ON (image_path)
         image_path,
         person_id
-      FROM affiliate_api_snapshots
+      FROM affiliate_api_polling
       WHERE image_path IS NOT NULL
         AND profile_image_id IS NULL
         AND NOT EXISTS (
           SELECT 1 FROM profile_images pi
-          WHERE pi.file_path = affiliate_api_snapshots.image_path
+          WHERE pi.file_path = affiliate_api_polling.image_path
         )
       ORDER BY image_path, observed_at DESC
     `);
@@ -269,9 +269,9 @@ async function backfill(dryRun: boolean, fast: boolean): Promise<void> {
             VALUES ($1, $2, $3, 's3', 'affiliate_api', NOW())
           `, [newId, row.person_id, row.image_path]);
 
-          // Link all affiliate_api_snapshots with this path
+          // Link all affiliate_api_polling with this path
           await query(`
-            UPDATE affiliate_api_snapshots
+            UPDATE affiliate_api_polling
             SET profile_image_id = $1
             WHERE image_path = $2
               AND profile_image_id IS NULL
@@ -288,7 +288,7 @@ async function backfill(dryRun: boolean, fast: boolean): Promise<void> {
             );
             if (existingResult.rows.length > 0) {
               await query(`
-                UPDATE affiliate_api_snapshots
+                UPDATE affiliate_api_polling
                 SET profile_image_id = $1
                 WHERE image_path = $2
                   AND profile_image_id IS NULL
@@ -323,7 +323,7 @@ async function backfill(dryRun: boolean, fast: boolean): Promise<void> {
   // Final count
   const finalCount = await query(`
     SELECT COUNT(*) as count
-    FROM affiliate_api_snapshots
+    FROM affiliate_api_polling
     WHERE image_path IS NOT NULL
       AND profile_image_id IS NULL
   `);

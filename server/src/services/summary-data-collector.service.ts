@@ -201,11 +201,11 @@ class SummaryDataCollectorService {
     }
 
     try {
-      // Query affiliate_api_snapshots for max num_users during broadcast window
-      // The snapshots are for Hudson's own profile (username: hudson_cage)
+      // Query affiliate_api_polling for max num_users during broadcast window
+      // The polling data is for Hudson's own profile (username: hudson_cage)
       const result = await query(
         `SELECT COALESCE(MAX(num_users), 0) as max_viewers
-         FROM affiliate_api_snapshots aas
+         FROM affiliate_api_polling aas
          JOIN persons p ON aas.person_id = p.id
          WHERE p.username = 'hudson_cage'
            AND aas.recorded_at >= $1

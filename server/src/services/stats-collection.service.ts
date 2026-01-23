@@ -103,7 +103,7 @@ export class StatsCollectionService {
       // Snapshots by source
       query(`
         SELECT source, COUNT(*) as count
-        FROM snapshots
+        FROM statbate_api_polling
         GROUP BY source
       `),
 
@@ -137,7 +137,7 @@ export class StatsCollectionService {
         SELECT
           COUNT(*) FILTER (WHERE captured_at > NOW() - INTERVAL '24 hours') as snapshots_24h,
           COUNT(*) FILTER (WHERE captured_at > NOW() - INTERVAL '1 hour') as snapshots_1h
-        FROM snapshots
+        FROM statbate_api_polling
       `),
 
       // Media stats (images and videos)

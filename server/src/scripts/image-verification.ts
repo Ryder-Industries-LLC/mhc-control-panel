@@ -150,16 +150,16 @@ async function getUserImageStatus(username: string): Promise<UserImageStatus> {
     ORDER BY uploaded_at DESC
   `, [personId]);
 
-  // Get images from affiliate_api_snapshots that aren't in profile_images
+  // Get images from affiliate_api_polling that aren't in profile_images
   const affiliateResult = await query(`
     SELECT DISTINCT ON (image_path_360x270)
       image_path_360x270 as file_path
-    FROM affiliate_api_snapshots
+    FROM affiliate_api_polling
     WHERE person_id = $1
       AND image_path_360x270 IS NOT NULL
       AND NOT EXISTS (
         SELECT 1 FROM profile_images pi
-        WHERE pi.file_path = affiliate_api_snapshots.image_path_360x270
+        WHERE pi.file_path = affiliate_api_polling.image_path_360x270
       )
     ORDER BY image_path_360x270, observed_at DESC
   `, [personId]);
@@ -189,7 +189,7 @@ async function getUserImageStatus(username: string): Promise<UserImageStatus> {
     }
   }
 
-  // Check affiliate_api_snapshots images
+  // Check affiliate_api_polling images
   for (const row of affiliateResult.rows) {
     const existsInS3 = await checkS3Exists(row.file_path);
 
@@ -243,8 +243,8 @@ async function getDbCounts() {
     query('SELECT COUNT(*) FROM profile_images'),
     query('SELECT source, COUNT(*) as count FROM profile_images GROUP BY source'),
     query('SELECT storage_provider, COUNT(*) as count FROM profile_images GROUP BY storage_provider'),
-    query('SELECT COUNT(*) FROM affiliate_api_snapshots WHERE image_path_360x270 IS NOT NULL'),
-    query("SELECT COUNT(*) FROM affiliate_api_snapshots WHERE image_path_360x270 IS NOT NULL AND image_path_360x270 NOT LIKE '%/%'"),
+    query('SELECT COUNT(*) FROM affiliate_api_polling WHERE image_path_360x270 IS NOT NULL'),
+    query("SELECT COUNT(*) FROM affiliate_api_polling WHERE image_path_360x270 IS NOT NULL AND image_path_360x270 NOT LIKE '%/%'"),
     query("SELECT COUNT(*) FROM profile_images WHERE file_path LIKE 'profiles/%'"),
   ]);
 

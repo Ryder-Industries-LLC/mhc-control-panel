@@ -219,7 +219,7 @@ This document tracks remaining tasks for the MHC Control Panel, organized by fea
 - [x] S3 Verification - verify all media_locator records have S3 files _(v2.0.0 - completed)_
 - [x] Dismantle legacy attribute boolean columns from profiles table _(v2.3.0 - migration 094, all queries migrated to attribute_lookup)_
 - [x] Database size optimization - prune snapshots, vacuum tables _(v2.3.0 - 648 MB reclaimed)_
-- [ ] Table rename: `snapshots` → `statbate_api_polling`, `affiliate_api_snapshots` → `affiliate_api_polling`
+- [x] Table rename: `snapshots` → `statbate_api_polling`, `affiliate_api_snapshots` → `affiliate_api_polling` _(v2.3.1 - migration 096, service renamed to StatbatePollingService)_
 - [ ] Render Migration Planning - S3-only storage, Render.com for DB and containers
 
 ---

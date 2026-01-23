@@ -14,7 +14,7 @@ export interface SnapshotDelta {
   [key: string]: number | string | boolean | null | undefined;
 }
 
-export class SnapshotService {
+export class StatbatePollingService {
   /**
    * Create or update a snapshot.
    * Maintains only two rows per person+source: the oldest (baseline) and the latest (current).
@@ -31,9 +31,9 @@ export class SnapshotService {
       normalizedMetrics = null,
     } = params;
 
-    // Get existing snapshots for this person+source (ordered oldest first)
+    // Get existing rows for this person+source (ordered oldest first)
     const existing = await query<Snapshot>(
-      `SELECT id, captured_at FROM snapshots
+      `SELECT id, captured_at FROM statbate_api_polling
        WHERE person_id = $1 AND source = $2
        ORDER BY captured_at ASC`,
       [personId, source]
@@ -44,7 +44,7 @@ export class SnapshotService {
     if (existing.rows.length < 2) {
       // 0 or 1 rows exist: insert a new row
       result = await query<Snapshot>(
-        `INSERT INTO snapshots (person_id, source, captured_at, raw_payload, normalized_metrics)
+        `INSERT INTO statbate_api_polling (person_id, source, captured_at, raw_payload, normalized_metrics)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
         [personId, source, capturedAt, JSON.stringify(rawPayload), JSON.stringify(normalizedMetrics)]
@@ -53,7 +53,7 @@ export class SnapshotService {
       // 2+ rows exist: update the latest (last in order) to keep oldest as baseline
       const latestId = existing.rows[existing.rows.length - 1].id;
       result = await query<Snapshot>(
-        `UPDATE snapshots
+        `UPDATE statbate_api_polling
          SET captured_at = $2, raw_payload = $3, normalized_metrics = $4
          WHERE id = $1
          RETURNING *`,
@@ -73,7 +73,7 @@ export class SnapshotService {
     source: SnapshotSource
   ): Promise<Snapshot | null> {
     const result = await query<Snapshot>(
-      `SELECT * FROM snapshots
+      `SELECT * FROM statbate_api_polling
        WHERE person_id = $1 AND source = $2
        ORDER BY captured_at DESC
        LIMIT 1`,
@@ -137,9 +137,9 @@ export class SnapshotService {
   ): Promise<{ delta: SnapshotDelta | null; snapshots: Snapshot[] }> {
     // Get oldest (baseline) and latest
     const result = await query<Snapshot>(
-      `(SELECT * FROM snapshots WHERE person_id = $1 AND source = $2 ORDER BY captured_at ASC LIMIT 1)
+      `(SELECT * FROM statbate_api_polling WHERE person_id = $1 AND source = $2 ORDER BY captured_at ASC LIMIT 1)
        UNION ALL
-       (SELECT * FROM snapshots WHERE person_id = $1 AND source = $2 ORDER BY captured_at DESC LIMIT 1)`,
+       (SELECT * FROM statbate_api_polling WHERE person_id = $1 AND source = $2 ORDER BY captured_at DESC LIMIT 1)`,
       [personId, source]
     );
 
@@ -168,7 +168,7 @@ export class SnapshotService {
   ): Promise<Snapshot[]> {
     const { source, limit = 50, offset = 0 } = options || {};
 
-    let sql = 'SELECT * FROM snapshots WHERE person_id = $1';
+    let sql = 'SELECT * FROM statbate_api_polling WHERE person_id = $1';
     const params: unknown[] = [personId];
 
     if (source) {
@@ -193,7 +193,7 @@ export class SnapshotService {
     endDate: Date
   ): Promise<Snapshot[]> {
     const result = await query<Snapshot>(
-      `SELECT * FROM snapshots
+      `SELECT * FROM statbate_api_polling
        WHERE person_id = $1
          AND source = $2
          AND captured_at >= $3
@@ -215,7 +215,7 @@ export class SnapshotService {
     endDate: Date
   ): Promise<Snapshot | null> {
     const result = await query<Snapshot>(
-      `SELECT * FROM snapshots
+      `SELECT * FROM statbate_api_polling
        WHERE person_id = $1
          AND source = $2
          AND captured_at >= $3

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { PersonService } from '../services/person.service.js';
-import { SnapshotService } from '../services/snapshot.service.js';
+import { StatbatePollingService } from '../services/statbate-polling.service.js';
 import { InteractionService } from '../services/interaction.service.js';
 import { SessionService } from '../services/session.service.js';
 import { chaturbateStatsClient, normalizeChaturbateStats } from '../api/chaturbate/stats-client.js';
@@ -33,7 +33,7 @@ router.get('/', async (_req: Request, res: Response) => {
       const stats = await chaturbateStatsClient.getHudsonStats();
       if (stats) {
         const normalized = normalizeChaturbateStats(stats);
-        cbSnapshot = await SnapshotService.create({
+        cbSnapshot = await StatbatePollingService.create({
           personId: person.id,
           source: 'cb_stats',
           rawPayload: stats as unknown as Record<string, unknown>,
@@ -46,7 +46,7 @@ router.get('/', async (_req: Request, res: Response) => {
     }
 
     // Get delta for CB stats
-    const cbDelta = await SnapshotService.getDelta(person.id, 'cb_stats');
+    const cbDelta = await StatbatePollingService.getDelta(person.id, 'cb_stats');
 
     // Get current session from Events API tracking
     let currentSession = await SessionService.getCurrentSession(username);

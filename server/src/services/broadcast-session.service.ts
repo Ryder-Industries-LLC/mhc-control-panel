@@ -104,7 +104,7 @@ export class BroadcastSessionService {
     // We use a 10-minute tolerance to account for slight timing variations
     // Cast $2 to timestamptz to ensure proper interval arithmetic
     const existingSessionSql = `
-      SELECT id, session_start FROM affiliate_api_snapshots
+      SELECT id, session_start FROM affiliate_api_polling
       WHERE person_id = $1
         AND session_start BETWEEN ($2::timestamptz - INTERVAL '10 minutes') AND ($2::timestamptz + INTERVAL '10 minutes')
       ORDER BY observed_at DESC
@@ -133,7 +133,7 @@ export class BroadcastSessionService {
       // - deprecated_image_path = path (now lives in media_locator)
       // - media_locator_id = FK to media_locator
       const updateSql = `
-        UPDATE affiliate_api_snapshots SET
+        UPDATE affiliate_api_polling SET
           observed_at = NOW(),
           seconds_online = $2,
           current_show = $3,
@@ -176,7 +176,7 @@ export class BroadcastSessionService {
       // Create a new session
       // Note: After migration 086, using new column names
       const insertSql = `
-        INSERT INTO affiliate_api_snapshots (
+        INSERT INTO affiliate_api_polling (
           person_id, observed_at, seconds_online, session_start,
           current_show, room_subject, tags,
           num_users, num_followers, is_hd,
@@ -224,7 +224,7 @@ export class BroadcastSessionService {
    */
   static async getLatestSession(personId: string): Promise<BroadcastSession | null> {
     const sql = `
-      SELECT * FROM affiliate_api_snapshots
+      SELECT * FROM affiliate_api_polling
       WHERE person_id = $1
       ORDER BY observed_at DESC
       LIMIT 1
@@ -248,7 +248,7 @@ export class BroadcastSessionService {
    */
   static async getSessionsByPerson(personId: string, limit = 100): Promise<BroadcastSession[]> {
     const sql = `
-      SELECT * FROM affiliate_api_snapshots
+      SELECT * FROM affiliate_api_polling
       WHERE person_id = $1
       ORDER BY observed_at DESC
       LIMIT $2
@@ -272,7 +272,7 @@ export class BroadcastSessionService {
     endDate: Date
   ): Promise<BroadcastSession[]> {
     const sql = `
-      SELECT * FROM affiliate_api_snapshots
+      SELECT * FROM affiliate_api_polling
       WHERE person_id = $1
         AND observed_at BETWEEN $2 AND $3
       ORDER BY observed_at DESC
@@ -308,7 +308,7 @@ export class BroadcastSessionService {
           MAX(num_followers) as final_followers,
           MIN(num_followers) as initial_followers,
           array_agg(DISTINCT tag) FILTER (WHERE tag IS NOT NULL) as all_tags
-        FROM affiliate_api_snapshots, unnest(tags) as tag
+        FROM affiliate_api_polling, unnest(tags) as tag
         WHERE person_id = $1
           AND observed_at >= NOW() - INTERVAL '${days} days'
         GROUP BY person_id, session_start
@@ -329,7 +329,7 @@ export class BroadcastSessionService {
       // Get most used tags separately
       const tagsSql = `
         SELECT tag, COUNT(*) as count
-        FROM affiliate_api_snapshots, unnest(tags) as tag
+        FROM affiliate_api_polling, unnest(tags) as tag
         WHERE person_id = $1
           AND observed_at >= NOW() - INTERVAL '${days} days'
         GROUP BY tag

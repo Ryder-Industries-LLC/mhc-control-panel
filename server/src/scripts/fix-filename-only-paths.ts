@@ -1,5 +1,5 @@
 /**
- * Fix Filename-Only Paths in affiliate_api_snapshots
+ * Fix Filename-Only Paths in affiliate_api_polling
  *
  * This script fixes 54,107 records that have paths like:
  *   oldnewfun_1766905959636_95be6d04.jpg
@@ -84,7 +84,7 @@ async function analyze(): Promise<void> {
   // Get count
   const countResult = await query(`
     SELECT COUNT(*) as count
-    FROM affiliate_api_snapshots
+    FROM affiliate_api_polling
     WHERE image_path_360x270 IS NOT NULL
       AND image_path_360x270 NOT LIKE '%/%'
   `);
@@ -94,7 +94,7 @@ async function analyze(): Promise<void> {
   // Get sample and analyze
   const sampleResult = await query(`
     SELECT id, image_path_360x270, person_id
-    FROM affiliate_api_snapshots
+    FROM affiliate_api_polling
     WHERE image_path_360x270 IS NOT NULL
       AND image_path_360x270 NOT LIKE '%/%'
     LIMIT 20
@@ -142,7 +142,7 @@ async function analyze(): Promise<void> {
   // Get unparseable patterns
   const unparseableResult = await query(`
     SELECT image_path_360x270, COUNT(*) as count
-    FROM affiliate_api_snapshots
+    FROM affiliate_api_polling
     WHERE image_path_360x270 IS NOT NULL
       AND image_path_360x270 NOT LIKE '%/%'
       AND image_path_360x270 !~ '^.+_\\d{13}_[a-f0-9]{8}\\.[a-z]+$'
@@ -169,7 +169,7 @@ async function fix(dryRun: boolean, skipS3Check: boolean): Promise<void> {
 
   // Get before count
   const beforeCount = await query(`
-    SELECT COUNT(*) as count FROM affiliate_api_snapshots
+    SELECT COUNT(*) as count FROM affiliate_api_polling
     WHERE image_path_360x270 IS NOT NULL AND image_path_360x270 NOT LIKE '%/%'
   `);
   console.log(`BEFORE: ${beforeCount.rows[0].count} filename-only paths\n`);
@@ -187,7 +187,7 @@ async function fix(dryRun: boolean, skipS3Check: boolean): Promise<void> {
           '/auto/',
           image_path_360x270
         ) as new_path
-      FROM affiliate_api_snapshots
+      FROM affiliate_api_polling
       WHERE image_path_360x270 IS NOT NULL
         AND image_path_360x270 NOT LIKE '%/%'
         AND image_path_360x270 ~ '^.+_\\d{13}_[a-f0-9]{8}\\.\\w+$'
@@ -203,7 +203,7 @@ async function fix(dryRun: boolean, skipS3Check: boolean): Promise<void> {
     if (!dryRun) {
       // Execute the update
       const updateResult = await query(`
-        UPDATE affiliate_api_snapshots
+        UPDATE affiliate_api_polling
         SET image_path_360x270 = CONCAT(
           'people/',
           SUBSTRING(image_path_360x270 FROM '^(.+)_\\d{13}_[a-f0-9]{8}\\.\\w+$'),
@@ -220,7 +220,7 @@ async function fix(dryRun: boolean, skipS3Check: boolean): Promise<void> {
       // Count how many would be updated
       const countResult = await query(`
         SELECT COUNT(*) as count
-        FROM affiliate_api_snapshots
+        FROM affiliate_api_polling
         WHERE image_path_360x270 IS NOT NULL
           AND image_path_360x270 NOT LIKE '%/%'
           AND image_path_360x270 ~ '^.+_\\d{13}_[a-f0-9]{8}\\.\\w+$'
@@ -231,7 +231,7 @@ async function fix(dryRun: boolean, skipS3Check: boolean): Promise<void> {
     // Slow mode: Check S3 for each file
     const result = await query(`
       SELECT id, image_path_360x270
-      FROM affiliate_api_snapshots
+      FROM affiliate_api_polling
       WHERE image_path_360x270 IS NOT NULL
         AND image_path_360x270 NOT LIKE '%/%'
     `);
@@ -272,7 +272,7 @@ async function fix(dryRun: boolean, skipS3Check: boolean): Promise<void> {
       if (!dryRun) {
         try {
           await query(
-            'UPDATE affiliate_api_snapshots SET image_path_360x270 = $1 WHERE id = $2',
+            'UPDATE affiliate_api_polling SET image_path_360x270 = $1 WHERE id = $2',
             [newPath, row.id]
           );
           fixed++;
@@ -306,7 +306,7 @@ async function fix(dryRun: boolean, skipS3Check: boolean): Promise<void> {
   // Verify final count
   const afterCount = await query(`
     SELECT COUNT(*) as count
-    FROM affiliate_api_snapshots
+    FROM affiliate_api_polling
     WHERE image_path_360x270 IS NOT NULL
       AND image_path_360x270 NOT LIKE '%/%'
   `);

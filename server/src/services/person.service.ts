@@ -169,12 +169,12 @@ export class PersonService {
     const queryText = `SELECT
         p.*,
         COALESCE(
-          (SELECT source FROM snapshots WHERE person_id = p.id ORDER BY created_at ASC LIMIT 1),
+          (SELECT source FROM statbate_api_polling WHERE person_id = p.id ORDER BY created_at ASC LIMIT 1),
           (SELECT source FROM interactions WHERE person_id = p.id ORDER BY created_at ASC LIMIT 1),
           'manual'
         ) as source,
         (SELECT COUNT(*) FROM interactions WHERE person_id = p.id) as interaction_count,
-        (SELECT COUNT(*) FROM snapshots WHERE person_id = p.id) as snapshot_count,
+        (SELECT COUNT(*) FROM statbate_api_polling WHERE person_id = p.id) as snapshot_count,
         (SELECT COUNT(*) FROM media_locator WHERE person_id = p.id) as image_count,
         COALESCE(
           (SELECT file_path FROM media_locator WHERE person_id = p.id AND is_primary = true LIMIT 1),
@@ -184,9 +184,9 @@ export class PersonService {
           (SELECT COALESCE(captured_at, uploaded_at) FROM media_locator WHERE person_id = p.id AND is_primary = true LIMIT 1),
           (SELECT COALESCE(captured_at, uploaded_at) FROM media_locator WHERE person_id = p.id ORDER BY uploaded_at DESC LIMIT 1)
         ) as image_captured_at,
-        (SELECT current_show FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
-        (SELECT observed_at FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
-        (SELECT tags FROM affiliate_api_snapshots WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags,
+        (SELECT current_show FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as current_show,
+        (SELECT observed_at FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as session_observed_at,
+        (SELECT tags FROM affiliate_api_polling WHERE person_id = p.id ORDER BY observed_at DESC LIMIT 1) as tags,
         (SELECT age FROM profiles WHERE person_id = p.id LIMIT 1) as age,
         (SELECT following FROM profiles WHERE person_id = p.id LIMIT 1) as following,
         (SELECT follower FROM profiles WHERE person_id = p.id LIMIT 1) as follower,
@@ -230,7 +230,7 @@ export class PersonService {
         aas.num_users,
         aas.room_subject
        FROM media_locator ml
-       LEFT JOIN affiliate_api_snapshots aas ON aas.media_locator_id = ml.id
+       LEFT JOIN affiliate_api_polling aas ON aas.media_locator_id = ml.id
        WHERE ml.person_id = $1
        ORDER BY ml.file_path, aas.observed_at DESC NULLS LAST`,
       [personId]

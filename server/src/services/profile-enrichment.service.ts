@@ -172,9 +172,9 @@ export class ProfileEnrichmentService {
       // Get session stats (last 30 days)
       const sessionStats = await BroadcastSessionService.getSessionStats(person.id, 30);
 
-      // Get snapshots (from existing snapshots table)
+      // Get polling data (from statbate_api_polling table)
       const snapshotsSql = `
-        SELECT * FROM snapshots
+        SELECT * FROM statbate_api_polling
         WHERE person_id = $1
         ORDER BY captured_at DESC
         LIMIT 30

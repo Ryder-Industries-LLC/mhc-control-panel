@@ -2,6 +2,25 @@
 
 All notable changes to MHC Control Panel.
 
+## [2.3.1] - 2026-01-23
+
+### Changed
+
+- **Table Renames** - Database tables renamed to reflect actual purpose
+  - `snapshots` → `statbate_api_polling`
+  - `affiliate_api_snapshots` → `affiliate_api_polling`
+  - All indexes and FK constraints renamed to match new table names
+
+- **Service Rename** - `snapshot.service.ts` → `statbate-polling.service.ts`
+  - `SnapshotService` class → `StatbatePollingService`
+  - Updated all imports across routes, jobs, and services
+
+### Database
+
+- Migration 096: Rename tables, indexes, and constraints
+
+---
+
 ## [2.3.0] - 2026-01-23
 
 ### Added

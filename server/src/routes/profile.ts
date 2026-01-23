@@ -20,7 +20,7 @@ import { CollaborationsService } from '../services/collaborations.service.js';
 import { AlternateAccountsService } from '../services/alternate-accounts.service.js';
 import { AttributeService } from '../services/attribute.service.js';
 import { SocialLinksService, type SocialPlatform } from '../services/social-links.service.js';
-import { SnapshotService } from '../services/snapshot.service.js';
+import { StatbatePollingService } from '../services/statbate-polling.service.js';
 import { RoomVisitsService } from '../services/room-visits.service.js';
 import { FollowerHistoryService } from '../services/follower-history.service.js';
 import { CBHoursStatsService } from '../services/cbhours-stats.service.js';
@@ -75,7 +75,7 @@ router.get('/:username', async (req: Request, res: Response) => {
     // Get recent sessions
     const sessionsSql = `
       SELECT *
-      FROM affiliate_api_snapshots
+      FROM affiliate_api_polling
       WHERE person_id = $1
       ORDER BY observed_at DESC
       LIMIT 20
@@ -111,7 +111,7 @@ router.get('/:username', async (req: Request, res: Response) => {
     // Get latest Statbate snapshot for additional metrics
     const snapshotSql = `
       SELECT *
-      FROM snapshots
+      FROM statbate_api_polling
       WHERE person_id = $1
       ORDER BY captured_at DESC
       LIMIT 1
@@ -204,7 +204,7 @@ router.post('/:username/scrape', async (req: Request, res: Response) => {
 
         // Save CBHours data as a snapshot if online (rich data worth tracking)
         if (cbhoursOnline && cbhoursData.viewers !== undefined) {
-          await SnapshotService.create({
+          await StatbatePollingService.create({
             personId: person.id,
             source: 'cbhours',
             rawPayload: cbhoursData as unknown as Record<string, unknown>,
@@ -248,7 +248,7 @@ router.post('/:username/scrape', async (req: Request, res: Response) => {
       const modelData = await statbateClient.getModelInfo('chaturbate', username);
       if (modelData) {
         const normalized = normalizeModelInfo(modelData.data);
-        await SnapshotService.create({
+        await StatbatePollingService.create({
           personId: person.id,
           source: 'statbate_model',
           rawPayload: modelData.data as unknown as Record<string, unknown>,
@@ -270,7 +270,7 @@ router.post('/:username/scrape', async (req: Request, res: Response) => {
         const memberData = await statbateClient.getMemberInfo('chaturbate', username);
         if (memberData) {
           const normalized = normalizeMemberInfo(memberData.data);
-          await SnapshotService.create({
+          await StatbatePollingService.create({
             personId: person.id,
             source: 'statbate_member',
             rawPayload: memberData.data as unknown as Record<string, unknown>,
@@ -378,7 +378,7 @@ router.post('/:username/scrape-authenticated', async (req: Request, res: Respons
 
         // Save CBHours data as a snapshot if online (rich data worth tracking)
         if (cbhoursOnline && cbhoursData.viewers !== undefined) {
-          await SnapshotService.create({
+          await StatbatePollingService.create({
             personId: person.id,
             source: 'cbhours',
             rawPayload: cbhoursData as unknown as Record<string, unknown>,
@@ -419,7 +419,7 @@ router.post('/:username/scrape-authenticated', async (req: Request, res: Respons
       const modelData = await statbateClient.getModelInfo('chaturbate', username);
       if (modelData) {
         const normalized = normalizeModelInfo(modelData.data);
-        await SnapshotService.create({
+        await StatbatePollingService.create({
           personId: person.id,
           source: 'statbate_model',
           rawPayload: modelData.data as unknown as Record<string, unknown>,
@@ -436,7 +436,7 @@ router.post('/:username/scrape-authenticated', async (req: Request, res: Respons
         const memberData = await statbateClient.getMemberInfo('chaturbate', username);
         if (memberData) {
           const normalized = normalizeMemberInfo(memberData.data);
-          await SnapshotService.create({
+          await StatbatePollingService.create({
             personId: person.id,
             source: 'statbate_member',
             rawPayload: memberData.data as unknown as Record<string, unknown>,
@@ -1706,7 +1706,7 @@ router.get('/:username/images', async (req: Request, res: Response) => {
         'affiliate_api' as source,
         aas.observed_at as captured_at,
         aas.num_users as viewers
-      FROM affiliate_api_snapshots aas
+      FROM affiliate_api_polling aas
       JOIN media_locator ml ON ml.id = aas.media_locator_id
       WHERE aas.person_id = $1
         AND aas.media_locator_id IS NOT NULL
@@ -1914,10 +1914,10 @@ router.delete('/:username/images/:imageId', async (req: Request, res: Response) 
 
     // Check if this is an affiliate image deletion
     if (source === 'affiliate_api') {
-      // imageId is now media_locator.id, not affiliate_api_snapshots.id
-      // First, clear the media_locator_id FK from any affiliate_api_snapshots referencing this image
+      // imageId is now media_locator.id, not affiliate_api_polling.id
+      // First, clear the media_locator_id FK from any affiliate_api_polling referencing this image
       await query(
-        'UPDATE affiliate_api_snapshots SET media_locator_id = NULL WHERE media_locator_id = $1',
+        'UPDATE affiliate_api_polling SET media_locator_id = NULL WHERE media_locator_id = $1',
         [imageId]
       );
 

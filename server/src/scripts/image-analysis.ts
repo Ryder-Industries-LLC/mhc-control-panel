@@ -139,7 +139,7 @@ async function getProfileImagesFromDB(): Promise<{ id: string; file_path: string
 async function getAffiliateSnapshotsFromDB(): Promise<{ id: number; image_path_360x270: string | null; username: string }[]> {
   const result = await query(`
     SELECT a.id, a.image_path_360x270, p.username
-    FROM affiliate_api_snapshots a
+    FROM affiliate_api_polling a
     JOIN persons p ON a.person_id = p.id
     WHERE a.image_path_360x270 IS NOT NULL
   `);
@@ -256,8 +256,8 @@ async function runAnalysis(): Promise<ImageAnalysisReport> {
     }
   }
 
-  // Step 4: Check affiliate_api_snapshots
-  console.log('\n=== Step 4: Checking affiliate_api_snapshots ===');
+  // Step 4: Check affiliate_api_polling
+  console.log('\n=== Step 4: Checking affiliate_api_polling ===');
   const affiliateSnapshots = await getAffiliateSnapshotsFromDB();
   report.summary.affiliateSnapshotsTotal = affiliateSnapshots.length;
   report.summary.affiliateSnapshotsWithPaths = affiliateSnapshots.filter(s => s.image_path_360x270).length;
@@ -269,7 +269,7 @@ async function runAnalysis(): Promise<ImageAnalysisReport> {
       if (!s3Objects.has(snap.image_path_360x270)) {
         if (report.missingImages.length < 1000) {
           report.missingImages.push({
-            tableName: 'affiliate_api_snapshots',
+            tableName: 'affiliate_api_polling',
             id: String(snap.id),
             username: snap.username,
             filePath: snap.image_path_360x270,

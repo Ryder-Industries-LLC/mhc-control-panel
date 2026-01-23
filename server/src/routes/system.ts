@@ -45,7 +45,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
       // Snapshots by source
       query(`
         SELECT source, COUNT(*) as count
-        FROM snapshots
+        FROM statbate_api_polling
         GROUP BY source
       `),
 
@@ -67,7 +67,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
         SELECT
           COUNT(*) FILTER (WHERE captured_at > NOW() - INTERVAL '24 hours') as snapshots_24h,
           COUNT(*) FILTER (WHERE captured_at > NOW() - INTERVAL '1 hour') as snapshots_1h
-        FROM snapshots
+        FROM statbate_api_polling
       `),
     ]);
 

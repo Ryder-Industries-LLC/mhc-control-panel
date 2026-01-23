@@ -1,5 +1,5 @@
 import { PersonService } from './person.service.js';
-import { SnapshotService } from './snapshot.service.js';
+import { StatbatePollingService } from './statbate-polling.service.js';
 import { InteractionService } from './interaction.service.js';
 import { statbateClient } from '../api/statbate/client.js';
 import { logger } from '../config/logger.js';
@@ -125,14 +125,14 @@ export class InsightsService {
       const startDate90 = new Date();
       startDate90.setDate(startDate90.getDate() - analysisWindowDays);
 
-      const last30Days = await SnapshotService.getByDateRange(
+      const last30Days = await StatbatePollingService.getByDateRange(
         person.id,
         'statbate_model',
         startDate30,
         endDate
       );
 
-      const last90Days = await SnapshotService.getByDateRange(
+      const last90Days = await StatbatePollingService.getByDateRange(
         person.id,
         'statbate_model',
         startDate90,

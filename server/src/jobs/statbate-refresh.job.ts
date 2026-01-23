@@ -1,5 +1,5 @@
 import { PersonService } from '../services/person.service.js';
-import { SnapshotService } from '../services/snapshot.service.js';
+import { StatbatePollingService } from '../services/statbate-polling.service.js';
 import { statbateClient } from '../api/statbate/client.js';
 import { normalizeModelInfo, normalizeMemberInfo } from '../api/statbate/normalizer.js';
 import { JobPersistenceService } from '../services/job-persistence.service.js';
@@ -401,7 +401,7 @@ export class StatbateRefreshJob {
   private async getLivePersons(): Promise<any[]> {
     const result = await query(
       `SELECT DISTINCT p.* FROM persons p
-       JOIN affiliate_api_snapshots aas ON aas.person_id = p.id
+       JOIN affiliate_api_polling aas ON aas.person_id = p.id
        WHERE p.is_excluded = false
          AND aas.observed_at > NOW() - INTERVAL '10 minutes'
          AND aas.current_show IS NOT NULL
@@ -584,7 +584,7 @@ export class StatbateRefreshJob {
       const modelData = await statbateClient.getModelInfo('chaturbate', person.username);
       if (modelData) {
         const normalized = normalizeModelInfo(modelData.data);
-        await SnapshotService.create({
+        await StatbatePollingService.create({
           personId: person.id,
           source: 'statbate_model',
           rawPayload: modelData.data as unknown as Record<string, unknown>,
@@ -620,7 +620,7 @@ export class StatbateRefreshJob {
       const memberData = await statbateClient.getMemberInfo('chaturbate', person.username);
       if (memberData) {
         const normalized = normalizeMemberInfo(memberData.data);
-        await SnapshotService.create({
+        await StatbatePollingService.create({
           personId: person.id,
           source: 'statbate_member',
           rawPayload: memberData.data as unknown as Record<string, unknown>,

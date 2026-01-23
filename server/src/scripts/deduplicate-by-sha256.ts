@@ -2,7 +2,7 @@
  * Deduplicate media_locator records based on SHA256 hash
  *
  * For each group of duplicates:
- * 1. Find the record with the most FK references (affiliate_api_snapshots)
+ * 1. Find the record with the most FK references (affiliate_api_polling)
  * 2. Update all FKs to point to the keeper
  * 3. Soft-delete the duplicates (set deleted_at)
  *
@@ -91,10 +91,10 @@ async function analyze(): Promise<void> {
 }
 
 async function findBestRecordToKeep(ids: string[]): Promise<string> {
-  // Count FK references from affiliate_api_snapshots for each ID
+  // Count FK references from affiliate_api_polling for each ID
   const sql = `
     SELECT media_locator_id, COUNT(*) as ref_count
-    FROM affiliate_api_snapshots
+    FROM affiliate_api_polling
     WHERE media_locator_id = ANY($1)
     GROUP BY media_locator_id
     ORDER BY ref_count DESC
@@ -148,7 +148,7 @@ async function dedupe(dryRun: boolean, batchSize: number): Promise<void> {
         try {
           // Update all FK references to point to the keeper
           const updateResult = await query(
-            `UPDATE affiliate_api_snapshots SET media_locator_id = $1 WHERE media_locator_id = ANY($2)`,
+            `UPDATE affiliate_api_polling SET media_locator_id = $1 WHERE media_locator_id = ANY($2)`,
             [keepId, duplicateIds]
           );
           fkUpdates += updateResult.rowCount || 0;
@@ -168,7 +168,7 @@ async function dedupe(dryRun: boolean, batchSize: number): Promise<void> {
       } else {
         // Dry run - just count
         const countResult = await query(
-          `SELECT COUNT(*) FROM affiliate_api_snapshots WHERE media_locator_id = ANY($1)`,
+          `SELECT COUNT(*) FROM affiliate_api_polling WHERE media_locator_id = ANY($1)`,
           [duplicateIds]
         );
         fkUpdates += parseInt(countResult.rows[0].count, 10);
@@ -190,7 +190,7 @@ async function dedupe(dryRun: boolean, batchSize: number): Promise<void> {
   console.log(`\n=== Summary ===`);
   console.log(`Processed: ${processed} groups`);
   console.log(`Soft-deleted: ${softDeleted} records`);
-  console.log(`FK updates: ${fkUpdates} affiliate_api_snapshots records`);
+  console.log(`FK updates: ${fkUpdates} affiliate_api_polling records`);
   console.log(`Errors: ${errors}`);
 
   if (dryRun) {
