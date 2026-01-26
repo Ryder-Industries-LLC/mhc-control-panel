@@ -67,7 +67,9 @@ const StorageGrowthChart: React.FC<StorageGrowthChartProps> = ({
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  const formatDateTime = (label: string | number) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const formatDateTime = (label: any) => {
+    if (!label) return '';
     const date = new Date(String(label));
     return date.toLocaleString('en-US', {
       month: 'short',
