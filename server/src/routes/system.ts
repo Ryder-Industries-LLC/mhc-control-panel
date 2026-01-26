@@ -181,9 +181,9 @@ router.get('/stats', async (_req: Request, res: Response) => {
       const cbhoursResult = await query(`
         SELECT
           COUNT(DISTINCT person_id) as total,
-          COUNT(DISTINCT person_id) FILTER (WHERE is_online = true) as online
+          COUNT(DISTINCT person_id) FILTER (WHERE room_status = 'Online') as online
         FROM cbhours_live_stats
-        WHERE recorded_at > NOW() - INTERVAL '1 hour'
+        WHERE checked_at > NOW() - INTERVAL '1 hour'
       `);
       cbhoursOnline = parseInt(cbhoursResult.rows[0]?.online || '0');
       cbhoursTotal = parseInt(cbhoursResult.rows[0]?.total || '0');
@@ -194,18 +194,18 @@ router.get('/stats', async (_req: Request, res: Response) => {
     // Get priority lookup queue stats (table might not exist)
     let queuePriority1Pending = 0;
     let queuePriority2Active = 0;
-    let queueFailedLast24h = 0;
+    let queueCompletedLast24h = 0;
     try {
       const queueResult = await query(`
         SELECT
-          COUNT(*) FILTER (WHERE status = 'pending' AND priority = 1) as priority1_pending,
-          COUNT(*) FILTER (WHERE status = 'active' AND priority = 2) as priority2_active,
-          COUNT(*) FILTER (WHERE status = 'failed' AND failed_at > NOW() - INTERVAL '24 hours') as failed_24h
-        FROM priority_lookup_queue
+          COUNT(*) FILTER (WHERE status = 'pending' AND priority_level = 1) as priority1_pending,
+          COUNT(*) FILTER (WHERE status = 'active' AND priority_level = 2) as priority2_active,
+          COUNT(*) FILTER (WHERE status = 'completed' AND completed_at > NOW() - INTERVAL '24 hours') as completed_24h
+        FROM priority_lookups
       `);
       queuePriority1Pending = parseInt(queueResult.rows[0]?.priority1_pending || '0');
       queuePriority2Active = parseInt(queueResult.rows[0]?.priority2_active || '0');
-      queueFailedLast24h = parseInt(queueResult.rows[0]?.failed_24h || '0');
+      queueCompletedLast24h = parseInt(queueResult.rows[0]?.completed_24h || '0');
     } catch (e) {
       // Table might not exist
     }
@@ -250,7 +250,7 @@ router.get('/stats', async (_req: Request, res: Response) => {
       queue: {
         priority1Pending: queuePriority1Pending,
         priority2Active: queuePriority2Active,
-        failedLast24h: queueFailedLast24h,
+        completedLast24h: queueCompletedLast24h,
       },
       following: {
         followingCount: parseInt(followingStats.rows[0]?.following_count || '0'),

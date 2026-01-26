@@ -167,11 +167,11 @@ export class StatsCollectionService {
       // Priority lookup queue stats - table may not exist, gracefully handle
       query(`
         SELECT
-          COUNT(*) FILTER (WHERE status = 'pending' AND priority = 1) as priority1_pending,
-          COUNT(*) FILTER (WHERE status = 'active' AND priority = 2) as priority2_active,
-          COUNT(*) FILTER (WHERE status = 'failed' AND failed_at > NOW() - INTERVAL '24 hours') as failed_24h
+          COUNT(*) FILTER (WHERE status = 'pending' AND priority_level = 1) as priority1_pending,
+          COUNT(*) FILTER (WHERE status = 'active' AND priority_level = 2) as priority2_active,
+          COUNT(*) FILTER (WHERE status = 'completed' AND completed_at > NOW() - INTERVAL '24 hours') as completed_24h
         FROM priority_lookups
-      `).catch(() => ({ rows: [{ priority1_pending: 0, priority2_active: 0, failed_24h: 0 }] })),
+      `).catch(() => ({ rows: [{ priority1_pending: 0, priority2_active: 0, completed_24h: 0 }] })),
 
       // Live now count (from cbhours_live_stats) - room_status column instead of is_online
       query(`
