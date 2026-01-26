@@ -30,6 +30,7 @@ import { cbhoursClient, type CBHoursLiveModel } from '../api/cbhours/cbhours-cli
 import { SOCIAL_PLATFORMS, normalizeSocialUrl } from '../constants/social-platforms.js';
 import { logger } from '../config/logger.js';
 import { query } from '../db/client.js';
+import { requireAuthOrApiKey } from '../middleware/auth.middleware.js';
 
 // Configure multer for memory storage (we handle file saving ourselves)
 const upload = multer({
@@ -1783,8 +1784,9 @@ router.get('/:username/images', async (req: Request, res: Response) => {
 /**
  * POST /api/profile/:username/images
  * Upload a new image for a profile
+ * Requires session auth OR API key (X-API-Key header)
  */
-router.post('/:username/images', upload.single('image'), async (req: Request, res: Response) => {
+router.post('/:username/images', requireAuthOrApiKey, upload.single('image'), async (req: Request, res: Response) => {
   try {
     const { username } = req.params;
     const { source = 'manual_upload', description, captured_at } = req.body;

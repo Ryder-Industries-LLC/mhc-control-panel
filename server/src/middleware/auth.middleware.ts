@@ -3,6 +3,7 @@ import { SessionService, Session } from '../services/auth/session.service.js';
 import { UserService, User } from '../services/auth/user.service.js';
 import { TotpService } from '../services/auth/totp.service.js';
 import { logger } from '../config/logger.js';
+import { env } from '../config/env.js';
 
 // Extend Express Request type to include auth properties
 declare global {
@@ -264,3 +265,60 @@ export async function checkTrustedDevice(req: Request, res: Response, next: Next
  * Useful for endpoints that behave differently for authenticated users
  */
 export const optionalAuth = loadSession;
+
+/**
+ * API Key authentication for external clients (scripts, shortcuts, etc.)
+ * Checks for X-API-Key header and validates against MHC_API_KEY env var
+ * Returns true if valid API key, false otherwise
+ */
+export function validateApiKey(req: Request): boolean {
+  const apiKey = req.headers['x-api-key'] as string | undefined;
+
+  if (!apiKey || !env.MHC_API_KEY) {
+    return false;
+  }
+
+  // Constant-time comparison to prevent timing attacks
+  if (apiKey.length !== env.MHC_API_KEY.length) {
+    return false;
+  }
+
+  let result = 0;
+  for (let i = 0; i < apiKey.length; i++) {
+    result |= apiKey.charCodeAt(i) ^ env.MHC_API_KEY.charCodeAt(i);
+  }
+
+  return result === 0;
+}
+
+/**
+ * Middleware that allows either session auth OR API key auth
+ * Use this for endpoints that should be accessible by both web UI and external scripts
+ */
+export function requireAuthOrApiKey(req: Request, res: Response, next: NextFunction): void {
+  // First check for valid API key
+  if (validateApiKey(req)) {
+    // API key is valid - mark request as API-authenticated
+    (req as Request & { apiKeyAuth?: boolean }).apiKeyAuth = true;
+    next();
+    return;
+  }
+
+  // Fall back to session auth
+  if (!req.session || !req.user) {
+    res.status(401).json({ error: 'Authentication required. Provide session cookie or X-API-Key header.' });
+    return;
+  }
+
+  // Check if 2FA is required but not verified
+  if (req.user.totpEnabled && !req.session.totpVerified) {
+    res.status(403).json({
+      error: '2FA verification required',
+      requires2FA: true,
+      sessionId: req.session.id
+    });
+    return;
+  }
+
+  next();
+}

@@ -68,6 +68,9 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   COOKIE_DOMAIN: z.string().optional(),
 
+  // API Key for external clients (scripts, shortcuts, etc.)
+  MHC_API_KEY: z.string().min(32).optional(),
+
   // Runtime
   RUN_MODE: z.enum(['web', 'worker']).default('web'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),

@@ -90,6 +90,10 @@ services:
       - key: OPENAI_MAX_TOKENS
         value: "6000"
 
+      # API Key for external clients (scripts, shortcuts, etc.)
+      - key: MHC_API_KEY
+        sync: false
+
   # =================================================================
   # Background Worker (Events API listener)
   # =================================================================
