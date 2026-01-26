@@ -195,6 +195,107 @@ Before considering migration complete:
 - [ ] API calls use relative URLs (check Network tab)
 - [ ] Image upload via shortcut works
 
+## Apple Shortcut Scripts
+
+The Keyboard Maestro screensnap feature uses an Apple Shortcut that calls a shell script to upload images. The script needs different URLs for localhost vs Render.
+
+### Original Script (Localhost - Port 8080)
+
+```bash
+#!/bin/bash
+
+# MHC Control Panel - Image Upload Script (Localhost)
+# Called by Apple Shortcut via Keyboard Maestro (Cmd+/)
+
+USERNAME="$1"
+IMAGE_PATH="$2"
+
+if [ -z "$USERNAME" ] || [ -z "$IMAGE_PATH" ]; then
+    echo "Usage: $0 <username> <image_path>"
+    exit 1
+fi
+
+# Upload to localhost (through nginx proxy on port 8080)
+API_URL="http://localhost:8080/api/profile/${USERNAME}/images"
+
+response=$(curl -s -w "\n%{http_code}" \
+    -X POST "$API_URL" \
+    -F "image=@${IMAGE_PATH}" \
+    -F "source=screensnap")
+
+http_code=$(echo "$response" | tail -n1)
+body=$(echo "$response" | sed '$d')
+
+if [ "$http_code" -eq 201 ]; then
+    image_id=$(echo "$body" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    echo "UPLOAD_SUCCESS:${image_id}"
+else
+    echo "UPLOAD_FAILED:${http_code}"
+    exit 1
+fi
+```
+
+### Render Script (Production - mhc.onl)
+
+```bash
+#!/bin/bash
+
+# MHC Control Panel - Image Upload Script (Render Production)
+# Called by Apple Shortcut via Keyboard Maestro (Cmd+/)
+# Requires API key authentication
+
+USERNAME="$1"
+IMAGE_PATH="$2"
+API_KEY="your-api-key-here"  # Set this to your MHC_API_KEY value
+
+if [ -z "$USERNAME" ] || [ -z "$IMAGE_PATH" ]; then
+    echo "Usage: $0 <username> <image_path>"
+    exit 1
+fi
+
+if [ -z "$API_KEY" ]; then
+    echo "ERROR: API_KEY not set"
+    exit 1
+fi
+
+# Upload to Render (through static site proxy)
+API_URL="https://mhc.onl/api/profile/${USERNAME}/images"
+
+response=$(curl -s -w "\n%{http_code}" \
+    -X POST "$API_URL" \
+    -H "X-API-Key: ${API_KEY}" \
+    -F "image=@${IMAGE_PATH}" \
+    -F "source=screensnap")
+
+http_code=$(echo "$response" | tail -n1)
+body=$(echo "$response" | sed '$d')
+
+if [ "$http_code" -eq 201 ]; then
+    image_id=$(echo "$body" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+    echo "UPLOAD_SUCCESS:${image_id}"
+else
+    echo "UPLOAD_FAILED:${http_code}"
+    echo "Response: $body"
+    exit 1
+fi
+```
+
+### Key Differences
+
+| Aspect   | Localhost                       | Render                          |
+| -------- | ------------------------------- | ------------------------------- |
+| URL      | `http://localhost:8080/api/...` | `https://mhc.onl/api/...`       |
+| Auth     | None (session via browser)      | `X-API-Key` header required     |
+| Protocol | HTTP                            | HTTPS                           |
+
+### API Key Setup
+
+1. Set `MHC_API_KEY` environment variable on both web and worker services in Render
+2. Use the same key value in the shortcut script
+3. The API key is validated by `requireAuthOrApiKey` middleware
+
+---
+
 ## Next Steps
 
 1. Revert local code to pre-migration state
