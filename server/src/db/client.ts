@@ -4,20 +4,23 @@ import { logger } from '../config/logger.js';
 
 const { Pool } = pg;
 
-// Configure SSL for production (Render PostgreSQL requires SSL)
-// Setting rejectUnauthorized to false allows self-signed certificates
+// Configure SSL based on connection type:
+// - Internal Render URLs (no domain suffix) don't require SSL
+// - External URLs (.render.com or .oregon-postgres.render.com) require SSL
+const dbHost = env.DATABASE_URL?.split('@')[1]?.split('/')[0] || 'unknown';
+const isExternalUrl = dbHost.includes('.render.com') || dbHost.includes('.postgres.render.com');
 const isProduction = env.NODE_ENV === 'production';
-const sslConfig = isProduction
-  ? {
-      rejectUnauthorized: false,  // Render uses self-signed certificates
-    }
+
+// Only enable SSL for external connections in production
+const sslConfig = isProduction && isExternalUrl
+  ? { rejectUnauthorized: false }  // Render uses self-signed certificates
   : undefined;
 
 // Log database configuration (without sensitive data)
-const dbHost = env.DATABASE_URL?.split('@')[1]?.split('/')[0] || 'unknown';
 console.log(`[DB] Connecting to: ${dbHost}`);
 console.log(`[DB] NODE_ENV: ${env.NODE_ENV}`);
-console.log(`[DB] SSL enabled: ${isProduction}`);
+console.log(`[DB] Is external URL: ${isExternalUrl}`);
+console.log(`[DB] SSL enabled: ${!!(isProduction && isExternalUrl)}`);
 
 export const pool = new Pool({
   connectionString: env.DATABASE_URL,
