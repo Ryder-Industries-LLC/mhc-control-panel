@@ -5,9 +5,19 @@ import { logger } from '../config/logger.js';
 const { Pool } = pg;
 
 // Configure SSL for production (Render PostgreSQL requires SSL)
-const sslConfig = env.NODE_ENV === 'production'
-  ? { rejectUnauthorized: false }  // Render uses self-signed certificates
-  : false;
+// Setting rejectUnauthorized to false allows self-signed certificates
+const isProduction = env.NODE_ENV === 'production';
+const sslConfig = isProduction
+  ? {
+      rejectUnauthorized: false,  // Render uses self-signed certificates
+    }
+  : undefined;
+
+// Log database configuration (without sensitive data)
+const dbHost = env.DATABASE_URL?.split('@')[1]?.split('/')[0] || 'unknown';
+console.log(`[DB] Connecting to: ${dbHost}`);
+console.log(`[DB] NODE_ENV: ${env.NODE_ENV}`);
+console.log(`[DB] SSL enabled: ${isProduction}`);
 
 export const pool = new Pool({
   connectionString: env.DATABASE_URL,
