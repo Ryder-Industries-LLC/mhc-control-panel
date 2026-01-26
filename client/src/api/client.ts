@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://mhc-control-panel.onrender.com';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://mhc-control-panel-web.onrender.com';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
