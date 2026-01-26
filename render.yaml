@@ -15,7 +15,8 @@ databases:
   - name: mhc-db
     databaseName: mhc_control_panel
     user: mhc_user
-    plan: starter
+    plan: basic-256mb
+    region: oregon
     # Note: Render PostgreSQL 15 is the default
     # Data will need to be migrated from local Docker instance
 

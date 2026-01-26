@@ -30,7 +30,7 @@ import settingsRoutes from './routes/settings.js';
 import inboxRoutes from './routes/inbox.js';
 import storageRoutes from './routes/storage.js';
 import imageConsolidationRoutes from './routes/image-consolidation.js';
-import backupRoutes from './routes/backup.js';
+import dbExportRoutes from './routes/db-export.js';
 import legacyImportRoutes from './routes/legacy-import.js';
 import attributesRoutes from './routes/attributes.js';
 import mediaRoutes from './routes/media.js';
@@ -154,7 +154,7 @@ export function createApp() {
   app.use('/api/inbox', inboxRoutes);
   app.use('/api/storage', storageRoutes);
   app.use('/api/image-consolidation', imageConsolidationRoutes);
-  app.use('/api/backup', backupRoutes);
+  app.use('/api/db-export', dbExportRoutes);
   app.use('/api/legacy-import', legacyImportRoutes);
   app.use('/api/attributes', attributesRoutes);
   app.use('/api/media', mediaRoutes);
