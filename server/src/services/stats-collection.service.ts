@@ -247,7 +247,7 @@ export class StatsCollectionService {
       queue: {
         priority1_pending: parseInt(queueStats.rows[0]?.priority1_pending || '0'),
         priority2_active: parseInt(queueStats.rows[0]?.priority2_active || '0'),
-        failed_24h: parseInt(queueStats.rows[0]?.failed_24h || '0'),
+        failed_24h: parseInt(queueStats.rows[0]?.completed_24h || '0'),
       },
     };
 
