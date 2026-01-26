@@ -1,58 +1,159 @@
+# ===================================================================
+# MHC Control Panel - Render.com Blueprint
+# ===================================================================
+# Deploy: https://render.com/deploy?repo=https://github.com/YOUR_REPO
+# Or use: render blueprint apply
+#
+# Services:
+#   - mhc-db: PostgreSQL database (managed)
+#   - mhc-control-panel-web: Backend API server (Docker - needs Puppeteer)
+#   - mhc-control-panel-worker: Background Events API listener (Docker)
+#   - mhc-control-panel-frontend: React static site
+# ===================================================================
+
 databases:
   - name: mhc-db
     databaseName: mhc_control_panel
     user: mhc_user
     plan: starter
+    # Note: Render PostgreSQL 15 is the default
+    # Data will need to be migrated from local Docker instance
 
 services:
-  # Web service (HTTP API)
+  # =================================================================
+  # Backend API Server (Docker deployment for Puppeteer support)
+  # =================================================================
   - type: web
     name: mhc-control-panel-web
-    runtime: node
+    runtime: docker
+    dockerfilePath: ./Dockerfile.web
+    dockerContext: .
     plan: starter
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    healthCheckPath: /health
     envVars:
+      # Runtime configuration
       - key: RUN_MODE
         value: web
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: "3000"
+      - key: LOG_LEVEL
+        value: info
+      - key: TZ
+        value: America/New_York
+
+      # Database (auto-linked from Render PostgreSQL)
       - key: DATABASE_URL
         fromDatabase:
           name: mhc-db
           property: connectionString
-      - key: STATBATE_API_TOKEN
-        sync: false
+
+      # Chaturbate APIs (required)
+      - key: CHATURBATE_USERNAME
+        value: hudson_cage
       - key: CHATURBATE_EVENTS_TOKEN
         sync: false
       - key: CHATURBATE_STATS_TOKEN
         sync: false
-      - key: CHATURBATE_USERNAME
-        value: hudson_cage
-      - key: LOG_LEVEL
-        value: info
-      - key: PORT
-        value: 3000
 
-  # Background worker (Events API listener)
+      # Statbate API (required)
+      - key: STATBATE_API_TOKEN
+        sync: false
+
+      # Statbate Plus (optional - for chat import)
+      - key: STATBATE_PLUS_SESSION_COOKIE
+        sync: false
+      - key: STATBATE_PLUS_XSRF_TOKEN
+        sync: false
+
+      # AWS S3 (required - media storage)
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: us-east-2
+      - key: S3_BUCKET_NAME
+        value: mhc-media-prod
+
+      # Google OAuth (required - authentication)
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+
+      # OpenAI (optional - AI summaries)
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4.1-mini
+      - key: OPENAI_MAX_TOKENS
+        value: "6000"
+
+  # =================================================================
+  # Background Worker (Events API listener)
+  # =================================================================
   - type: worker
     name: mhc-control-panel-worker
-    runtime: node
+    runtime: docker
+    dockerfilePath: ./Dockerfile.worker
+    dockerContext: .
     plan: starter
-    buildCommand: npm install && npm run build
-    startCommand: npm run worker
     envVars:
+      # Runtime configuration
       - key: RUN_MODE
         value: worker
       - key: NODE_ENV
         value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: TZ
+        value: America/New_York
+
+      # Database (auto-linked from Render PostgreSQL)
       - key: DATABASE_URL
         fromDatabase:
           name: mhc-db
           property: connectionString
-      - key: CHATURBATE_EVENTS_TOKEN
-        sync: false
+
+      # Chaturbate Events API (required)
       - key: CHATURBATE_USERNAME
         value: hudson_cage
-      - key: LOG_LEVEL
-        value: info
+      - key: CHATURBATE_EVENTS_TOKEN
+        sync: false
+
+      # AWS S3 (required - media storage)
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_REGION
+        value: us-east-2
+      - key: S3_BUCKET_NAME
+        value: mhc-media-prod
+
+  # =================================================================
+  # React Frontend (Static Site)
+  # =================================================================
+  # NOTE: Static sites cannot use fromService references at runtime.
+  # You must manually set REACT_APP_API_URL after the web service is deployed.
+  # Get the URL from the web service dashboard and set it here.
+  - type: web
+    name: mhc-control-panel-frontend
+    runtime: static
+    buildCommand: cd client && npm install && npm run build
+    staticPublishPath: ./client/build
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=3600
+    routes:
+      # SPA routing - all paths serve index.html
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # API URL - set this after web service is deployed (e.g., https://mhc-control-panel-web.onrender.com)
+      - key: REACT_APP_API_URL
+        sync: false
+      - key: REACT_APP_GOOGLE_CLIENT_ID
+        sync: false
