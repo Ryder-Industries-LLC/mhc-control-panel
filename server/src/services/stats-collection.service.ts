@@ -140,7 +140,7 @@ export class StatsCollectionService {
         FROM statbate_api_polling
       `),
 
-      // Media stats (images and videos)
+      // Media stats (images and videos) - uses media_locator (renamed from profile_images in migration 086)
       query(`
         SELECT
           COUNT(*) FILTER (WHERE media_type = 'image' OR media_type IS NULL) as image_count,
@@ -149,35 +149,35 @@ export class StatsCollectionService {
           COALESCE(SUM(file_size) FILTER (WHERE media_type = 'video'), 0) as video_total_size,
           COUNT(DISTINCT person_id) as users_with_media,
           COUNT(DISTINCT person_id) FILTER (WHERE media_type = 'video') as users_with_video
-        FROM profile_images
-        WHERE file_size IS NOT NULL
+        FROM media_locator
+        WHERE file_size IS NOT NULL AND deleted_at IS NULL
       `),
 
-      // Images by type breakdown
+      // Images by type breakdown - uses media_locator
       query(`
         SELECT
           COALESCE(source, 'unknown') as source_type,
           COUNT(*) as count,
           COALESCE(SUM(file_size), 0) as size_bytes
-        FROM profile_images
-        WHERE file_size IS NOT NULL AND (media_type = 'image' OR media_type IS NULL)
+        FROM media_locator
+        WHERE file_size IS NOT NULL AND deleted_at IS NULL AND (media_type = 'image' OR media_type IS NULL)
         GROUP BY source
       `),
 
-      // Priority lookup queue stats
+      // Priority lookup queue stats - table may not exist, gracefully handle
       query(`
         SELECT
           COUNT(*) FILTER (WHERE status = 'pending' AND priority = 1) as priority1_pending,
           COUNT(*) FILTER (WHERE status = 'active' AND priority = 2) as priority2_active,
           COUNT(*) FILTER (WHERE status = 'failed' AND failed_at > NOW() - INTERVAL '24 hours') as failed_24h
-        FROM priority_lookup_queue
+        FROM priority_lookups
       `).catch(() => ({ rows: [{ priority1_pending: 0, priority2_active: 0, failed_24h: 0 }] })),
 
-      // Live now count (from cbhours_live_stats)
+      // Live now count (from cbhours_live_stats) - room_status column instead of is_online
       query(`
         SELECT COUNT(DISTINCT person_id) as live_count
         FROM cbhours_live_stats
-        WHERE is_online = true AND recorded_at > NOW() - INTERVAL '1 hour'
+        WHERE room_status = 'Online' AND checked_at > NOW() - INTERVAL '1 hour'
       `).catch(() => ({ rows: [{ live_count: 0 }] })),
     ]);
 
