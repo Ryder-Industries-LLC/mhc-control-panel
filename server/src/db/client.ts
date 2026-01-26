@@ -5,15 +5,15 @@ import { logger } from '../config/logger.js';
 const { Pool } = pg;
 
 // Configure SSL based on connection type:
-// - Internal Render URLs (no domain suffix) don't require SSL
+// - Internal Render URLs (no domain suffix like dpg-xxx-a) don't require SSL
 // - External URLs (.render.com or .oregon-postgres.render.com) require SSL
 const dbHost = env.DATABASE_URL?.split('@')[1]?.split('/')[0]?.split(':')[0] || 'unknown';
 const isExternalUrl = dbHost.includes('.render.com') || dbHost.includes('.postgres.render.com');
 const isProduction = env.NODE_ENV === 'production';
 
-// Always enable SSL for Render PostgreSQL connections (both internal and external)
-// Render requires SSL for database connections
-const sslConfig = isProduction
+// Only enable SSL for external connections in production
+// Internal Render URLs (dpg-xxx-a format without domain) work without SSL
+const sslConfig = isProduction && isExternalUrl
   ? { rejectUnauthorized: false }  // Render uses self-signed certificates
   : undefined;
 
