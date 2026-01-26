@@ -5,7 +5,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { databaseBackupJob } from '../jobs/database-backup.job.js';
+import { databaseBackupJob } from '../jobs/db-export.job.js';
 import { logger } from '../config/logger.js';
 
 const router = Router();
